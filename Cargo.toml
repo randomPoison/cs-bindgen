@@ -9,5 +9,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 derive_more = "0.99.2"
+serde = { version = "1.0.104", features = ["derive"] }
+serde_json = "1.0.44"
 strum = { version = "0.17.1", features = ["derive"] }
 wasm-bindgen = "0.2.58"

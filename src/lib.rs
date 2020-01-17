@@ -1,35 +1,36 @@
 use derive_more::*;
+use serde::*;
 use std::{ffi::CString, os::raw::c_char};
 use strum::*;
 use wasm_bindgen::prelude::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, From)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, From, Serialize, Deserialize)]
 pub enum Tile {
     Simple(SimpleTile),
     Bonus(BonusTile),
     Honor(HonorTile),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, Serialize, Deserialize)]
 pub enum Suit {
     Coins,
     Bamboo,
     Characters,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SimpleTile {
     pub number: u8,
     pub suit: Suit,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, From)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, From, Serialize, Deserialize)]
 pub enum BonusTile {
     Flower(Flower),
     Season(Season),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, Serialize, Deserialize)]
 pub enum Flower {
     PlumBlossom,
     Orchid,
@@ -37,7 +38,7 @@ pub enum Flower {
     Bamboo,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, Serialize, Deserialize)]
 pub enum Season {
     Spring,
     Summer,
@@ -45,13 +46,13 @@ pub enum Season {
     Winter,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, From)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, From, Serialize, Deserialize)]
 pub enum HonorTile {
     Wind(Wind),
     Dragon(Dragon),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, Serialize, Deserialize)]
 pub enum Wind {
     East,
     South,
@@ -59,7 +60,7 @@ pub enum Wind {
     North,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, Serialize, Deserialize)]
 pub enum Dragon {
     Red,
     Green,
@@ -116,8 +117,8 @@ pub fn generate_tileset() -> Vec<Tile> {
 
 #[wasm_bindgen]
 pub fn generate_tileset_json() -> String {
-    // TODO: Actually generate the tileset and serialize it to JSON.
-    "[]".into()
+    let tileset = generate_tileset();
+    serde_json::to_string(&tileset).expect("Failed to serialize tileset")
 }
 
 #[no_mangle]
