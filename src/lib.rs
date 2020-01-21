@@ -1,3 +1,4 @@
+use cs_bindgen::prelude::*;
 use derive_more::*;
 use serde::*;
 use std::{convert::TryInto, ffi::CString, os::raw::c_char};
@@ -117,6 +118,7 @@ pub fn generate_tileset() -> Vec<Tile> {
 
 // TODO: Create a `cs_bindgen` attribute that generates the boilerplate for our FFI calls.
 #[wasm_bindgen]
+#[cs_bindgen]
 pub fn generate_tileset_json() -> String {
     let tileset = generate_tileset();
     serde_json::to_string(&tileset).expect("Failed to serialize tileset")
@@ -126,7 +128,7 @@ pub fn generate_tileset_json() -> String {
 //       a better way of handling errors and safely propagating them up to the
 //       calling code.
 #[no_mangle]
-pub unsafe extern "C" fn __cs_bindgen_generate_tileset_json(out_len: *mut i32) -> *mut c_char {
+pub unsafe extern "C" fn __cs_bindgen_generated_tileset_json(out_len: *mut i32) -> *mut c_char {
     // Call the underlying Rust function.
     let json = generate_tileset_json();
 
@@ -144,9 +146,4 @@ pub unsafe extern "C" fn __cs_bindgen_generate_tileset_json(out_len: *mut i32) -
     // no (stable) way to deconstruct a `String` into its raw parts.
     let result = CString::new(json).expect("Generated string contained a null byte");
     result.into_raw()
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn __cs_bindgen_drop_string(raw: *mut c_char) {
-    let _ = CString::from_raw(raw);
 }

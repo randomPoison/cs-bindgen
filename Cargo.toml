@@ -8,8 +8,15 @@ edition = "2018"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+cs-bindgen = { version = "0.1", path = "./cs-bindgen" }
 derive_more = "0.99.2"
 serde = { version = "1.0.104", features = ["derive"] }
 serde_json = "1.0.44"
 strum = { version = "0.17.1", features = ["derive"] }
 wasm-bindgen = "0.2.58"
+
+[workspace]
+members = [
+    "cs-bindgen",
+    "cs-bindgen-macro",
+]
