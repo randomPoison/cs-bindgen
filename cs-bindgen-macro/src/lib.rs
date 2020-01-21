@@ -1,10 +1,10 @@
 extern crate proc_macro;
 
+use proc_macro2::TokenStream;
 use quote::*;
 use syn::{
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
-    spanned::Spanned,
     token::{Async, Comma, RArrow},
     *,
 };
@@ -17,13 +17,17 @@ pub fn cs_bindgen(
     // Create a copy of the input token stream that we can later extend with the
     // generated code. This allows us to consume the input stream without needing to
     // manually reconstruct the original input later when returning the result.
-    let result = tokens.clone();
+    let orig: TokenStream = tokens.clone().into();
 
     let input = parse_macro_input!(tokens as BindgenFn);
     dbg!(&input);
-    dbg!(&result);
 
-    result
+    let result = quote! {
+        #[wasm_bindgen::prelude::wasm_bindgen]
+        #orig
+    };
+
+    result.into()
 }
 
 /// The return type of a function marked with `#[cs_bindgen]`.

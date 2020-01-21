@@ -3,7 +3,6 @@ use derive_more::*;
 use serde::*;
 use std::{convert::TryInto, ffi::CString, os::raw::c_char};
 use strum::*;
-use wasm_bindgen::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, From, Serialize, Deserialize)]
 pub enum Tile {
@@ -116,8 +115,8 @@ pub fn generate_tileset() -> Vec<Tile> {
     tiles
 }
 
-// TODO: Create a `cs_bindgen` attribute that generates the boilerplate for our FFI calls.
-#[wasm_bindgen]
+// TODO: Create a `cs_bindgen` attribute that generates the boilerplate for our FFI
+//       calls.
 #[cs_bindgen]
 pub fn generate_tileset_json() -> String {
     let tileset = generate_tileset();
