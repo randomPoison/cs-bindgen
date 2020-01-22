@@ -100,8 +100,32 @@ enum Primitive {
     Bool,
 }
 
+impl ToTokens for Primitive {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let result = match self {
+            Primitive::String => quote! { *mut std::os::raw::c_char },
+            Primitive::Char => quote! { u32 },
+            Primitive::I8 => quote! { i8 },
+            Primitive::I16 => quote! { i16 },
+            Primitive::I32 => quote! { i32 },
+            Primitive::I64 => quote! { i64 },
+            Primitive::U8 => quote! { u8 },
+            Primitive::U16 => quote! { u16 },
+            Primitive::U32 => quote! { u32 },
+            Primitive::U64 => quote! { u64 },
+            Primitive::F32 => quote! { f32 },
+            Primitive::F64 => quote! { f64 },
+            Primitive::Bool => quote! { u8 },
+        };
+
+        tokens.append_all(result);
+    }
+}
+
 #[derive(Debug)]
 struct BindgenFn {
+    vis: Option<Visibility>,
+    ident: Ident,
     args: Punctuated<FnArg, Comma>,
     ret: ReturnType,
 }
@@ -109,8 +133,16 @@ struct BindgenFn {
 impl Parse for BindgenFn {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let attrs = input.call(Attribute::parse_outer)?;
-        let vis: Visibility = input.parse()?;
-        let asyncness = input.parse::<Token![async]>().ok();
+        let vis = input.parse().ok();
+
+        // Generate an error if the function is async.
+        if let Ok(token) = input.parse::<Token![async]>() {
+            return Err(syn::Error::new(
+                token.span,
+                "Async functions cannot be called by C# code",
+            ));
+        }
+
         input.parse::<Token![fn]>()?;
         let ident: Ident = input.parse()?;
 
@@ -127,6 +159,61 @@ impl Parse for BindgenFn {
         braced!(content in input);
         let _ = content.call(Block::parse_within)?;
 
-        Ok(BindgenFn { args, ret })
+        Ok(BindgenFn {
+            vis,
+            ident,
+            args,
+            ret,
+        })
+    }
+}
+
+impl ToTokens for BindgenFn {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let vis = &self.vis;
+
+        // Determine the game of the generated function.
+        let ident = format_ident!("__cs_bindgen_generated_{}", self.ident);
+
+        // Build the list of arguments to generated function based on the arguments of the
+        // original function.
+        let mut args = Vec::new();
+        for arg in &self.args {
+            unimplemented!(
+                "Don't know how to generating binding for parameter {:?}",
+                arg
+            );
+        }
+
+        let ret = match &self.ret {
+            ReturnType::Default => quote! {},
+
+            ReturnType::Boxed(..) => unimplemented!("Arbitrary return types not yet supported"),
+
+            ReturnType::Primitive(_, prim) => {
+                // If we're returning a string, we need to add an extra parameter in order
+                // to be able to also return the length of the string to the calling code.
+                if let Primitive::String = prim {
+                    args.push(quote! {
+                        out_len: *mut i32
+                    });
+                }
+
+                quote! { #prim }
+            }
+        };
+
+        // Convert the raw list of args into a `Punctuated` so that syn/quote will handle
+        // inserting commas for us.
+        let args: Punctuated<_, Comma> = args.into_iter().collect();
+
+        let result = quote! {
+            #[no_mangle]
+            #vis extern "C" fn #ident(#args) #ret {
+                // TODO: Add a body here I guess.
+            }
+        };
+
+        tokens.append_all(result);
     }
 }
