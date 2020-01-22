@@ -51,8 +51,11 @@ impl Parse for ReturnType {
             syn::ReturnType::Type(arrow, inner) => (arrow, inner),
         };
 
-        let ident = match *inner {
-            Type::Verbatim(tokens) => syn::parse2::<Ident>(tokens)?,
+        let ident = match &*inner {
+            Type::Path(path) => match path.path.get_ident() {
+                Some(ident) => ident,
+                None => return Ok(ReturnType::Boxed(arrow, inner)),
+            },
 
             _ => return Ok(ReturnType::Boxed(arrow, inner)),
         };
