@@ -25,6 +25,8 @@ pub fn cs_bindgen(
     let result = quote! {
         #[wasm_bindgen::prelude::wasm_bindgen]
         #orig
+
+        #input
     };
 
     result.into()
@@ -209,7 +211,7 @@ impl ToTokens for BindgenFn {
 
         let result = quote! {
             #[no_mangle]
-            #vis extern "C" fn #ident(#args) #ret {
+            #vis unsafe extern "C" fn #ident(#args) #ret {
                 // TODO: Add a body here I guess.
             }
         };

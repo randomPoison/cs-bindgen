@@ -127,7 +127,9 @@ pub fn generate_tileset_json() -> String {
 //       a better way of handling errors and safely propagating them up to the
 //       calling code.
 #[no_mangle]
-pub unsafe extern "C" fn __cs_bindgen_generated_tileset_json(out_len: *mut i32) -> *mut c_char {
+pub unsafe extern "C" fn __cs_bindgen_generated_generate_tileset_json(
+    out_len: *mut i32,
+) -> *mut c_char {
     // Call the underlying Rust function.
     let json = generate_tileset_json();
 
