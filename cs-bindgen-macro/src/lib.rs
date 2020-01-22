@@ -188,7 +188,7 @@ impl ToTokens for BindgenFn {
         }
 
         let ret = match &self.ret {
-            ReturnType::Default => quote! {},
+            ReturnType::Default => quote! { () },
 
             ReturnType::Boxed(..) => unimplemented!("Arbitrary return types not yet supported"),
 
@@ -211,8 +211,8 @@ impl ToTokens for BindgenFn {
 
         let result = quote! {
             #[no_mangle]
-            #vis unsafe extern "C" fn #ident(#args) #ret {
-                // TODO: Add a body here I guess.
+            #vis unsafe extern "C" fn #ident(#args) -> #ret {
+                unimplemented!()
             }
         };
 
