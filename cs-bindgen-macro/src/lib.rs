@@ -260,6 +260,8 @@ impl ToTokens for BindgenFn {
         let result = quote! {
             #[no_mangle]
             #vis unsafe extern "C" fn #generated_fn_ident(#args) -> #return_type {
+                use std::convert::TryInto;
+
                 #process_args
 
                 let #ret_val = #orig_fn_name(#arg_names);
