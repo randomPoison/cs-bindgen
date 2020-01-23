@@ -5,13 +5,13 @@ use quote::*;
 use syn::{
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
-    token::{Async, Comma, RArrow},
+    token::{Comma, RArrow},
     *,
 };
 
 #[proc_macro_attribute]
 pub fn cs_bindgen(
-    attr: proc_macro::TokenStream,
+    _attr: proc_macro::TokenStream,
     tokens: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     // Create a copy of the input token stream that we can later extend with the
@@ -20,7 +20,6 @@ pub fn cs_bindgen(
     let orig: TokenStream = tokens.clone().into();
 
     let input = parse_macro_input!(tokens as BindgenFn);
-    dbg!(&input);
 
     let result = quote! {
         #[wasm_bindgen::prelude::wasm_bindgen]
@@ -85,7 +84,7 @@ impl Parse for ReturnType {
 }
 
 /// A Rust type that can be directly
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Primitive {
     String,
     Char,
@@ -100,6 +99,43 @@ enum Primitive {
     F32,
     F64,
     Bool,
+}
+
+impl Primitive {
+    /// Generates the code for returning the final result of the function.
+    fn generate_return_expr(&self, ret_val: &Ident, args: &mut Vec<TokenStream>) -> TokenStream {
+        match self {
+            // S
+            Primitive::String => {
+                // Generate the out param for the length of the string.
+                let out_param = format_ident!("out_len");
+                args.push(quote! {
+                    #out_param: *mut i32
+                });
+
+                // Generate the code for
+                quote! {
+                    *#out_param = #ret_val
+                        .len()
+                        .try_into()
+                        .expect("String length is too large for `i32`");
+
+                    std::ffi::CString::new(#ret_val)
+                        .expect("Generated string contained a null byte")
+                        .into_raw()
+                }
+            }
+
+            // Cast the bool to a `u8` in order to pass it to C# as a numeric value.
+            Primitive::Bool => quote! {
+                #ret_val as u8
+            },
+
+            // All other primitive types are ABI-compatible with a corresponding C# type, and
+            // require no extra processing to be returned.
+            _ => quote! { #ret_val },
+        }
+    }
 }
 
 impl ToTokens for Primitive {
@@ -134,7 +170,10 @@ struct BindgenFn {
 
 impl Parse for BindgenFn {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let attrs = input.call(Attribute::parse_outer)?;
+        // Parse attributes on the function.
+        let _ = input.call(Attribute::parse_outer)?;
+
+        // Parse the visibility specifier.
         let vis = input.parse().ok();
 
         // Generate an error if the function is async.
@@ -174,12 +213,17 @@ impl ToTokens for BindgenFn {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let vis = &self.vis;
 
-        // Determine the game of the generated function.
-        let ident = format_ident!("__cs_bindgen_generated_{}", self.ident);
+        // Determine the name of the generated function.
+        let generated_fn_ident = format_ident!("__cs_bindgen_generated_{}", self.ident);
 
-        // Build the list of arguments to generated function based on the arguments of the
-        // original function.
+        // Process the arguments to the function. From the list of arguments, we need to
+        // generate two things:
+        //
+        // * The list of arguments the generated function needs to take.
+        // * The code for processing the raw arguments and converting them to the
+        //   appropriate Rust types.
         let mut args = Vec::new();
+        let process_args = TokenStream::new();
         for arg in &self.args {
             unimplemented!(
                 "Don't know how to generating binding for parameter {:?}",
@@ -187,32 +231,40 @@ impl ToTokens for BindgenFn {
             );
         }
 
-        let ret = match &self.ret {
-            ReturnType::Default => quote! { () },
+        // Process the return type of the function. We need to generate two things from it:
+        //
+        // * The corresponding return type for the generated function.
+        // * The code for processing the return type of the Rust function and converting it
+        //   to the appropriate C# type.
+        let ret_val = format_ident!("ret_val");
+        let (return_type, process_return) = match &self.ret {
+            ReturnType::Default => (quote! { () }, TokenStream::new()),
 
             ReturnType::Boxed(..) => unimplemented!("Arbitrary return types not yet supported"),
 
-            ReturnType::Primitive(_, prim) => {
-                // If we're returning a string, we need to add an extra parameter in order
-                // to be able to also return the length of the string to the calling code.
-                if let Primitive::String = prim {
-                    args.push(quote! {
-                        out_len: *mut i32
-                    });
-                }
-
-                quote! { #prim }
-            }
+            ReturnType::Primitive(_, prim) => (
+                prim.to_token_stream(),
+                prim.generate_return_expr(&ret_val, &mut args),
+            ),
         };
+
+        // Generate the expression for invoking the underlying Rust function.
+        let orig_fn_name = &self.ident;
+        let arg_names = TokenStream::new();
 
         // Convert the raw list of args into a `Punctuated` so that syn/quote will handle
         // inserting commas for us.
         let args: Punctuated<_, Comma> = args.into_iter().collect();
 
+        // Compose the various pieces to generate the final function.
         let result = quote! {
             #[no_mangle]
-            #vis unsafe extern "C" fn #ident(#args) -> #ret {
-                unimplemented!()
+            #vis unsafe extern "C" fn #generated_fn_ident(#args) -> #return_type {
+                #process_args
+
+                let #ret_val = #orig_fn_name(#arg_names);
+
+                #process_return
             }
         };
 

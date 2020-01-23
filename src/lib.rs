@@ -141,6 +141,7 @@ pub unsafe extern "C" fn __generate_tileset_manual_bindings(out_len: *mut i32) -
     // the string to be nul-terminated. It would probably be more performant to directly
     // return the `String`, though extra steps have to be taken since there's currently
     // no (stable) way to deconstruct a `String` into its raw parts.
-    let result = CString::new(json).expect("Generated string contained a null byte");
-    result.into_raw()
+    CString::new(json)
+        .expect("Generated string contained a null byte")
+        .into_raw()
 }
