@@ -120,28 +120,3 @@ pub fn generate_tileset_json() -> String {
     let tileset = generate_tileset();
     serde_json::to_string(&tileset).expect("Failed to serialize tileset")
 }
-
-// TODO: Don't panic! We're not allowed to unwind across FFI boundaries, so we need
-//       a better way of handling errors and safely propagating them up to the
-//       calling code.
-#[no_mangle]
-pub unsafe extern "C" fn __generate_tileset_manual_bindings(out_len: *mut i32) -> *mut c_char {
-    // Call the underlying Rust function.
-    let json = generate_tileset_json();
-
-    // Get the length of the string and write it into the out value.
-    *out_len = json
-        .len()
-        .try_into()
-        .expect("String length is too large for `i32`");
-
-    // Convert the string into a `CString`, since it's the easiest option for converting
-    // to and from a raw pointer. In practice we don't actually need a C string
-    // specifically, since we return the length of the string and therefore don't need
-    // the string to be nul-terminated. It would probably be more performant to directly
-    // return the `String`, though extra steps have to be taken since there's currently
-    // no (stable) way to deconstruct a `String` into its raw parts.
-    CString::new(json)
-        .expect("Generated string contained a null byte")
-        .into_raw()
-}
