@@ -1,3 +1,4 @@
+use cs_bindgen_shared::*;
 use std::{fs, path::PathBuf, str};
 use structopt::*;
 use wasmtime::*;
@@ -10,10 +11,6 @@ fn main() {
     let test_wasm = fs::read(&opt.input).expect("Couldn't read mahjong.wasm");
     let module = Module::new(&store, &test_wasm).expect("Failed to create WASM module");
     let instance = Instance::new(&store, &module, &[]).expect("Failed to create module instance");
-
-    for export in module.exports() {
-        dbg!(export);
-    }
 
     let len_fn = instance
         .find_export_by_name("__cs_bindgen_decl_len_generate_tileset_json")
@@ -31,7 +28,6 @@ fn main() {
 
     let decl_ptr = decl_fn.call(&[]).expect("Failed to call decl fn")[0].unwrap_i32() as usize;
     let len = len_fn.call(&[]).expect("Failed to call len fn")[0].unwrap_i32() as usize;
-    dbg!(decl_ptr, len);
 
     let memory = instance
         .find_export_by_name("memory")
@@ -46,10 +42,12 @@ fn main() {
     let memory_bytes = unsafe { memory.data() };
 
     let decl_bytes = &memory_bytes[decl_ptr..decl_ptr + len];
-    dbg!(decl_bytes);
 
     let decl = str::from_utf8(decl_bytes).expect("decl not valid utf8");
-    dbg!(decl);
+
+    let bindgen_fn =
+        serde_json::from_str::<BindgenFn>(&decl).expect("Failed to deserialize bindgen fn decl");
+    dbg!(&bindgen_fn);
 }
 
 #[derive(Debug, StructOpt)]
