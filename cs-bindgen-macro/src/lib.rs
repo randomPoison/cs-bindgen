@@ -188,7 +188,11 @@ struct BindgenFnArg {
 #[derive(Debug, Serialize, Deserialize)]
 struct BindgenFn {
     ident: String,
+
+    // TODO: Preserve variable names for function arguments or we won't be able to
+    // generate code for functions that actually have args.
     args: Vec<Primitive>,
+
     ret: Option<Primitive>,
 }
 
@@ -295,6 +299,11 @@ impl ToTokens for BindgenFn {
         // inserting commas for us.
         let args: Punctuated<_, Comma> = args.into_iter().collect();
 
+        // Serialize the parsed function declaration into JSON so that it can be stored in
+        // a variable in the generated WASM module.
+        let decl_json = serde_json::to_string(self).expect("Failed to serialize decl to JSON");
+        let decl_var_ident = format_ident!("__cs_bindgen_decl_json_{}", self.ident);
+
         // Compose the various pieces to generate the final function.
         let result = quote! {
             #[no_mangle]
@@ -307,6 +316,9 @@ impl ToTokens for BindgenFn {
 
                 #process_return
             }
+
+            #[allow(bad_style)]
+            static #decl_var_ident: &str = #decl_json;
         };
 
         tokens.append_all(result);

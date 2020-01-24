@@ -120,22 +120,14 @@ pub fn generate_tileset_json() -> String {
     serde_json::to_string(&tileset).expect("Failed to serialize tileset")
 }
 
-#[allow(bad_style)]
-static __generate_tileset_json_decl: &str = r#"{
-    "type": "fn",
-    "name": "generate_tileset_json",
-    "params": [],
-    "return": "String",
-}"#;
-
 #[no_mangle]
 #[allow(bad_style)]
 extern "C" fn __cs_bindgen_decl_generate_tileset_json() -> *const u8 {
-    __generate_tileset_json_decl.as_ptr()
+    __cs_bindgen_decl_json_generate_tileset_json.as_ptr()
 }
 
 #[no_mangle]
 #[allow(bad_style)]
 extern "C" fn __cs_bindgen_decl_generate_tileset_json_len() -> usize {
-    __generate_tileset_json_decl.len()
+    __cs_bindgen_decl_json_generate_tileset_json.len()
 }
