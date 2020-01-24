@@ -20,4 +20,5 @@ members = [
     "cs-bindgen",
     "cs-bindgen-cli",
     "cs-bindgen-macro",
+    "cs-bindgen-shared",
 ]
