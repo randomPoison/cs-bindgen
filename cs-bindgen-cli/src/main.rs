@@ -4,6 +4,7 @@ use proc_macro2::TokenStream;
 use quote::*;
 use std::{ffi::OsStr, fs, path::PathBuf, str};
 use structopt::*;
+use syn::*;
 use wasmtime::*;
 
 fn main() {
@@ -70,9 +71,8 @@ fn main() {
 
     let class_name = format_ident!("{}", dll_name.to_camel_case());
     let entry_point = bindgen_fn.generated_name();
-    let cs_fn_name = format_ident!("{}", bindgen_fn.raw_ident().to_camel_case());
-    let raw_binding = format_ident!("__{}", cs_fn_name);
-    let cs_return_ty = quote_binding_return_type(&bindgen_fn.ret);
+    let raw_binding = format_ident!("__{}", bindgen_fn.raw_ident().to_camel_case());
+    let binding_return_ty = quote_binding_return_type(&bindgen_fn.ret);
 
     // If the function returns a string, generate an extra parameter binding for the
     // string's length.
@@ -81,9 +81,12 @@ fn main() {
         _ => TokenStream::new(),
     };
 
+    let wrapper_fn = quote_wrapper_fn(&bindgen_fn, &raw_binding);
+
     let result = quote! {
         using System;
         using System.Runtime.InteropServices;
+        using System.Text;
 
         public class #class_name
         {
@@ -91,13 +94,15 @@ fn main() {
                 #dll_name,
                 EntryPoint = #entry_point,
                 CallingConvention = CallingConvention.Cdecl)]
-            private static extern #cs_return_ty #raw_binding(#out_len);
+            private static extern #binding_return_ty #raw_binding(#out_len);
 
             [DllImport(
                 #dll_name,
                 EntryPoint = "__cs_bindgen_drop_string",
                 CallingConvention = CallingConvention.Cdecl)]
             private static extern void DropString(IntPtr raw);
+
+            #wrapper_fn
         }
     }
     .to_string();
@@ -121,6 +126,80 @@ fn quote_binding_return_type(return_ty: &Option<Primitive>) -> TokenStream {
         Some(Primitive::F32) => quote! { float },
         Some(Primitive::F64) => quote! { double },
         Some(Primitive::Bool) => quote! { byte },
+    }
+}
+
+fn quote_return_type(return_ty: &Option<Primitive>) -> TokenStream {
+    match return_ty {
+        None => TokenStream::new(),
+        Some(Primitive::String) => quote! { string },
+        Some(Primitive::Char) => quote! { uint },
+        Some(Primitive::I8) => quote! { sbyte },
+        Some(Primitive::I16) => quote! { short },
+        Some(Primitive::I32) => quote! { int },
+        Some(Primitive::I64) => quote! { long },
+        Some(Primitive::U8) => quote! { byte },
+        Some(Primitive::U16) => quote! { ushort },
+        Some(Primitive::U32) => quote! { uint },
+        Some(Primitive::U64) => quote! { ulong },
+        Some(Primitive::F32) => quote! { float },
+        Some(Primitive::F64) => quote! { double },
+        Some(Primitive::Bool) => quote! { bool },
+    }
+}
+
+fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_binding: &Ident) -> TokenStream {
+    let cs_fn_name = format_ident!("{}", bindgen_fn.raw_ident().to_camel_case());
+    let cs_return_ty = quote_return_type(&bindgen_fn.ret);
+
+    // If the function returns a string, generate an extra parameter binding for the
+    // string's length.
+    let out_len = match &bindgen_fn.ret {
+        Some(Primitive::String) => quote! { out var length },
+        _ => TokenStream::new(),
+    };
+
+    let invoke_expr = match &bindgen_fn.ret {
+        None => quote! { #raw_binding(); },
+
+        Some(prim) => {
+            let invoke_expr = quote! { var rawResult = #raw_binding(#out_len); };
+
+            let result_expr = match prim {
+                Primitive::String => quote! {
+                    string result;
+                    unsafe
+                    {
+                        result = Encoding.UTF8.GetString((byte*)rawResult, length);
+                    }
+
+                    DropString(rawResult);
+
+                    return result;
+                },
+
+                Primitive::Bool => quote! {
+                    return rawResult != 0;
+                },
+
+                _ => quote! { return rawResult },
+            };
+
+            quote! {
+                #invoke_expr
+
+                #result_expr
+            }
+        }
+    };
+
+    quote! {
+        public static #cs_return_ty #cs_fn_name()
+        {
+            // TODO: Process args so they're ready to pass to the rust fn.
+
+            #invoke_expr
+        }
     }
 }
 
