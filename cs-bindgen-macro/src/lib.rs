@@ -303,6 +303,8 @@ impl ToTokens for BindgenFn {
         // a variable in the generated WASM module.
         let decl_json = serde_json::to_string(self).expect("Failed to serialize decl to JSON");
         let decl_var_ident = format_ident!("__cs_bindgen_decl_json_{}", self.ident);
+        let decl_ptr_ident = format_ident!("__cs_bindgen_decl_ptr_{}", self.ident);
+        let decl_len_ident = format_ident!("__cs_bindgen_decl_len_{}", self.ident);
 
         // Compose the various pieces to generate the final function.
         let result = quote! {
@@ -319,6 +321,16 @@ impl ToTokens for BindgenFn {
 
             #[allow(bad_style)]
             static #decl_var_ident: &str = #decl_json;
+
+            #[no_mangle]
+            pub extern "C" fn #decl_ptr_ident() -> *const u8 {
+                #decl_var_ident.as_ptr()
+            }
+
+            #[no_mangle]
+            pub extern "C" fn #decl_len_ident() -> usize {
+                #decl_var_ident.len()
+            }
         };
 
         tokens.append_all(result);

@@ -16,14 +16,14 @@ fn main() {
     }
 
     let len_fn = instance
-        .find_export_by_name("__cs_bindgen_decl_generate_tileset_json_len")
+        .find_export_by_name("__cs_bindgen_decl_len_generate_tileset_json")
         .expect("len fn not found")
         .func()
         .expect("len fn wasn't a fn???")
         .borrow();
 
     let decl_fn = instance
-        .find_export_by_name("__cs_bindgen_decl_generate_tileset_json")
+        .find_export_by_name("__cs_bindgen_decl_ptr_generate_tileset_json")
         .expect("decl fn not found")
         .func()
         .expect("decl fn wasn't a fn???")
