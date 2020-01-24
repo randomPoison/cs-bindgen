@@ -38,6 +38,14 @@ impl BindgenFn {
     pub fn ident(&self) -> Ident {
         Ident::new(&self.ident, Span::call_site())
     }
+
+    pub fn generated_name(&self) -> String {
+        format!("__cs_bindgen_generated_{}", self.ident)
+    }
+
+    pub fn generated_ident(&self) -> Ident {
+        Ident::new(&self.generated_name(), Span::call_site())
+    }
 }
 
 impl Parse for BindgenFn {

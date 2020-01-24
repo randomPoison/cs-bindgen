@@ -1,5 +1,8 @@
 use cs_bindgen_shared::*;
-use std::{fs, path::PathBuf, str};
+use heck::*;
+use proc_macro2::TokenStream;
+use quote::*;
+use std::{ffi::OsStr, fs, path::PathBuf, str};
 use structopt::*;
 use wasmtime::*;
 
@@ -36,9 +39,17 @@ fn main() {
         .expect("memory wasn't a memory???")
         .borrow();
 
-    // SAFETY: `Memory::data` is (maybe) only unsafe if using wasmtime from multiple
-    // threads? That's at least what the safety note indicates, probably worth doing
-    // further research.
+    // SAFETY: `Memory::data` is safe as long as we don't do anything that would
+    // invalidate the reference while we're borrowing the memory. Specifically:
+    //
+    // * Explicitly calling `Memory::grow` (duh).
+    // * Invoking a function in the module that contains the `memory.grow` instruction.
+    //
+    // That second one is the more critical one, because it means we have to make sure
+    // we don't invoke *any* function in the module while borrowing the memory. For
+    // our purposes that's fine, and we can probably write a safe wrapper function that
+    // copies out the specified data so that we don't have to hold the borrow on the
+    // memory.
     let memory_bytes = unsafe { memory.data() };
 
     let decl_bytes = &memory_bytes[decl_ptr..decl_ptr + len];
@@ -47,7 +58,54 @@ fn main() {
 
     let bindgen_fn =
         serde_json::from_str::<BindgenFn>(&decl).expect("Failed to deserialize bindgen fn decl");
-    dbg!(&bindgen_fn);
+
+    // Generate the C# binding code.
+    // ---------------------------------------------------------------------------------------------
+
+    let dll_name = opt
+        .input
+        .file_stem()
+        .and_then(OsStr::to_str)
+        .expect("Unable to get name of wasm file");
+
+    let class_name = format_ident!("{}", dll_name.to_camel_case());
+    let entry_point = bindgen_fn.generated_name();
+    let cs_fn_name = format_ident!("{}", bindgen_fn.raw_ident().to_camel_case());
+    let raw_binding = format_ident!("__{}", cs_fn_name);
+    let cs_return_ty = quote_binding_return_type(&bindgen_fn.ret);
+
+    let result = quote! {
+        public class #class_name
+        {
+            [DllImport(
+                #dll_name,
+                EntryPoint = #entry_point,
+                CallingConvention = CallingConvention.Cdecl)]
+            private static extern #cs_return_ty #raw_binding();
+        }
+    }
+    .to_string();
+
+    println!("{}", result);
+}
+
+fn quote_binding_return_type(return_ty: &Option<Primitive>) -> TokenStream {
+    match return_ty {
+        None => TokenStream::new(),
+        Some(Primitive::String) => quote! { IntPtr },
+        Some(Primitive::Char) => quote! { uint },
+        Some(Primitive::I8) => quote! { sbyte },
+        Some(Primitive::I16) => quote! { short },
+        Some(Primitive::I32) => quote! { int },
+        Some(Primitive::I64) => quote! { long },
+        Some(Primitive::U8) => quote! { byte },
+        Some(Primitive::U16) => quote! { ushort },
+        Some(Primitive::U32) => quote! { uint },
+        Some(Primitive::U64) => quote! { ulong },
+        Some(Primitive::F32) => quote! { float },
+        Some(Primitive::F64) => quote! { double },
+        Some(Primitive::Bool) => quote! { byte },
+    }
 }
 
 #[derive(Debug, StructOpt)]

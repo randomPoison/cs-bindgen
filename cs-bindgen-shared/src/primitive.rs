@@ -60,7 +60,6 @@ impl Primitive {
         args: &mut Vec<TokenStream>,
     ) -> TokenStream {
         match self {
-            // S
             Primitive::String => {
                 // Generate the out param for the length of the string.
                 let out_param = format_ident!("out_len");

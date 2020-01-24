@@ -29,7 +29,7 @@ pub fn cs_bindgen(
 
 fn quote_bindgen_fn(bindgen_fn: &BindgenFn) -> TokenStream {
     // Determine the name of the generated function.
-    let generated_fn_ident = format_ident!("__cs_bindgen_generated_{}", bindgen_fn.raw_ident());
+    let generated_fn_ident = bindgen_fn.generated_ident();
 
     // Process the arguments to the function. From the list of arguments, we need to
     // generate two things:
