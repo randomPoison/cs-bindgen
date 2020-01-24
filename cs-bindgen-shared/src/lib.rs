@@ -7,10 +7,11 @@ use syn::{
     *,
 };
 
+mod arg;
 mod primitive;
 mod ret;
 
-pub use crate::{primitive::Primitive, ret::ReturnType};
+pub use crate::{arg::FnArg, primitive::Primitive, ret::ReturnType};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BindgenFn {
@@ -18,7 +19,7 @@ pub struct BindgenFn {
 
     // TODO: Preserve variable names for function arguments or we won't be able to
     // generate code for functions that actually have args.
-    pub args: Vec<Primitive>,
+    pub args: Vec<FnArg>,
 
     pub ret: Option<Primitive>,
 }
@@ -72,26 +73,33 @@ impl Parse for BindgenFn {
         let content;
         parenthesized!(content in input);
         let args = content
-            .parse_terminated::<FnArg, Comma>(FnArg::parse)?
+            .parse_terminated::<_, Comma>(syn::FnArg::parse)?
             .iter()
-            .map(|arg| match arg {
+            .enumerate()
+            .map(|(index, arg)| match arg {
                 // Reject any functions that take some form of `self`. We'll eventually be able to
                 // support these by marking entire `impl` blocks with `#[cs_bindgen]`, but for now
                 // we only support free functions.
-                FnArg::Receiver(_) => Err(syn::Error::new(
+                syn::FnArg::Receiver(_) => Err(syn::Error::new(
                     arg.span(),
                     "Methods are not supported, only free functions",
                 )),
 
-                // Parse out just the type of the parameter. We'll want to preserve the name of the
-                // param eventually in order to provide better naming in the generated C# code, but
-                // that would require that we handle the case where the function param uses a
-                // pattern rather than a regular identifier, and I don't feel like writing that code
-                // right now.
-                FnArg::Typed(pat) => Primitive::from_type(&pat.ty).ok_or(syn::Error::new(
-                    arg.span(),
-                    "Methods are not supported, only free functions",
-                )),
+                syn::FnArg::Typed(pat) => {
+                    // If the argument isn't declared with a normal identifier, we construct one so
+                    // that we have a valid identifier to use in the generated functions.
+                    let ident = match &*pat.pat {
+                        Pat::Ident(pat_ident) => pat_ident.ident.to_string(),
+                        _ => format!("__arg{}", index),
+                    };
+
+                    let ty = Primitive::from_type(&pat.ty).ok_or(syn::Error::new(
+                        pat.ty.span(),
+                        "Unknown argument type, only primitives are supported",
+                    ))?;
+
+                    Ok(FnArg::new(ident, ty))
+                }
             })
             .collect::<syn::Result<_>>()?;
 
