@@ -1,0 +1,9 @@
+[package]
+name = "cs-bindgen-cli"
+version = "0.1.0"
+authors = ["David LeGare <dlegare.1001@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+structopt = "0.3.8"
+wasmtime = "0.9.0"

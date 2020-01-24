@@ -18,5 +18,6 @@ wasm-bindgen = "0.2.58"
 [workspace]
 members = [
     "cs-bindgen",
+    "cs-bindgen-cli",
     "cs-bindgen-macro",
 ]

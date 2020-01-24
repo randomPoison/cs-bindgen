@@ -22,7 +22,6 @@ pub fn cs_bindgen(
     let input = parse_macro_input!(tokens as BindgenFn);
 
     let result = quote! {
-        #[wasm_bindgen::prelude::wasm_bindgen]
         #orig
 
         #input
