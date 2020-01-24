@@ -119,3 +119,8 @@ pub fn generate_tileset_json() -> String {
     let tileset = generate_tileset();
     serde_json::to_string(&tileset).expect("Failed to serialize tileset")
 }
+
+#[cs_bindgen]
+pub fn tileset_size() -> u32 {
+    144
+}

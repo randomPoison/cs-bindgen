@@ -7,6 +7,8 @@ use structopt::*;
 use syn::*;
 use wasmtime::*;
 
+static DECL_PTR_FN_PREFIX: &str = "__cs_bindgen_decl_ptr_";
+
 fn main() {
     let opt = Opt::from_args();
 
@@ -16,29 +18,89 @@ fn main() {
     let module = Module::new(&store, &test_wasm).expect("Failed to create WASM module");
     let instance = Instance::new(&store, &module, &[]).expect("Failed to create module instance");
 
-    let len_fn = instance
-        .find_export_by_name("__cs_bindgen_decl_len_generate_tileset_json")
-        .expect("len fn not found")
-        .func()
-        .expect("len fn wasn't a fn???")
-        .borrow();
-
-    let decl_fn = instance
-        .find_export_by_name("__cs_bindgen_decl_ptr_generate_tileset_json")
-        .expect("decl fn not found")
-        .func()
-        .expect("decl fn wasn't a fn???")
-        .borrow();
-
-    let decl_ptr = decl_fn.call(&[]).expect("Failed to call decl fn")[0].unwrap_i32() as usize;
-    let len = len_fn.call(&[]).expect("Failed to call len fn")[0].unwrap_i32() as usize;
-
     let memory = instance
         .find_export_by_name("memory")
         .expect("memory not found")
         .memory()
         .expect("memory wasn't a memory???")
         .borrow();
+
+    // Find any exported declarations and extract the declaration data from the module.
+    let mut decls = Vec::new();
+    for func in module.exports() {
+        if func.name().starts_with("__cs_bindgen_decl_ptr_") {
+            let fn_suffix = &func.name()[DECL_PTR_FN_PREFIX.len()..];
+
+            // Get the decl function from the instance.
+            let decl_fn = instance
+                .find_export_by_name(func.name())
+                .expect("decl fn not found")
+                .func()
+                .expect("decl fn wasn't a fn???")
+                .borrow();
+
+            // Get the length function from the instance.
+            let len_fn_name = format!("__cs_bindgen_decl_len_{}", fn_suffix);
+            let len_fn = instance
+                .find_export_by_name(&len_fn_name)
+                .expect("len fn not found")
+                .func()
+                .expect("len fn wasn't a fn???")
+                .borrow();
+
+            // Invoke both to get the pointer to the decl string and the length of the string.
+            let decl_ptr = decl_fn.call(&[]).expect("Failed to call decl fn")[0].unwrap_i32();
+            let len = len_fn.call(&[]).expect("Failed to call len fn")[0].unwrap_i32();
+
+            let decl = deserialize_decl_string(&memory, decl_ptr, len)
+                .expect("Failed to deserialize decl string");
+
+            decls.push(decl);
+        }
+    }
+
+    // Generate the C# binding code.
+    // ---------------------------------------------------------------------------------------------
+
+    let dll_name = opt
+        .input
+        .file_stem()
+        .and_then(OsStr::to_str)
+        .expect("Unable to get name of wasm file");
+
+    let class_name = format_ident!("{}", dll_name.to_camel_case());
+
+    let fn_bindings = decls.iter().map(|decl| quote_bindgen_fn(decl, dll_name));
+
+    let result = quote! {
+        using System;
+        using System.Runtime.InteropServices;
+        using System.Text;
+
+        public class #class_name
+        {
+            [DllImport(
+                #dll_name,
+                EntryPoint = "__cs_bindgen_drop_string",
+                CallingConvention = CallingConvention.Cdecl)]
+            private static extern void DropString(IntPtr raw);
+
+            #( #fn_bindings )*
+        }
+    }
+    .to_string();
+
+    println!("{}", result);
+}
+
+fn deserialize_decl_string(
+    memory: &Memory,
+    decl_ptr: i32,
+    len: i32,
+) -> serde_json::Result<BindgenFn> {
+    // Convert the pointer and len to `usize` so that we can index into the byte array.
+    let decl_ptr = decl_ptr as usize;
+    let len = len as usize;
 
     // SAFETY: `Memory::data` is safe as long as we don't do anything that would
     // invalidate the reference while we're borrowing the memory. Specifically:
@@ -54,22 +116,11 @@ fn main() {
     let memory_bytes = unsafe { memory.data() };
 
     let decl_bytes = &memory_bytes[decl_ptr..decl_ptr + len];
+    let decl_str = str::from_utf8(decl_bytes).expect("decl not valid utf8");
+    serde_json::from_str(&decl_str)
+}
 
-    let decl = str::from_utf8(decl_bytes).expect("decl not valid utf8");
-
-    let bindgen_fn =
-        serde_json::from_str::<BindgenFn>(&decl).expect("Failed to deserialize bindgen fn decl");
-
-    // Generate the C# binding code.
-    // ---------------------------------------------------------------------------------------------
-
-    let dll_name = opt
-        .input
-        .file_stem()
-        .and_then(OsStr::to_str)
-        .expect("Unable to get name of wasm file");
-
-    let class_name = format_ident!("{}", dll_name.to_camel_case());
+fn quote_bindgen_fn(bindgen_fn: &BindgenFn, dll_name: &str) -> TokenStream {
     let entry_point = bindgen_fn.generated_name();
     let raw_binding = format_ident!("__{}", bindgen_fn.raw_ident().to_camel_case());
     let binding_return_ty = quote_binding_return_type(&bindgen_fn.ret);
@@ -83,31 +134,15 @@ fn main() {
 
     let wrapper_fn = quote_wrapper_fn(&bindgen_fn, &raw_binding);
 
-    let result = quote! {
-        using System;
-        using System.Runtime.InteropServices;
-        using System.Text;
+    quote! {
+        [DllImport(
+            #dll_name,
+            EntryPoint = #entry_point,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern #binding_return_ty #raw_binding(#out_len);
 
-        public class #class_name
-        {
-            [DllImport(
-                #dll_name,
-                EntryPoint = #entry_point,
-                CallingConvention = CallingConvention.Cdecl)]
-            private static extern #binding_return_ty #raw_binding(#out_len);
-
-            [DllImport(
-                #dll_name,
-                EntryPoint = "__cs_bindgen_drop_string",
-                CallingConvention = CallingConvention.Cdecl)]
-            private static extern void DropString(IntPtr raw);
-
-            #wrapper_fn
-        }
+        #wrapper_fn
     }
-    .to_string();
-
-    println!("{}", result);
 }
 
 fn quote_binding_return_type(return_ty: &Option<Primitive>) -> TokenStream {
@@ -182,7 +217,7 @@ fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_binding: &Ident) -> TokenStream 
                     return rawResult != 0;
                 },
 
-                _ => quote! { return rawResult },
+                _ => quote! { return rawResult; },
             };
 
             quote! {
