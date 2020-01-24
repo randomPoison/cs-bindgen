@@ -74,14 +74,30 @@ fn main() {
     let raw_binding = format_ident!("__{}", cs_fn_name);
     let cs_return_ty = quote_binding_return_type(&bindgen_fn.ret);
 
+    // If the function returns a string, generate an extra parameter binding for the
+    // string's length.
+    let out_len = match &bindgen_fn.ret {
+        Some(Primitive::String) => quote! { out int length },
+        _ => TokenStream::new(),
+    };
+
     let result = quote! {
+        using System;
+        using System.Runtime.InteropServices;
+
         public class #class_name
         {
             [DllImport(
                 #dll_name,
                 EntryPoint = #entry_point,
                 CallingConvention = CallingConvention.Cdecl)]
-            private static extern #cs_return_ty #raw_binding();
+            private static extern #cs_return_ty #raw_binding(#out_len);
+
+            [DllImport(
+                #dll_name,
+                EntryPoint = "__cs_bindgen_drop_string",
+                CallingConvention = CallingConvention.Cdecl)]
+            private static extern void DropString(IntPtr raw);
         }
     }
     .to_string();
