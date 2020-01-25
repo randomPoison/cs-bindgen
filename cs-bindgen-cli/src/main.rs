@@ -4,7 +4,7 @@ use proc_macro2::TokenStream;
 use quote::*;
 use std::{ffi::OsStr, fs, path::PathBuf, str};
 use structopt::*;
-use syn::*;
+use syn::{punctuated::Punctuated, token::Comma, *};
 use wasmtime::*;
 
 static DECL_PTR_FN_PREFIX: &str = "__cs_bindgen_decl_ptr_";
@@ -123,13 +123,21 @@ fn deserialize_decl_string(
 fn quote_bindgen_fn(bindgen_fn: &BindgenFn, dll_name: &str) -> TokenStream {
     let entry_point = bindgen_fn.generated_name();
     let raw_binding = format_ident!("__{}", bindgen_fn.raw_ident().to_camel_case());
-    let binding_return_ty = quote_binding_return_type(&bindgen_fn.ret);
+    let binding_return_ty = match bindgen_fn.ret {
+        None => quote! { void },
+        Some(prim) => quote_primitive_binding(prim),
+    };
+
+    let mut binding_args = bindgen_fn
+        .args
+        .iter()
+        .map(|arg| quote_primitive_binding(arg.ty))
+        .collect::<Punctuated<_, Comma>>();
 
     // If the function returns a string, generate an extra parameter binding for the
     // string's length.
-    let out_len = match &bindgen_fn.ret {
-        Some(Primitive::String) => quote! { out int length },
-        _ => TokenStream::new(),
+    if let Some(Primitive::String) = &bindgen_fn.ret {
+        binding_args.push(quote! { out int length })
     };
 
     let wrapper_fn = quote_wrapper_fn(&bindgen_fn, &raw_binding);
@@ -139,66 +147,93 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn, dll_name: &str) -> TokenStream {
             #dll_name,
             EntryPoint = #entry_point,
             CallingConvention = CallingConvention.Cdecl)]
-        private static extern #binding_return_ty #raw_binding(#out_len);
+        private static extern #binding_return_ty #raw_binding(#binding_args);
 
         #wrapper_fn
     }
 }
 
-fn quote_binding_return_type(return_ty: &Option<Primitive>) -> TokenStream {
+fn quote_primitive_binding(return_ty: Primitive) -> TokenStream {
     match return_ty {
-        None => TokenStream::new(),
-        Some(Primitive::String) => quote! { IntPtr },
-        Some(Primitive::Char) => quote! { uint },
-        Some(Primitive::I8) => quote! { sbyte },
-        Some(Primitive::I16) => quote! { short },
-        Some(Primitive::I32) => quote! { int },
-        Some(Primitive::I64) => quote! { long },
-        Some(Primitive::U8) => quote! { byte },
-        Some(Primitive::U16) => quote! { ushort },
-        Some(Primitive::U32) => quote! { uint },
-        Some(Primitive::U64) => quote! { ulong },
-        Some(Primitive::F32) => quote! { float },
-        Some(Primitive::F64) => quote! { double },
-        Some(Primitive::Bool) => quote! { byte },
+        Primitive::String => quote! { IntPtr },
+        Primitive::Char => quote! { uint },
+        Primitive::I8 => quote! { sbyte },
+        Primitive::I16 => quote! { short },
+        Primitive::I32 => quote! { int },
+        Primitive::I64 => quote! { long },
+        Primitive::U8 => quote! { byte },
+        Primitive::U16 => quote! { ushort },
+        Primitive::U32 => quote! { uint },
+        Primitive::U64 => quote! { ulong },
+        Primitive::F32 => quote! { float },
+        Primitive::F64 => quote! { double },
+        Primitive::Bool => quote! { byte },
     }
 }
 
-fn quote_return_type(return_ty: &Option<Primitive>) -> TokenStream {
+fn quote_primitive(return_ty: Primitive) -> TokenStream {
     match return_ty {
-        None => TokenStream::new(),
-        Some(Primitive::String) => quote! { string },
-        Some(Primitive::Char) => quote! { uint },
-        Some(Primitive::I8) => quote! { sbyte },
-        Some(Primitive::I16) => quote! { short },
-        Some(Primitive::I32) => quote! { int },
-        Some(Primitive::I64) => quote! { long },
-        Some(Primitive::U8) => quote! { byte },
-        Some(Primitive::U16) => quote! { ushort },
-        Some(Primitive::U32) => quote! { uint },
-        Some(Primitive::U64) => quote! { ulong },
-        Some(Primitive::F32) => quote! { float },
-        Some(Primitive::F64) => quote! { double },
-        Some(Primitive::Bool) => quote! { bool },
+        Primitive::String => quote! { string },
+        Primitive::Char => quote! { uint },
+        Primitive::I8 => quote! { sbyte },
+        Primitive::I16 => quote! { short },
+        Primitive::I32 => quote! { int },
+        Primitive::I64 => quote! { long },
+        Primitive::U8 => quote! { byte },
+        Primitive::U16 => quote! { ushort },
+        Primitive::U32 => quote! { uint },
+        Primitive::U64 => quote! { ulong },
+        Primitive::F32 => quote! { float },
+        Primitive::F64 => quote! { double },
+        Primitive::Bool => quote! { bool },
     }
 }
 
 fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_binding: &Ident) -> TokenStream {
     let cs_fn_name = format_ident!("{}", bindgen_fn.raw_ident().to_camel_case());
-    let cs_return_ty = quote_return_type(&bindgen_fn.ret);
+    let cs_return_ty = match bindgen_fn.ret {
+        None => quote! { void },
+        Some(prim) => quote_primitive(prim),
+    };
+
+    // Build the list of arguments to the wrapper function.
+    let args = bindgen_fn
+        .args
+        .iter()
+        .map(|arg| {
+            let ident = arg.ident();
+            let ty = quote_primitive(arg.ty);
+            quote! { #ty #ident }
+        })
+        .collect::<Punctuated<_, Comma>>();
+
+    // Build the list of arguments to the wrapper function.
+    let mut invoke_args = bindgen_fn
+        .args
+        .iter()
+        .map(|arg| match arg.ty {
+            Primitive::String => unimplemented!("Don't know how to pass a `string` to rust"),
+
+            Primitive::Bool => {
+                let ident = arg.ident();
+                quote! { (#ident ? 1 : 0) }
+            }
+
+            _ => arg.ident().into_token_stream(),
+        })
+        .collect::<Punctuated<_, Comma>>();
 
     // If the function returns a string, generate an extra parameter binding for the
     // string's length.
-    let out_len = match &bindgen_fn.ret {
-        Some(Primitive::String) => quote! { out var length },
-        _ => TokenStream::new(),
-    };
+    if let Some(Primitive::String) = bindgen_fn.ret {
+        invoke_args.push(quote! { out var length });
+    }
 
     let invoke_expr = match &bindgen_fn.ret {
-        None => quote! { #raw_binding(); },
+        None => quote! { #raw_binding(#invoke_args); },
 
         Some(prim) => {
-            let invoke_expr = quote! { var rawResult = #raw_binding(#out_len); };
+            let invoke_expr = quote! { var rawResult = #raw_binding(#invoke_args); };
 
             let result_expr = match prim {
                 Primitive::String => quote! {
@@ -229,7 +264,7 @@ fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_binding: &Ident) -> TokenStream 
     };
 
     quote! {
-        public static #cs_return_ty #cs_fn_name()
+        public static #cs_return_ty #cs_fn_name(#args)
         {
             // TODO: Process args so they're ready to pass to the rust fn.
 
