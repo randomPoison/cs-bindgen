@@ -2,7 +2,7 @@ use cs_bindgen_shared::*;
 use heck::*;
 use proc_macro2::TokenStream;
 use quote::*;
-use std::{ffi::OsStr, fs, path::PathBuf, str};
+use std::{ffi::OsStr, fs, fs::File, io::prelude::*, path::PathBuf, str};
 use structopt::*;
 use syn::{punctuated::Punctuated, token::Comma, *};
 use wasmtime::*;
@@ -90,7 +90,22 @@ fn main() {
     }
     .to_string();
 
-    println!("{}", result);
+    match opt.output {
+        // If no output file was specified, print to stdout.
+        None => println!("{}", result),
+
+        // Write the generated code the specified output file.
+        Some(out_path) => {
+            // Make sure the output directory exists.
+            if let Some(parent) = out_path.parent() {
+                fs::create_dir_all(parent).expect("Failed to create directory for output");
+            }
+
+            let mut file = File::create(&out_path).expect("Failed to open output file");
+            file.write_all(result.as_bytes())
+                .expect("Failed to write to output file");
+        }
+    }
 }
 
 fn deserialize_decl_string(
@@ -282,4 +297,7 @@ fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_binding: &Ident) -> TokenStream 
 struct Opt {
     #[structopt(parse(from_os_str))]
     input: PathBuf,
+
+    #[structopt(short, long, parse(from_os_str))]
+    output: Option<PathBuf>,
 }
