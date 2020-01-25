@@ -1,7 +1,7 @@
 extern crate proc_macro;
 
-use cs_bindgen_shared::*;
-use proc_macro2::TokenStream;
+use cs_bindgen_shared::{FnArg, *};
+use proc_macro2::{Span, TokenStream};
 use quote::*;
 use syn::{punctuated::Punctuated, token::Comma, *};
 
@@ -38,13 +38,39 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn) -> TokenStream {
     // * The code for processing the raw arguments and converting them to the
     //   appropriate Rust types.
     let mut args = Vec::new();
-    let process_args = TokenStream::new();
+    let mut process_args = TokenStream::new();
     for arg in &bindgen_fn.args {
-        unimplemented!(
-            "Don't know how to generating binding for parameter {:?}",
-            arg
-        );
+        let ident = arg.ident();
+        let ty = quote_raw_primitive(arg.ty);
+        args.push(quote! { #ident: #ty });
+
+        match arg.ty {
+            // TODO: To support string params we'll need to inject an extra argument for the length
+            // and generate processing logic for decoding the C# string into a Rust string.
+            Primitive::String => {
+                return syn::Error::new(
+                    Span::call_site(),
+                    "`String` arguments are not yet supported",
+                )
+                .to_compile_error()
+            }
+
+            // Bools are passed in as a `u8`, so we need to re-bind the variable as a `bool` by
+            // explicitly checking the value.
+            Primitive::Bool => process_args.append_all(quote! {
+                let #ident = #ident != 0;
+            }),
+
+            // The remaining primitive types don't require any additional processing.
+            _ => {}
+        }
     }
+
+    let arg_names = bindgen_fn
+        .args
+        .iter()
+        .map(FnArg::ident)
+        .collect::<Punctuated<_, Comma>>();
 
     // Process the return type of the function. We need to generate two things from it:
     //
@@ -56,14 +82,13 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn) -> TokenStream {
         None => (quote! { () }, TokenStream::new()),
 
         Some(prim) => (
-            quote_primitive(*prim),
+            quote_raw_primitive(*prim),
             prim.generate_return_expr(&ret_val, &mut args),
         ),
     };
 
     // Generate the expression for invoking the underlying Rust function.
     let orig_fn_name = format_ident!("{}", &bindgen_fn.raw_ident());
-    let arg_names = TokenStream::new();
 
     // Convert the raw list of args into a `Punctuated` so that syn/quote will handle
     // inserting commas for us.
@@ -104,7 +129,7 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn) -> TokenStream {
     }
 }
 
-fn quote_primitive(prim: Primitive) -> TokenStream {
+fn quote_raw_primitive(prim: Primitive) -> TokenStream {
     match prim {
         Primitive::String => quote! { *mut std::os::raw::c_char },
         Primitive::Char => quote! { u32 },
