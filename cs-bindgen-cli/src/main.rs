@@ -131,7 +131,11 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn, dll_name: &str) -> TokenStream {
     let mut binding_args = bindgen_fn
         .args
         .iter()
-        .map(|arg| quote_primitive_binding(arg.ty))
+        .map(|arg| {
+            let ident = arg.ident();
+            let ty = quote_primitive_binding(arg.ty);
+            quote! { #ty #ident }
+        })
         .collect::<Punctuated<_, Comma>>();
 
     // If the function returns a string, generate an extra parameter binding for the
