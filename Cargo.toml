@@ -4,4 +4,5 @@ members = [
     "cs-bindgen-cli",
     "cs-bindgen-macro",
     "cs-bindgen-shared",
+    "integration-tests",
 ]

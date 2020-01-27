@@ -14,7 +14,8 @@ fn main() {
 
     let store = Store::default();
 
-    let test_wasm = fs::read(&opt.input).expect("Couldn't read mahjong.wasm");
+    let test_wasm = fs::read(&opt.input)
+        .unwrap_or_else(|_| panic!("Failed to open wasm module: {}", opt.input.display()));
     let module = Module::new(&store, &test_wasm).expect("Failed to create WASM module");
     let instance = Instance::new(&store, &module, &[]).expect("Failed to create module instance");
 
