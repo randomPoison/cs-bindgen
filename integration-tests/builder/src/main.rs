@@ -21,7 +21,7 @@ fn main() {
         .args(&[
             "run",
             "-p=cs-bindgen-cli",
-            "../target/wasm32-unknown-unknown/debug/integration-tests.wasm",
+            "../target/wasm32-unknown-unknown/debug/integration_tests.wasm",
             "-o=TestRunner/Bindings.cs",
         ])
         .spawn()

@@ -5,4 +5,5 @@ members = [
     "cs-bindgen-macro",
     "cs-bindgen-shared",
     "integration-tests",
+    "integration-tests/builder",
 ]
