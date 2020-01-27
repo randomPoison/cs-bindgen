@@ -6,7 +6,11 @@ fn main() {
     println!("Building WASM module for integration-tests:");
 
     let mut child = Command::new("cargo")
-        .args(&["build", "--target=wasm32-unknown-unknown"])
+        .args(&[
+            "build",
+            "--target=wasm32-unknown-unknown",
+            "-p=integration-tests",
+        ])
         .spawn()
         .expect("Failed to spawn the build process");
 
@@ -16,7 +20,6 @@ fn main() {
     }
 
     // Run the code generation script.
-
     let mut child = Command::new("cargo")
         .args(&[
             "run",
@@ -26,6 +29,17 @@ fn main() {
         ])
         .spawn()
         .expect("Failed to spawn cs-bindgen process");
+
+    let status = child.wait().expect("Failed to finish codegen process");
+    if !status.success() {
+        return;
+    }
+
+    // Build the actual DLL for the project.
+    let mut child = Command::new("cargo")
+        .args(&["build", "-p=integration-tests"])
+        .spawn()
+        .expect("Failed to spawn the build process");
 
     let status = child.wait().expect("Failed to finish codegen process");
     if !status.success() {
