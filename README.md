@@ -35,3 +35,17 @@ Console.WriteLine(greeting);
 ## Status
 
 Highly experimental! Do not use, even as a joke!
+
+## Running Integration Tests
+
+In addition to the usual Rust testing setup that can be run via `cargo run`, there's a more complete integration test setup that builds C# bindings into a .NET Core project and uses [xUnit](https://xunit.net/) to test that the Rust binary can be embedded correctly. To setup the bindings for the tests, first run:
+
+```
+cargo run -p builder
+```
+
+Then, to run the tests, navigate to the `integration-tests/TestRunner` directory and run:
+
+```
+dotnet test
+```
