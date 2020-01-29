@@ -28,4 +28,6 @@ jobs:
         cargo run -p builder
 
     - name: Run integration tests
-      run: cd integration-tests/TestRunner && dotnet test
+      run: |
+        cd integration-tests/TestRunner
+        dotnet test
