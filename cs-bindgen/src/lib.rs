@@ -1,11 +1,24 @@
-use std::{ffi::CString, os::raw::c_char};
-
 pub mod prelude {
     pub use cs_bindgen_macro::*;
 }
 
-/// Drops a `CString` that has been passed to the .NET runtime.
-#[no_mangle]
-pub unsafe extern "C" fn __cs_bindgen_drop_string(raw: *mut c_char) {
-    let _ = CString::from_raw(raw);
+/// Generates helper functions that must only be generated once.
+///
+/// This macro must be called exactly once by the final crate that is being used
+/// with `cs-bindgen`.
+///
+/// Ideally these functions should be declared directly in the `cs-bindgen` crate,
+/// there's currently no way to ensure that symbols defined in dependencies get
+/// exported correctly on all platforms. In practice, it seems like on Linux the
+/// symbols are not exported. See https://github.com/rust-lang/rfcs/issues/2771 for
+/// more information.
+#[macro_export]
+macro_rules! generate_static_bindings {
+    () => {
+        /// Drops a `CString` that has been passed to the .NET runtime.
+        #[no_mangle]
+        pub unsafe extern "C" fn __cs_bindgen_drop_string(raw: *mut std::os::raw::c_char) {
+            let _ = std::ffi::CString::from_raw(raw);
+        }
+    };
 }

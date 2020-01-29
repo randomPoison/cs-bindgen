@@ -25,7 +25,7 @@ fn main() {
 
     let status = child.wait().expect("Failed to finish build process");
     if !status.success() {
-        return;
+        panic!("Build process exited with an error");
     }
 
     // Run the code generation script.
@@ -41,7 +41,7 @@ fn main() {
 
     let status = child.wait().expect("Failed to finish codegen process");
     if !status.success() {
-        return;
+        panic!("Codegen process finished with an error");
     }
 
     // Build the actual DLL for the project.
@@ -50,8 +50,8 @@ fn main() {
         .spawn()
         .expect("Failed to spawn the build process");
 
-    let status = child.wait().expect("Failed to finish codegen process");
+    let status = child.wait().expect("Failed to finish building the dylib");
     if !status.success() {
-        return;
+        panic!("Dylib build process finished with an error");
     }
 }
