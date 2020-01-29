@@ -12,6 +12,10 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
+    - uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '3.1.101'
+
     - name: Build
       run: cargo build --verbose
 
