@@ -4,7 +4,10 @@ on: [push]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macOS-latest, windows-latest ]
+    runs-on: ${{ matrix.os }}
 
     steps:
     - uses: actions/checkout@v2
@@ -16,7 +19,9 @@ jobs:
       run: cargo test --verbose
 
     - name: Build integration tests
-      run: cargo run -p builder
+      run: |
+        rustup target add wasm32-unknown-unknown
+        cargo run -p builder
 
     - name: Run integration tests
       run: cd integration-tests/TestRunner && dotnet test
