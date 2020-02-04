@@ -84,9 +84,17 @@ fn main() {
                 #dll_name,
                 EntryPoint = "__cs_bindgen_drop_string",
                 CallingConvention = CallingConvention.Cdecl)]
-            private static extern void DropString(IntPtr raw);
+            private static extern void DropString(RawString raw);
 
             #( #fn_bindings )*
+
+            [StructLayout(LayoutKind.Sequential)]
+            private struct RawString
+            {
+                public IntPtr Ptr;
+                public ulong Length;
+                public ulong Capacity;
+            }
         }
     }
     .to_string();
@@ -144,7 +152,7 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn, dll_name: &str) -> TokenStream {
         Some(prim) => quote_primitive_binding(prim),
     };
 
-    let mut binding_args = bindgen_fn
+    let binding_args = bindgen_fn
         .args
         .iter()
         .map(|arg| {
@@ -153,12 +161,6 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn, dll_name: &str) -> TokenStream {
             quote! { #ty #ident }
         })
         .collect::<Punctuated<_, Comma>>();
-
-    // If the function returns a string, generate an extra parameter binding for the
-    // string's length.
-    if let Some(Primitive::String) = &bindgen_fn.ret {
-        binding_args.push(quote! { out int length })
-    };
 
     let wrapper_fn = quote_wrapper_fn(&bindgen_fn, &raw_binding);
 
@@ -175,7 +177,7 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn, dll_name: &str) -> TokenStream {
 
 fn quote_primitive_binding(return_ty: Primitive) -> TokenStream {
     match return_ty {
-        Primitive::String => quote! { IntPtr },
+        Primitive::String => quote! { RawString },
         Primitive::Char => quote! { uint },
         Primitive::I8 => quote! { sbyte },
         Primitive::I16 => quote! { short },
@@ -228,7 +230,7 @@ fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_binding: &Ident) -> TokenStream 
         .collect::<Punctuated<_, Comma>>();
 
     // Build the list of arguments to the wrapper function.
-    let mut invoke_args = bindgen_fn
+    let invoke_args = bindgen_fn
         .args
         .iter()
         .map(|arg| match arg.ty {
@@ -243,12 +245,6 @@ fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_binding: &Ident) -> TokenStream 
         })
         .collect::<Punctuated<_, Comma>>();
 
-    // If the function returns a string, generate an extra parameter binding for the
-    // string's length.
-    if let Some(Primitive::String) = bindgen_fn.ret {
-        invoke_args.push(quote! { out var length });
-    }
-
     let invoke_expr = match &bindgen_fn.ret {
         None => quote! { #raw_binding(#invoke_args); },
 
@@ -260,7 +256,7 @@ fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_binding: &Ident) -> TokenStream 
                     string result;
                     unsafe
                     {
-                        result = Encoding.UTF8.GetString((byte*)rawResult, length);
+                        result = Encoding.UTF8.GetString((byte*)rawResult.Ptr, (int)rawResult.Length);
                     }
 
                     DropString(rawResult);

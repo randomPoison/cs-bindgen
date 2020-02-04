@@ -19,8 +19,8 @@ macro_rules! generate_static_bindings {
     () => {
         /// Drops a `CString` that has been passed to the .NET runtime.
         #[no_mangle]
-        pub unsafe extern "C" fn __cs_bindgen_drop_string(raw: *mut std::os::raw::c_char) {
-            let _ = std::ffi::CString::from_raw(raw);
+        pub unsafe extern "C" fn __cs_bindgen_drop_string(raw: cs_bindgen::RawString) {
+            let _ = raw.into_string();
         }
     };
 }
