@@ -1,3 +1,5 @@
+use std::mem;
+
 pub mod prelude {
     pub use cs_bindgen_macro::*;
 }
@@ -21,4 +23,52 @@ macro_rules! generate_static_bindings {
             let _ = std::ffi::CString::from_raw(raw);
         }
     };
+}
+
+/// Raw representation of a [`String`] compatible with FFI.
+///
+/// `u64` is used for the length and capacity of the string because `usize` is not
+/// ABI-compatible with C#. `u64` is guaranteed to be large enough for the maximum
+/// capacity on 64 bit systems, so we can cast it to and from `usize` without
+/// truncating.
+///
+/// [`String`]: https://doc.rust-lang.org/std/string/struct.String.html
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(C)]
+pub struct RawString {
+    pub ptr: *mut u8,
+    pub len: u64,
+    pub capacity: u64,
+}
+
+impl RawString {
+    pub fn from_string(mut string: String) -> Self {
+        let raw = Self {
+            ptr: string.as_mut_ptr(),
+            len: string.len() as u64,
+            capacity: string.capacity() as u64,
+        };
+
+        // Ensure that the string isn't de-allocated, effectively transferring ownership of
+        // its data to the `RawString`.
+        mem::forget(string);
+
+        raw
+    }
+
+    /// Reconstructs the original string from its raw parts.
+    ///
+    /// # Safety
+    ///
+    /// `into_string` must only be called once per string instance. Calling it more than
+    /// once on the same string will result in undefined behavior.
+    pub unsafe fn into_string(self) -> String {
+        String::from_raw_parts(self.ptr, self.len as usize, self.capacity as usize)
+    }
+}
+
+impl From<String> for RawString {
+    fn from(from: String) -> Self {
+        Self::from_string(from)
+    }
 }
