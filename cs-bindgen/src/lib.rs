@@ -37,16 +37,16 @@ macro_rules! generate_static_bindings {
 #[repr(C)]
 pub struct RawString {
     pub ptr: *mut u8,
-    pub len: u64,
-    pub capacity: u64,
+    pub len: usize,
+    pub capacity: usize,
 }
 
 impl RawString {
     pub fn from_string(mut string: String) -> Self {
         let raw = Self {
             ptr: string.as_mut_ptr(),
-            len: string.len() as u64,
-            capacity: string.capacity() as u64,
+            len: string.len(),
+            capacity: string.capacity(),
         };
 
         // Ensure that the string isn't de-allocated, effectively transferring ownership of

@@ -92,8 +92,8 @@ fn main() {
             private struct RustOwnedString
             {
                 public IntPtr Ptr;
-                public ulong Length;
-                public ulong Capacity;
+                public IntPtr Length;
+                public IntPtr Capacity;
             }
         }
     }
