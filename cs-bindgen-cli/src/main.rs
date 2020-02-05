@@ -95,6 +95,13 @@ fn main() {
                 public IntPtr Length;
                 public IntPtr Capacity;
             }
+
+            [StructLayout(LayoutKind.Sequential)]
+            private struct RawCsString
+            {
+                public IntPtr Ptr;
+                public int Length;
+            }
         }
     }
     .to_string();
@@ -253,14 +260,8 @@ fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_binding: &Ident) -> TokenStream 
 
             let result_expr = match prim {
                 Primitive::String => quote! {
-                    string result;
-                    unsafe
-                    {
-                        result = Encoding.UTF8.GetString((byte*)rawResult.Ptr, (int)rawResult.Length);
-                    }
-
+                    string result = Encoding.UTF8.GetString((byte*)rawResult.Ptr, (int)rawResult.Length);
                     DropString(rawResult);
-
                     return result;
                 },
 
@@ -282,9 +283,11 @@ fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_binding: &Ident) -> TokenStream 
     quote! {
         public static #cs_return_ty #cs_fn_name(#args)
         {
-            // TODO: Process args so they're ready to pass to the rust fn.
+            unsafe {
+                // TODO: Process args so they're ready to pass to the rust fn.
 
-            #invoke_expr
+                #invoke_expr
+            }
         }
     }
 }
