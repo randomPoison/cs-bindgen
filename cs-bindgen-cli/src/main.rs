@@ -84,12 +84,12 @@ fn main() {
                 #dll_name,
                 EntryPoint = "__cs_bindgen_drop_string",
                 CallingConvention = CallingConvention.Cdecl)]
-            private static extern void DropString(RawString raw);
+            private static extern void DropString(RustOwnedString raw);
 
             #( #fn_bindings )*
 
             [StructLayout(LayoutKind.Sequential)]
-            private struct RawString
+            private struct RustOwnedString
             {
                 public IntPtr Ptr;
                 public ulong Length;
@@ -177,7 +177,7 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn, dll_name: &str) -> TokenStream {
 
 fn quote_primitive_binding(return_ty: Primitive) -> TokenStream {
     match return_ty {
-        Primitive::String => quote! { RawString },
+        Primitive::String => quote! { RustOwnedString },
         Primitive::Char => quote! { uint },
         Primitive::I8 => quote! { sbyte },
         Primitive::I16 => quote! { short },
