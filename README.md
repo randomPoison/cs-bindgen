@@ -16,7 +16,7 @@ Declare functions in Rust and expose them to C#.
 
 ```rust
 #[cs_bindgen]
-pub fn greet(name: &str) -> String {
+pub fn greet(name: String) -> String {
     format!("Hello, {}!", name)
 }
 ```
@@ -29,8 +29,6 @@ var greeting = Example.Greet("Ferris");
 // Prints "Hello, Ferris!"
 Console.WriteLine(greeting);
 ```
-
-> NOTE: Above example not yet fully supported. Notably, it's not yet possible to pass a string from C# to Rust (though returning one from Rust to C# work fine).
 
 ## Status
 

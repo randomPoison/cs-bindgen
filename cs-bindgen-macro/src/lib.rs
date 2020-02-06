@@ -1,7 +1,7 @@
 extern crate proc_macro;
 
 use cs_bindgen_shared::{FnArg, *};
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::TokenStream;
 use quote::*;
 use syn::{punctuated::Punctuated, token::Comma, *};
 
@@ -41,19 +41,15 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn) -> TokenStream {
     let mut process_args = TokenStream::new();
     for arg in &bindgen_fn.args {
         let ident = arg.ident();
-        let ty = quote_raw_primitive(arg.ty);
+        let ty = quote_primitive_arg_type(arg.ty);
         args.push(quote! { #ident: #ty });
 
         match arg.ty {
-            // TODO: To support string params we'll need to inject an extra argument for the length
-            // and generate processing logic for decoding the C# string into a Rust string.
-            Primitive::String => {
-                return syn::Error::new(
-                    Span::call_site(),
-                    "`String` arguments are not yet supported",
-                )
-                .to_compile_error()
-            }
+            // Strings are passed in as utf-16 arrays (specifically as a `RawCsString`), so we
+            // convert the data into a `String`.
+            Primitive::String => process_args.append_all(quote! {
+                let #ident = #ident.into_string();
+            }),
 
             // Bools are passed in as a `u8`, so we need to re-bind the variable as a `bool` by
             // explicitly checking the value.
@@ -83,7 +79,7 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn) -> TokenStream {
 
         Some(prim) => (
             quote_raw_primitive(*prim),
-            prim.generate_return_expr(&ret_val, &mut args),
+            quote_return_expr(prim, &ret_val),
         ),
     };
 
@@ -129,9 +125,9 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn) -> TokenStream {
     }
 }
 
-fn quote_raw_primitive(prim: Primitive) -> TokenStream {
+fn quote_primitive_arg_type(prim: Primitive) -> TokenStream {
     match prim {
-        Primitive::String => quote! { *mut std::os::raw::c_char },
+        Primitive::String => quote! { cs_bindgen::RawCsString },
         Primitive::Char => quote! { u32 },
         Primitive::I8 => quote! { i8 },
         Primitive::I16 => quote! { i16 },
@@ -144,5 +140,42 @@ fn quote_raw_primitive(prim: Primitive) -> TokenStream {
         Primitive::F32 => quote! { f32 },
         Primitive::F64 => quote! { f64 },
         Primitive::Bool => quote! { u8 },
+    }
+}
+
+fn quote_raw_primitive(prim: Primitive) -> TokenStream {
+    match prim {
+        Primitive::String => quote! { cs_bindgen::RawString },
+        Primitive::Char => quote! { u32 },
+        Primitive::I8 => quote! { i8 },
+        Primitive::I16 => quote! { i16 },
+        Primitive::I32 => quote! { i32 },
+        Primitive::I64 => quote! { i64 },
+        Primitive::U8 => quote! { u8 },
+        Primitive::U16 => quote! { u16 },
+        Primitive::U32 => quote! { u32 },
+        Primitive::U64 => quote! { u64 },
+        Primitive::F32 => quote! { f32 },
+        Primitive::F64 => quote! { f64 },
+        Primitive::Bool => quote! { u8 },
+    }
+}
+
+/// Generates the code for returning the final result of the function.
+fn quote_return_expr(prim: &Primitive, ret_val: &Ident) -> TokenStream {
+    match prim {
+        // Convert the `String` into a `RawString`.
+        Primitive::String => quote! {
+            #ret_val.into()
+        },
+
+        // Cast the bool to a `u8` in order to pass it to C# as a numeric value.
+        Primitive::Bool => quote! {
+            #ret_val as u8
+        },
+
+        // All other primitive types are ABI-compatible with a corresponding C# type, and
+        // require no extra processing to be returned.
+        _ => quote! { #ret_val },
     }
 }

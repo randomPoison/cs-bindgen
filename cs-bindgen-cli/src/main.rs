@@ -84,9 +84,24 @@ fn main() {
                 #dll_name,
                 EntryPoint = "__cs_bindgen_drop_string",
                 CallingConvention = CallingConvention.Cdecl)]
-            private static extern void DropString(IntPtr raw);
+            private static extern void DropString(RustOwnedString raw);
 
             #( #fn_bindings )*
+
+            [StructLayout(LayoutKind.Sequential)]
+            private unsafe struct RustOwnedString
+            {
+                public byte* Ptr;
+                public IntPtr Length;
+                public IntPtr Capacity;
+            }
+
+            [StructLayout(LayoutKind.Sequential)]
+            private unsafe struct RawCsString
+            {
+                public char* Ptr;
+                public int Length;
+            }
         }
     }
     .to_string();
@@ -141,24 +156,18 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn, dll_name: &str) -> TokenStream {
     let raw_binding = format_ident!("__{}", bindgen_fn.raw_ident().to_camel_case());
     let binding_return_ty = match bindgen_fn.ret {
         None => quote! { void },
-        Some(prim) => quote_primitive_binding(prim),
+        Some(prim) => quote_primitive_binding_return(prim),
     };
 
-    let mut binding_args = bindgen_fn
+    let binding_args = bindgen_fn
         .args
         .iter()
         .map(|arg| {
             let ident = arg.ident();
-            let ty = quote_primitive_binding(arg.ty);
+            let ty = quote_primitive_binding_arg(arg.ty);
             quote! { #ty #ident }
         })
         .collect::<Punctuated<_, Comma>>();
-
-    // If the function returns a string, generate an extra parameter binding for the
-    // string's length.
-    if let Some(Primitive::String) = &bindgen_fn.ret {
-        binding_args.push(quote! { out int length })
-    };
 
     let wrapper_fn = quote_wrapper_fn(&bindgen_fn, &raw_binding);
 
@@ -173,9 +182,10 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn, dll_name: &str) -> TokenStream {
     }
 }
 
-fn quote_primitive_binding(return_ty: Primitive) -> TokenStream {
-    match return_ty {
-        Primitive::String => quote! { IntPtr },
+/// Quotes the C# type for an argument to the raw binding function.
+fn quote_primitive_binding_arg(arg_ty: Primitive) -> TokenStream {
+    match arg_ty {
+        Primitive::String => quote! { RawCsString },
         Primitive::Char => quote! { uint },
         Primitive::I8 => quote! { sbyte },
         Primitive::I16 => quote! { short },
@@ -191,6 +201,26 @@ fn quote_primitive_binding(return_ty: Primitive) -> TokenStream {
     }
 }
 
+/// Quotes the C# type for a binding function's return type.
+fn quote_primitive_binding_return(return_ty: Primitive) -> TokenStream {
+    match return_ty {
+        Primitive::String => quote! { RustOwnedString },
+        Primitive::Char => quote! { uint },
+        Primitive::I8 => quote! { sbyte },
+        Primitive::I16 => quote! { short },
+        Primitive::I32 => quote! { int },
+        Primitive::I64 => quote! { long },
+        Primitive::U8 => quote! { byte },
+        Primitive::U16 => quote! { ushort },
+        Primitive::U32 => quote! { uint },
+        Primitive::U64 => quote! { ulong },
+        Primitive::F32 => quote! { float },
+        Primitive::F64 => quote! { double },
+        Primitive::Bool => quote! { byte },
+    }
+}
+
+/// Quotes the idiomatic C# type corresponding to a given primitive type.
 fn quote_primitive(return_ty: Primitive) -> TokenStream {
     match return_ty {
         Primitive::String => quote! { string },
@@ -228,11 +258,20 @@ fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_binding: &Ident) -> TokenStream 
         .collect::<Punctuated<_, Comma>>();
 
     // Build the list of arguments to the wrapper function.
-    let mut invoke_args = bindgen_fn
+    let invoke_args = bindgen_fn
         .args
         .iter()
         .map(|arg| match arg.ty {
-            Primitive::String => unimplemented!("Don't know how to pass a `string` to rust"),
+            // To pass a string to Rust, we convert it into a `RawCsString` with the fixed pointer.
+            // The code for wrapping the body of the function in a `fixed` block is done below,
+            // since we need to generate the contents of the block first.
+            Primitive::String => {
+                let arg_ident = arg.ident();
+                let fixed_ident = format_ident!("__fixed_{}", arg.raw_ident()).into_token_stream();
+                quote! {
+                    new RawCsString() { Ptr = #fixed_ident, Length = #arg_ident.Length, }
+                }
+            }
 
             Primitive::Bool => {
                 let ident = arg.ident();
@@ -243,12 +282,6 @@ fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_binding: &Ident) -> TokenStream 
         })
         .collect::<Punctuated<_, Comma>>();
 
-    // If the function returns a string, generate an extra parameter binding for the
-    // string's length.
-    if let Some(Primitive::String) = bindgen_fn.ret {
-        invoke_args.push(quote! { out var length });
-    }
-
     let invoke_expr = match &bindgen_fn.ret {
         None => quote! { #raw_binding(#invoke_args); },
 
@@ -257,14 +290,8 @@ fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_binding: &Ident) -> TokenStream 
 
             let result_expr = match prim {
                 Primitive::String => quote! {
-                    string result;
-                    unsafe
-                    {
-                        result = Encoding.UTF8.GetString((byte*)rawResult, length);
-                    }
-
+                    string result = Encoding.UTF8.GetString(rawResult.Ptr, (int)rawResult.Length);
                     DropString(rawResult);
-
                     return result;
                 },
 
@@ -283,12 +310,36 @@ fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_binding: &Ident) -> TokenStream 
         }
     };
 
+    // Wrap the body of the function in `fixed` blocks for any parameters that need to
+    // be passed as pointers to Rust (just strings for now). We use `Iterator::fold` to
+    // generate a series of nested `fixed` blocks. This is very smart code and won't be
+    // hard to maintain at all, I'm sure.
+    let body = bindgen_fn
+        .args
+        .iter()
+        .fold(invoke_expr, |body, arg| match arg.ty {
+            Primitive::String => {
+                let arg_ident = arg.ident();
+                let fixed_ident = format_ident!("__fixed_{}", arg.raw_ident()).into_token_stream();
+                quote! {
+                    fixed (char* #fixed_ident = #arg_ident)
+                    {
+                        #body
+                    }
+                }
+            }
+
+            _ => body,
+        });
+
     quote! {
         public static #cs_return_ty #cs_fn_name(#args)
         {
-            // TODO: Process args so they're ready to pass to the rust fn.
+            unsafe {
+                // TODO: Process args so they're ready to pass to the rust fn.
 
-            #invoke_expr
+                #body
+            }
         }
     }
 }

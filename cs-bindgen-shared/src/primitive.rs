@@ -1,5 +1,3 @@
-use proc_macro2::TokenStream;
-use quote::*;
 use serde::*;
 use syn::*;
 
@@ -51,43 +49,5 @@ impl Primitive {
         };
 
         Some(prim)
-    }
-
-    /// Generates the code for returning the final result of the function.
-    pub fn generate_return_expr(
-        &self,
-        ret_val: &Ident,
-        args: &mut Vec<TokenStream>,
-    ) -> TokenStream {
-        match self {
-            Primitive::String => {
-                // Generate the out param for the length of the string.
-                let out_param = format_ident!("out_len");
-                args.push(quote! {
-                    #out_param: *mut i32
-                });
-
-                // Generate the code for
-                quote! {
-                    *#out_param = #ret_val
-                        .len()
-                        .try_into()
-                        .expect("String length is too large for `i32`");
-
-                    std::ffi::CString::new(#ret_val)
-                        .expect("Generated string contained a null byte")
-                        .into_raw()
-                }
-            }
-
-            // Cast the bool to a `u8` in order to pass it to C# as a numeric value.
-            Primitive::Bool => quote! {
-                #ret_val as u8
-            },
-
-            // All other primitive types are ABI-compatible with a corresponding C# type, and
-            // require no extra processing to be returned.
-            _ => quote! { #ret_val },
-        }
     }
 }

@@ -11,3 +11,8 @@ pub fn greet_a_number(num: i32) -> String {
 pub fn return_a_number() -> i32 {
     7
 }
+
+#[cs_bindgen]
+pub fn string_arg(arg: String) -> String {
+    format!("Hello, {}!", arg)
+}
