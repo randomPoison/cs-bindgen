@@ -241,7 +241,16 @@ fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_binding: &Ident) -> TokenStream 
         .args
         .iter()
         .map(|arg| match arg.ty {
-            Primitive::String => unimplemented!("Don't know how to pass a `string` to rust"),
+            // To pass a string to Rust, we convert it into a `RawCsString` with the fixed pointer.
+            // The code for wrapping the body of the function in a `fixed` block is done below,
+            // since we need to generate the contents of the block first.
+            Primitive::String => {
+                let arg_ident = arg.ident();
+                let fixed_ident = format_ident!("__fixed_{}", arg.raw_ident()).into_token_stream();
+                quote! {
+                    new RawCsString() { Ptr = #fixed_ident, Length = #arg_ident.Length, }
+                }
+            }
 
             Primitive::Bool => {
                 let ident = arg.ident();
@@ -280,13 +289,35 @@ fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_binding: &Ident) -> TokenStream 
         }
     };
 
+    // Wrap the body of the function in `fixed` blocks for any parameters that need to
+    // be passed as pointers to Rust (just strings for now). We use `Iterator::fold` to
+    // generate a series of nested `fixed` blocks. This is very smart code and won't be
+    // hard to maintain at all, I'm sure.
+    let body = bindgen_fn
+        .args
+        .iter()
+        .fold(invoke_expr, |body, arg| match arg.ty {
+            Primitive::String => {
+                let arg_ident = arg.ident();
+                let fixed_ident = format_ident!("__fixed_{}", arg.raw_ident()).into_token_stream();
+                quote! {
+                    fixed (char* #fixed_ident = #arg_ident)
+                    {
+                        #body
+                    }
+                }
+            }
+
+            _ => body,
+        });
+
     quote! {
         public static #cs_return_ty #cs_fn_name(#args)
         {
             unsafe {
                 // TODO: Process args so they're ready to pass to the rust fn.
 
-                #invoke_expr
+                #body
             }
         }
     }
