@@ -1,7 +1,7 @@
 extern crate proc_macro;
 
 use cs_bindgen_shared::{FnArg, *};
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::TokenStream;
 use quote::*;
 use syn::{punctuated::Punctuated, token::Comma, *};
 
@@ -41,19 +41,15 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn) -> TokenStream {
     let mut process_args = TokenStream::new();
     for arg in &bindgen_fn.args {
         let ident = arg.ident();
-        let ty = quote_raw_primitive(arg.ty);
+        let ty = quote_primitive_arg_type(arg.ty);
         args.push(quote! { #ident: #ty });
 
         match arg.ty {
-            // TODO: To support string params we'll need to inject an extra argument for the length
-            // and generate processing logic for decoding the C# string into a Rust string.
-            Primitive::String => {
-                return syn::Error::new(
-                    Span::call_site(),
-                    "`String` arguments are not yet supported",
-                )
-                .to_compile_error()
-            }
+            // Strings are passed in as utf-16 arrays (specifically as a `RawCsString`), so we
+            // convert the data into a `String`.
+            Primitive::String => process_args.append_all(quote! {
+                let #ident = #ident.into_string();
+            }),
 
             // Bools are passed in as a `u8`, so we need to re-bind the variable as a `bool` by
             // explicitly checking the value.
@@ -126,6 +122,24 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn) -> TokenStream {
         pub extern "C" fn #decl_len_ident() -> usize {
             #decl_var_ident.len()
         }
+    }
+}
+
+fn quote_primitive_arg_type(prim: Primitive) -> TokenStream {
+    match prim {
+        Primitive::String => quote! { cs_bindgen::RawCsString },
+        Primitive::Char => quote! { u32 },
+        Primitive::I8 => quote! { i8 },
+        Primitive::I16 => quote! { i16 },
+        Primitive::I32 => quote! { i32 },
+        Primitive::I64 => quote! { i64 },
+        Primitive::U8 => quote! { u8 },
+        Primitive::U16 => quote! { u16 },
+        Primitive::U32 => quote! { u32 },
+        Primitive::U64 => quote! { u64 },
+        Primitive::F32 => quote! { f32 },
+        Primitive::F64 => quote! { f64 },
+        Primitive::Bool => quote! { u8 },
     }
 }
 

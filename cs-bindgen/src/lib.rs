@@ -1,4 +1,4 @@
-use std::mem;
+use std::{mem, slice};
 
 pub mod prelude {
     pub use cs_bindgen_macro::*;
@@ -26,11 +26,6 @@ macro_rules! generate_static_bindings {
 }
 
 /// Raw representation of a [`String`] compatible with FFI.
-///
-/// `u64` is used for the length and capacity of the string because `usize` is not
-/// ABI-compatible with C#. `u64` is guaranteed to be large enough for the maximum
-/// capacity on 64 bit systems, so we can cast it to and from `usize` without
-/// truncating.
 ///
 /// [`String`]: https://doc.rust-lang.org/std/string/struct.String.html
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -70,5 +65,27 @@ impl RawString {
 impl From<String> for RawString {
     fn from(from: String) -> Self {
         Self::from_string(from)
+    }
+}
+
+/// Raw representation of a `string` passed from C#.
+///
+/// C# strings are encoded as utf-16, so they're effectively passed to rust as a
+/// `u16` slice. This struct contains the raw pieces necessary to reconstruct the
+/// slice, and provides a helper method `into_string` to copy the data into a
+/// `String`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(C)]
+pub struct RawCsString {
+    pub ptr: *const u16,
+    pub len: i32,
+}
+
+impl RawCsString {
+    pub unsafe fn into_string(self) -> String {
+        let chars = slice::from_raw_parts(self.ptr, self.len as usize);
+
+        // TODO: Is a lossy conversion the thing to do here?
+        String::from_utf16_lossy(chars)
     }
 }

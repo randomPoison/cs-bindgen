@@ -27,5 +27,22 @@ namespace TestRunner
             int result = IntegrationTests.ReturnANumber();
             Assert.Equal(7, result);
         }
+
+        [Fact]
+        public void StringArg()
+        {
+            string result = IntegrationTests.StringArg("Test");
+            Assert.Equal("Hello, Test!", result);
+        }
+
+        [Fact]
+        public void StringArgRepeated()
+        {
+            for (int number = 0; number < 1000; number += 1)
+            {
+                string result = IntegrationTests.StringArg("Test");
+                Assert.Equal("Hello, Test!", result);
+            }
+        }
     }
 }

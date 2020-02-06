@@ -89,17 +89,17 @@ fn main() {
             #( #fn_bindings )*
 
             [StructLayout(LayoutKind.Sequential)]
-            private struct RustOwnedString
+            private unsafe struct RustOwnedString
             {
-                public IntPtr Ptr;
+                public byte* Ptr;
                 public IntPtr Length;
                 public IntPtr Capacity;
             }
 
             [StructLayout(LayoutKind.Sequential)]
-            private struct RawCsString
+            private unsafe struct RawCsString
             {
-                public IntPtr Ptr;
+                public char* Ptr;
                 public int Length;
             }
         }
@@ -156,7 +156,7 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn, dll_name: &str) -> TokenStream {
     let raw_binding = format_ident!("__{}", bindgen_fn.raw_ident().to_camel_case());
     let binding_return_ty = match bindgen_fn.ret {
         None => quote! { void },
-        Some(prim) => quote_primitive_binding(prim),
+        Some(prim) => quote_primitive_binding_return(prim),
     };
 
     let binding_args = bindgen_fn
@@ -164,7 +164,7 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn, dll_name: &str) -> TokenStream {
         .iter()
         .map(|arg| {
             let ident = arg.ident();
-            let ty = quote_primitive_binding(arg.ty);
+            let ty = quote_primitive_binding_arg(arg.ty);
             quote! { #ty #ident }
         })
         .collect::<Punctuated<_, Comma>>();
@@ -182,7 +182,27 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn, dll_name: &str) -> TokenStream {
     }
 }
 
-fn quote_primitive_binding(return_ty: Primitive) -> TokenStream {
+/// Quotes the C# type for an argument to the raw binding function.
+fn quote_primitive_binding_arg(arg_ty: Primitive) -> TokenStream {
+    match arg_ty {
+        Primitive::String => quote! { RawCsString },
+        Primitive::Char => quote! { uint },
+        Primitive::I8 => quote! { sbyte },
+        Primitive::I16 => quote! { short },
+        Primitive::I32 => quote! { int },
+        Primitive::I64 => quote! { long },
+        Primitive::U8 => quote! { byte },
+        Primitive::U16 => quote! { ushort },
+        Primitive::U32 => quote! { uint },
+        Primitive::U64 => quote! { ulong },
+        Primitive::F32 => quote! { float },
+        Primitive::F64 => quote! { double },
+        Primitive::Bool => quote! { byte },
+    }
+}
+
+/// Quotes the C# type for a binding function's return type.
+fn quote_primitive_binding_return(return_ty: Primitive) -> TokenStream {
     match return_ty {
         Primitive::String => quote! { RustOwnedString },
         Primitive::Char => quote! { uint },
@@ -200,6 +220,7 @@ fn quote_primitive_binding(return_ty: Primitive) -> TokenStream {
     }
 }
 
+/// Quotes the idiomatic C# type corresponding to a given primitive type.
 fn quote_primitive(return_ty: Primitive) -> TokenStream {
     match return_ty {
         Primitive::String => quote! { string },
@@ -269,7 +290,7 @@ fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_binding: &Ident) -> TokenStream 
 
             let result_expr = match prim {
                 Primitive::String => quote! {
-                    string result = Encoding.UTF8.GetString((byte*)rawResult.Ptr, (int)rawResult.Length);
+                    string result = Encoding.UTF8.GetString(rawResult.Ptr, (int)rawResult.Length);
                     DropString(rawResult);
                     return result;
                 },
