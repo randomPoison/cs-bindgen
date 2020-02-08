@@ -1,4 +1,5 @@
 use crate::Primitive;
+use serde::*;
 use syn::{
     parse::{Parse, ParseStream},
     spanned::Spanned,
@@ -10,7 +11,7 @@ use syn::{
 /// `Primitive` variant. This allows us to specifically identify primitive types
 /// that can be passed across the FFI boundary without additional marshalling (or at
 /// least without the complexity of fully describing the type).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ReturnType {
     Default,
     Primitive(Primitive),
