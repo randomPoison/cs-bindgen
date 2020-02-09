@@ -1,12 +1,7 @@
 use crate::{FnArg, Primitive, ReturnType};
 use proc_macro2::Span;
 use serde::*;
-use syn::{
-    parse::{Parse, ParseStream},
-    spanned::Spanned,
-    token::Comma,
-    *,
-};
+use syn::{spanned::Spanned, *};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BindgenFn {
@@ -16,59 +11,24 @@ pub struct BindgenFn {
     // generate code for functions that actually have args.
     pub args: Vec<FnArg>,
 
-    pub ret: Option<Primitive>,
+    pub ret: ReturnType,
 }
 
 impl BindgenFn {
-    /// Returns the raw string representation of the function's name.
-    ///
-    /// Be careful about how this function is used. If the returned value is quasi-quoted
-    /// directly, it'll generate a string in the output rather than an identifier. Use
-    /// `ident` to get a proper `Ident` for use in quasi-quoting, or use `format_ident!`
-    /// to concatenate this value into a valid `Ident`.
-    pub fn raw_ident(&self) -> &str {
-        &self.ident
-    }
+    pub fn from_item(item: ItemFn) -> syn::Result<Self> {
+        let signature = item.sig;
 
-    /// Returns the name of the function as an identifier suitable for quasi-quoting.
-    pub fn ident(&self) -> Ident {
-        Ident::new(&self.ident, Span::call_site())
-    }
-
-    pub fn generated_name(&self) -> String {
-        format!("__cs_bindgen_generated_{}", self.ident)
-    }
-
-    pub fn generated_ident(&self) -> Ident {
-        Ident::new(&self.generated_name(), Span::call_site())
-    }
-}
-
-impl Parse for BindgenFn {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        // Parse attributes on the function.
-        let _ = input.call(Attribute::parse_outer)?;
-
-        // Parse the visibility specifier. We discard the result because we don't care about
-        // visibility for now: The generated function always has to be public, so the visibility of
-        // the original function doesn't matter.
-        let _ = input.parse::<Visibility>();
-
-        // Generate an error if the function is async.
-        if let Ok(token) = input.parse::<Token![async]>() {
-            return Err(syn::Error::new(
-                token.span,
-                "Async functions cannot be called by C# code",
+        // Generate an error for async functions.
+        if let Some(asyncness) = signature.asyncness {
+            return Err(Error::new(
+                asyncness.span(),
+                "Async functions are not supported with `#[cs_bindgen]`",
             ));
         }
 
-        input.parse::<Token![fn]>()?;
-        let ident = input.parse::<Ident>()?.to_string();
-
-        let content;
-        parenthesized!(content in input);
-        let args = content
-            .parse_terminated::<_, Comma>(syn::FnArg::parse)?
+        // Parse function arguments.
+        let args = signature
+            .inputs
             .iter()
             .enumerate()
             .map(|(index, arg)| match arg {
@@ -98,15 +58,33 @@ impl Parse for BindgenFn {
             })
             .collect::<syn::Result<_>>()?;
 
-        let ret = input.parse::<ReturnType>()?.into_primitive();
+        Ok(BindgenFn {
+            ident: signature.ident.to_string(),
+            args,
+            ret: ReturnType::from_syn(signature.output)?,
+        })
+    }
 
-        // TODO: I guess this will probably break on `where` clauses?
+    /// Returns the raw string representation of the function's name.
+    ///
+    /// Be careful about how this function is used. If the returned value is quasi-quoted
+    /// directly, it'll generate a string in the output rather than an identifier. Use
+    /// `ident` to get a proper `Ident` for use in quasi-quoting, or use `format_ident!`
+    /// to concatenate this value into a valid `Ident`.
+    pub fn raw_ident(&self) -> &str {
+        &self.ident
+    }
 
-        // NOTE: We must fully parse the body of the method in order to
-        let content;
-        braced!(content in input);
-        let _ = content.call(Block::parse_within)?;
+    /// Returns the name of the function as an identifier suitable for quasi-quoting.
+    pub fn ident(&self) -> Ident {
+        Ident::new(&self.ident, Span::call_site())
+    }
 
-        Ok(BindgenFn { ident, args, ret })
+    pub fn generated_name(&self) -> String {
+        format!("__cs_bindgen_generated_{}", self.ident)
+    }
+
+    pub fn generated_ident(&self) -> Ident {
+        Ident::new(&self.generated_name(), Span::call_site())
     }
 }
