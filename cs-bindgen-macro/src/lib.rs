@@ -15,8 +15,10 @@ pub fn cs_bindgen(
     // manually reconstruct the original input later when returning the result.
     let orig: TokenStream = tokens.clone().into();
 
-    let input = parse_macro_input!(tokens as BindgenFn);
-    let quoted = quote_bindgen_fn(&input);
+    let quoted = match parse_macro_input!(tokens as BindgenItem) {
+        BindgenItem::Fn(input) => quote_bindgen_fn(&input),
+        BindgenItem::Struct(_) => todo!("Generate binding code for structs"),
+    };
 
     let result = quote! {
         #orig
@@ -74,13 +76,10 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn) -> TokenStream {
     // * The code for processing the return type of the Rust function and converting it
     //   to the appropriate C# type.
     let ret_val = format_ident!("ret_val");
-    let (return_type, process_return) = match &bindgen_fn.ret {
+    let (return_type, process_return) = match bindgen_fn.ret.primitive() {
         None => (quote! { () }, TokenStream::new()),
 
-        Some(prim) => (
-            quote_raw_primitive(*prim),
-            quote_return_expr(prim, &ret_val),
-        ),
+        Some(prim) => (quote_raw_primitive(prim), quote_return_expr(prim, &ret_val)),
     };
 
     // Generate the expression for invoking the underlying Rust function.
@@ -162,7 +161,7 @@ fn quote_raw_primitive(prim: Primitive) -> TokenStream {
 }
 
 /// Generates the code for returning the final result of the function.
-fn quote_return_expr(prim: &Primitive, ret_val: &Ident) -> TokenStream {
+fn quote_return_expr(prim: Primitive, ret_val: &Ident) -> TokenStream {
     match prim {
         // Convert the `String` into a `RawString`.
         Primitive::String => quote! {

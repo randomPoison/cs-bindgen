@@ -17,7 +17,7 @@ pub fn string_arg(arg: String) -> String {
     format!("Hello, {}!", arg)
 }
 
-#[cs_bindgen]
+// #[cs_bindgen]
 pub struct PersonInfo {
     name: String,
     age: u32,
