@@ -15,13 +15,36 @@ pub fn cs_bindgen(
     // manually reconstruct the original input later when returning the result.
     let orig: TokenStream = tokens.clone().into();
 
-    let input = parse_macro_input!(tokens as BindgenFn);
-    let quoted = quote_bindgen_fn(&input);
+    let item = parse_macro_input!(tokens as BindgenItem);
+    let quoted = match &item {
+        BindgenItem::Fn(input) => quote_bindgen_fn(input),
+        BindgenItem::Struct(_) => todo!("Generate binding code for structs"),
+    };
+
+    // Serialize the parsed function declaration into JSON so that it can be stored in
+    // a variable in the generated WASM module.
+    let decl_json = serde_json::to_string(&item).expect("Failed to serialize decl to JSON");
+    let decl_var_ident = format_ident!("__cs_bindgen_decl_json_{}", item.raw_ident());
+    let decl_ptr_ident = format_ident!("__cs_bindgen_decl_ptr_{}", item.raw_ident());
+    let decl_len_ident = format_ident!("__cs_bindgen_decl_len_{}", item.raw_ident());
 
     let result = quote! {
         #orig
 
         #quoted
+
+        #[allow(bad_style)]
+        static #decl_var_ident: &str = #decl_json;
+
+        #[no_mangle]
+        pub extern "C" fn #decl_ptr_ident() -> *const u8 {
+            #decl_var_ident.as_ptr()
+        }
+
+        #[no_mangle]
+        pub extern "C" fn #decl_len_ident() -> usize {
+            #decl_var_ident.len()
+        }
     };
 
     result.into()
@@ -74,13 +97,10 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn) -> TokenStream {
     // * The code for processing the return type of the Rust function and converting it
     //   to the appropriate C# type.
     let ret_val = format_ident!("ret_val");
-    let (return_type, process_return) = match &bindgen_fn.ret {
+    let (return_type, process_return) = match bindgen_fn.ret.primitive() {
         None => (quote! { () }, TokenStream::new()),
 
-        Some(prim) => (
-            quote_raw_primitive(*prim),
-            quote_return_expr(prim, &ret_val),
-        ),
+        Some(prim) => (quote_raw_primitive(prim), quote_return_expr(prim, &ret_val)),
     };
 
     // Generate the expression for invoking the underlying Rust function.
@@ -89,13 +109,6 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn) -> TokenStream {
     // Convert the raw list of args into a `Punctuated` so that syn/quote will handle
     // inserting commas for us.
     let args: Punctuated<_, Comma> = args.into_iter().collect();
-
-    // Serialize the parsed function declaration into JSON so that it can be stored in
-    // a variable in the generated WASM module.
-    let decl_json = serde_json::to_string(bindgen_fn).expect("Failed to serialize decl to JSON");
-    let decl_var_ident = format_ident!("__cs_bindgen_decl_json_{}", bindgen_fn.raw_ident());
-    let decl_ptr_ident = format_ident!("__cs_bindgen_decl_ptr_{}", bindgen_fn.raw_ident());
-    let decl_len_ident = format_ident!("__cs_bindgen_decl_len_{}", bindgen_fn.raw_ident());
 
     // Compose the various pieces to generate the final function.
     quote! {
@@ -108,19 +121,6 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn) -> TokenStream {
             let #ret_val = #orig_fn_name(#arg_names);
 
             #process_return
-        }
-
-        #[allow(bad_style)]
-        static #decl_var_ident: &str = #decl_json;
-
-        #[no_mangle]
-        pub extern "C" fn #decl_ptr_ident() -> *const u8 {
-            #decl_var_ident.as_ptr()
-        }
-
-        #[no_mangle]
-        pub extern "C" fn #decl_len_ident() -> usize {
-            #decl_var_ident.len()
         }
     }
 }
@@ -162,7 +162,7 @@ fn quote_raw_primitive(prim: Primitive) -> TokenStream {
 }
 
 /// Generates the code for returning the final result of the function.
-fn quote_return_expr(prim: &Primitive, ret_val: &Ident) -> TokenStream {
+fn quote_return_expr(prim: Primitive, ret_val: &Ident) -> TokenStream {
     match prim {
         // Convert the `String` into a `RawString`.
         Primitive::String => quote! {

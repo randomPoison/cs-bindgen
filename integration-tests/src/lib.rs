@@ -16,3 +16,15 @@ pub fn return_a_number() -> i32 {
 pub fn string_arg(arg: String) -> String {
     format!("Hello, {}!", arg)
 }
+
+// #[cs_bindgen]
+pub struct PersonInfo {
+    name: String,
+    age: u32,
+}
+
+impl PersonInfo {
+    pub fn new(name: String, age: u32) -> Self {
+        Self { name, age }
+    }
+}
