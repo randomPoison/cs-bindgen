@@ -1,64 +1,24 @@
+use crate::load_decl::load_declarations;
 use cs_bindgen_shared::*;
 use heck::*;
 use proc_macro2::TokenStream;
 use quote::*;
-use std::{ffi::OsStr, fs, fs::File, io::prelude::*, path::PathBuf, str};
+use std::{ffi::OsStr, fs, fs::File, io::prelude::*, path::PathBuf, process, str};
 use structopt::*;
 use syn::{punctuated::Punctuated, token::Comma, *};
-use wasmtime::*;
 
-static DECL_PTR_FN_PREFIX: &str = "__cs_bindgen_decl_ptr_";
+mod load_decl;
 
 fn main() {
     let opt = Opt::from_args();
-
-    let store = Store::default();
-
-    let test_wasm = fs::read(&opt.input)
-        .unwrap_or_else(|_| panic!("Failed to open wasm module: {}", opt.input.display()));
-    let module = Module::new(&store, &test_wasm).expect("Failed to create WASM module");
-    let instance = Instance::new(&store, &module, &[]).expect("Failed to create module instance");
-
-    let memory = instance
-        .find_export_by_name("memory")
-        .expect("memory not found")
-        .memory()
-        .expect("memory wasn't a memory???")
-        .borrow();
-
-    // Find any exported declarations and extract the declaration data from the module.
-    let mut decls = Vec::new();
-    for func in module.exports() {
-        if func.name().starts_with("__cs_bindgen_decl_ptr_") {
-            let fn_suffix = &func.name()[DECL_PTR_FN_PREFIX.len()..];
-
-            // Get the decl function from the instance.
-            let decl_fn = instance
-                .find_export_by_name(func.name())
-                .expect("decl fn not found")
-                .func()
-                .expect("decl fn wasn't a fn???")
-                .borrow();
-
-            // Get the length function from the instance.
-            let len_fn_name = format!("__cs_bindgen_decl_len_{}", fn_suffix);
-            let len_fn = instance
-                .find_export_by_name(&len_fn_name)
-                .expect("len fn not found")
-                .func()
-                .expect("len fn wasn't a fn???")
-                .borrow();
-
-            // Invoke both to get the pointer to the decl string and the length of the string.
-            let decl_ptr = decl_fn.call(&[]).expect("Failed to call decl fn")[0].unwrap_i32();
-            let len = len_fn.call(&[]).expect("Failed to call len fn")[0].unwrap_i32();
-
-            let decl = deserialize_decl_string(&memory, decl_ptr, len)
-                .expect("Failed to deserialize decl string");
-
-            decls.push(decl);
+    let decls = match load_declarations(&opt) {
+        Ok(decls) => decls,
+        Err(err) => {
+            // TODO: Provide suggestions for what users can do to resolve the issue.
+            eprintln!("{}", err);
+            process::abort();
         }
-    }
+    };
 
     // Generate the C# binding code.
     // ---------------------------------------------------------------------------------------------
@@ -128,33 +88,6 @@ fn main() {
                 .expect("Failed to write to output file");
         }
     }
-}
-
-fn deserialize_decl_string(
-    memory: &Memory,
-    decl_ptr: i32,
-    len: i32,
-) -> serde_json::Result<BindgenItem> {
-    // Convert the pointer and len to `usize` so that we can index into the byte array.
-    let decl_ptr = decl_ptr as usize;
-    let len = len as usize;
-
-    // SAFETY: `Memory::data` is safe as long as we don't do anything that would
-    // invalidate the reference while we're borrowing the memory. Specifically:
-    //
-    // * Explicitly calling `Memory::grow` (duh).
-    // * Invoking a function in the module that contains the `memory.grow` instruction.
-    //
-    // That second one is the more critical one, because it means we have to make sure
-    // we don't invoke *any* function in the module while borrowing the memory. For
-    // our purposes that's fine, and we can probably write a safe wrapper function that
-    // copies out the specified data so that we don't have to hold the borrow on the
-    // memory.
-    let memory_bytes = unsafe { memory.data() };
-
-    let decl_bytes = &memory_bytes[decl_ptr..decl_ptr + len];
-    let decl_str = str::from_utf8(decl_bytes).expect("decl not valid utf8");
-    serde_json::from_str(&decl_str)
 }
 
 fn quote_bindgen_fn(bindgen_fn: &BindgenFn, dll_name: &str) -> TokenStream {
@@ -352,7 +285,7 @@ fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_binding: &Ident) -> TokenStream 
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "cs-bindgen")]
-struct Opt {
+pub struct Opt {
     #[structopt(parse(from_os_str))]
     input: PathBuf,
 
