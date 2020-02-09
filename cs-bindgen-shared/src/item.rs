@@ -12,6 +12,15 @@ pub enum BindgenItem {
     Struct(BindgenStruct),
 }
 
+impl BindgenItem {
+    pub fn raw_ident(&self) -> &str {
+        match self {
+            BindgenItem::Fn(func) => func.raw_ident(),
+            BindgenItem::Struct(strct) => strct.raw_ident(),
+        }
+    }
+}
+
 impl Parse for BindgenItem {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let item = match input.call(Item::parse)? {

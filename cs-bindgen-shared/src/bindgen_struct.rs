@@ -8,4 +8,8 @@ impl BindgenStruct {
     pub fn from_item(_item: ItemStruct) -> syn::Result<Self> {
         todo!()
     }
+
+    pub fn raw_ident(&self) -> &str {
+        todo!()
+    }
 }

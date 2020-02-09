@@ -15,15 +15,36 @@ pub fn cs_bindgen(
     // manually reconstruct the original input later when returning the result.
     let orig: TokenStream = tokens.clone().into();
 
-    let quoted = match parse_macro_input!(tokens as BindgenItem) {
-        BindgenItem::Fn(input) => quote_bindgen_fn(&input),
+    let item = parse_macro_input!(tokens as BindgenItem);
+    let quoted = match &item {
+        BindgenItem::Fn(input) => quote_bindgen_fn(input),
         BindgenItem::Struct(_) => todo!("Generate binding code for structs"),
     };
+
+    // Serialize the parsed function declaration into JSON so that it can be stored in
+    // a variable in the generated WASM module.
+    let decl_json = serde_json::to_string(&item).expect("Failed to serialize decl to JSON");
+    let decl_var_ident = format_ident!("__cs_bindgen_decl_json_{}", item.raw_ident());
+    let decl_ptr_ident = format_ident!("__cs_bindgen_decl_ptr_{}", item.raw_ident());
+    let decl_len_ident = format_ident!("__cs_bindgen_decl_len_{}", item.raw_ident());
 
     let result = quote! {
         #orig
 
         #quoted
+
+        #[allow(bad_style)]
+        static #decl_var_ident: &str = #decl_json;
+
+        #[no_mangle]
+        pub extern "C" fn #decl_ptr_ident() -> *const u8 {
+            #decl_var_ident.as_ptr()
+        }
+
+        #[no_mangle]
+        pub extern "C" fn #decl_len_ident() -> usize {
+            #decl_var_ident.len()
+        }
     };
 
     result.into()
@@ -89,13 +110,6 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn) -> TokenStream {
     // inserting commas for us.
     let args: Punctuated<_, Comma> = args.into_iter().collect();
 
-    // Serialize the parsed function declaration into JSON so that it can be stored in
-    // a variable in the generated WASM module.
-    let decl_json = serde_json::to_string(bindgen_fn).expect("Failed to serialize decl to JSON");
-    let decl_var_ident = format_ident!("__cs_bindgen_decl_json_{}", bindgen_fn.raw_ident());
-    let decl_ptr_ident = format_ident!("__cs_bindgen_decl_ptr_{}", bindgen_fn.raw_ident());
-    let decl_len_ident = format_ident!("__cs_bindgen_decl_len_{}", bindgen_fn.raw_ident());
-
     // Compose the various pieces to generate the final function.
     quote! {
         #[no_mangle]
@@ -107,19 +121,6 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn) -> TokenStream {
             let #ret_val = #orig_fn_name(#arg_names);
 
             #process_return
-        }
-
-        #[allow(bad_style)]
-        static #decl_var_ident: &str = #decl_json;
-
-        #[no_mangle]
-        pub extern "C" fn #decl_ptr_ident() -> *const u8 {
-            #decl_var_ident.as_ptr()
-        }
-
-        #[no_mangle]
-        pub extern "C" fn #decl_len_ident() -> usize {
-            #decl_var_ident.len()
         }
     }
 }
