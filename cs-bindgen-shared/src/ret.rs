@@ -8,7 +8,7 @@ use syn::spanned::Spanned;
 /// `Primitive` variant. This allows us to specifically identify primitive types
 /// that can be passed across the FFI boundary without additional marshalling (or at
 /// least without the complexity of fully describing the type).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum ReturnType {
     Default,
     Primitive(Primitive),
@@ -31,7 +31,7 @@ impl ReturnType {
         }
     }
 
-    pub fn into_primitive(self) -> Option<Primitive> {
+    pub fn primitive(self) -> Option<Primitive> {
         match self {
             ReturnType::Default => None,
             ReturnType::Primitive(prim) => Some(prim),

@@ -71,7 +71,13 @@ fn main() {
 
     let class_name = format_ident!("{}", dll_name.to_camel_case());
 
-    let fn_bindings = decls.iter().map(|decl| quote_bindgen_fn(decl, dll_name));
+    let mut fn_bindings = Vec::new();
+    for decl in &decls {
+        match decl {
+            BindgenItem::Fn(decl) => fn_bindings.push(quote_bindgen_fn(decl, dll_name)),
+            BindgenItem::Struct(_) => todo!("Generate bindings for struct"),
+        }
+    }
 
     let result = quote! {
         using System;
@@ -128,7 +134,7 @@ fn deserialize_decl_string(
     memory: &Memory,
     decl_ptr: i32,
     len: i32,
-) -> serde_json::Result<BindgenFn> {
+) -> serde_json::Result<BindgenItem> {
     // Convert the pointer and len to `usize` so that we can index into the byte array.
     let decl_ptr = decl_ptr as usize;
     let len = len as usize;
@@ -154,7 +160,7 @@ fn deserialize_decl_string(
 fn quote_bindgen_fn(bindgen_fn: &BindgenFn, dll_name: &str) -> TokenStream {
     let entry_point = bindgen_fn.generated_name();
     let raw_binding = format_ident!("__{}", bindgen_fn.raw_ident().to_camel_case());
-    let binding_return_ty = match bindgen_fn.ret {
+    let binding_return_ty = match bindgen_fn.ret.primitive() {
         None => quote! { void },
         Some(prim) => quote_primitive_binding_return(prim),
     };
@@ -241,7 +247,7 @@ fn quote_primitive(return_ty: Primitive) -> TokenStream {
 
 fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_binding: &Ident) -> TokenStream {
     let cs_fn_name = format_ident!("{}", bindgen_fn.raw_ident().to_camel_case());
-    let cs_return_ty = match bindgen_fn.ret {
+    let cs_return_ty = match bindgen_fn.ret.primitive() {
         None => quote! { void },
         Some(prim) => quote_primitive(prim),
     };
@@ -282,7 +288,7 @@ fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_binding: &Ident) -> TokenStream 
         })
         .collect::<Punctuated<_, Comma>>();
 
-    let invoke_expr = match &bindgen_fn.ret {
+    let invoke_expr = match bindgen_fn.ret.primitive() {
         None => quote! { #raw_binding(#invoke_args); },
 
         Some(prim) => {
