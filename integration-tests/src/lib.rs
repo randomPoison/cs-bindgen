@@ -23,7 +23,7 @@ pub struct PersonInfo {
     age: u32,
 }
 
-#[cs_bindgen]
+// #[cs_bindgen]
 impl PersonInfo {
     pub fn new(name: String, age: u32) -> Self {
         Self { name, age }

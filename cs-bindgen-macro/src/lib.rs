@@ -18,8 +18,12 @@ pub fn cs_bindgen(
     let item = parse_macro_input!(tokens as BindgenItem);
     let quoted = match &item {
         BindgenItem::Fn(input) => quote_bindgen_fn(input),
-        BindgenItem::Struct(_) => todo!("Generate binding code for structs"),
-        BindgenItem::Impl(_) => todo!("Generate binding code for impls"),
+
+        // TODO: Generate bindings for each method in the impl.
+        BindgenItem::Impl(_) => TokenStream::default(),
+
+        // We don't need to generate any direct bindings for structs.
+        BindgenItem::Struct(_) => TokenStream::default(),
     };
 
     // Serialize the parsed function declaration into JSON so that it can be stored in
