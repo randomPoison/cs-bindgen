@@ -1,10 +1,11 @@
 use crate::BindgenFn;
+use proc_macro2::Span;
 use serde::*;
-use syn::{spanned::Spanned, Error, ImplItem, Type};
+use syn::{spanned::Spanned, Error, Ident, ImplItem, Type};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BindgenImpl {
-    pub ty_ident: String,
+    ty_ident: String,
     pub methods: Vec<BindgenFn>,
 }
 
@@ -50,5 +51,13 @@ impl BindgenImpl {
             .collect::<syn::Result<_>>()?;
 
         Ok(Self { ty_ident, methods })
+    }
+
+    pub fn ty_name(&self) -> &str {
+        &self.ty_ident
+    }
+
+    pub fn ty_ident(&self) -> Ident {
+        Ident::new(&self.ty_ident, Span::call_site())
     }
 }

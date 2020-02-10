@@ -19,7 +19,7 @@ impl BindgenItem {
         match self {
             BindgenItem::Fn(item) => item.raw_ident().into(),
             BindgenItem::Struct(item) => item.raw_ident().into(),
-            BindgenItem::Impl(item) => format!("impl__{}", item.ty_ident).into(),
+            BindgenItem::Impl(item) => format!("impl__{}", item.ty_name()).into(),
         }
     }
 }
