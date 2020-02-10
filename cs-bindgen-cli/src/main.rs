@@ -36,6 +36,7 @@ fn main() {
         match decl {
             BindgenItem::Fn(decl) => fn_bindings.push(quote_bindgen_fn(decl, dll_name)),
             BindgenItem::Struct(_) => todo!("Generate bindings for struct"),
+            BindgenItem::Impl(_) => todo!("Generate bindings for item impls"),
         }
     }
 

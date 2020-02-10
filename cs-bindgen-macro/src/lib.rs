@@ -19,14 +19,15 @@ pub fn cs_bindgen(
     let quoted = match &item {
         BindgenItem::Fn(input) => quote_bindgen_fn(input),
         BindgenItem::Struct(_) => todo!("Generate binding code for structs"),
+        BindgenItem::Impl(_) => todo!("Generate binding code for impls"),
     };
 
     // Serialize the parsed function declaration into JSON so that it can be stored in
     // a variable in the generated WASM module.
     let decl_json = serde_json::to_string(&item).expect("Failed to serialize decl to JSON");
-    let decl_var_ident = format_ident!("__cs_bindgen_decl_json_{}", item.raw_ident());
-    let decl_ptr_ident = format_ident!("__cs_bindgen_decl_ptr_{}", item.raw_ident());
-    let decl_len_ident = format_ident!("__cs_bindgen_decl_len_{}", item.raw_ident());
+    let decl_var_ident = format_ident!("__cs_bindgen_decl_json_{}", &*item.raw_ident());
+    let decl_ptr_ident = format_ident!("__cs_bindgen_decl_ptr_{}", &*item.raw_ident());
+    let decl_len_ident = format_ident!("__cs_bindgen_decl_len_{}", &*item.raw_ident());
 
     let result = quote! {
         #orig
