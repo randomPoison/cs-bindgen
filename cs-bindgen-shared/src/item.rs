@@ -27,7 +27,7 @@ impl BindgenItem {
 impl Parse for BindgenItem {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let item = match input.call(Item::parse)? {
-            Item::Fn(item) => BindgenFn::from_item(item).map(BindgenItem::Fn)?,
+            Item::Fn(item) => BindgenFn::from_signature(&item.sig).map(BindgenItem::Fn)?,
             Item::Struct(item) => BindgenStruct::from_item(item).map(BindgenItem::Struct)?,
             Item::Impl(item) => BindgenImpl::from_item(item).map(BindgenItem::Impl)?,
 
