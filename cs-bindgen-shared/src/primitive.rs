@@ -20,17 +20,8 @@ pub enum Primitive {
 }
 
 impl Primitive {
-    pub fn from_type(ty: &Type) -> Option<Self> {
-        let ident = match &*ty {
-            Type::Path(path) => match path.path.get_ident() {
-                Some(ident) => ident,
-                None => return None,
-            },
-
-            _ => return None,
-        };
-
-        let prim = match &*ident.to_string() {
+    pub fn from_ident(ident: &Ident) -> Option<Self> {
+        Some(match &*ident.to_string() {
             "String" => Primitive::String,
             "char" => Primitive::Char,
             "i8" => Primitive::I8,
@@ -46,8 +37,19 @@ impl Primitive {
             "bool" => Primitive::Bool,
 
             _ => return None,
+        })
+    }
+
+    pub fn from_type(ty: &Type) -> Option<Self> {
+        let ident = match &*ty {
+            Type::Path(path) => match path.path.get_ident() {
+                Some(ident) => ident,
+                None => return None,
+            },
+
+            _ => return None,
         };
 
-        Some(prim)
+        Self::from_ident(ident)
     }
 }

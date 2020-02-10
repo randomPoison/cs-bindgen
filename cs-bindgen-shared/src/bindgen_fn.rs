@@ -1,4 +1,4 @@
-use crate::{FnArg, Primitive, ReturnType};
+use crate::{FnArg, Primitive, Receiver, ReturnType};
 use proc_macro2::Span;
 use serde::*;
 use syn::{spanned::Spanned, *};
@@ -16,53 +16,8 @@ pub struct BindgenFn {
 
 impl BindgenFn {
     pub fn from_item(item: ItemFn) -> syn::Result<Self> {
-        let signature = item.sig;
-
-        // Generate an error for async functions.
-        if let Some(asyncness) = signature.asyncness {
-            return Err(Error::new(
-                asyncness.span(),
-                "Async functions are not supported with `#[cs_bindgen]`",
-            ));
-        }
-
-        // Parse function arguments.
-        let args = signature
-            .inputs
-            .iter()
-            .enumerate()
-            .map(|(index, arg)| match arg {
-                // Reject any functions that take some form of `self`. We'll eventually be able to
-                // support these by marking entire `impl` blocks with `#[cs_bindgen]`, but for now
-                // we only support free functions.
-                syn::FnArg::Receiver(_) => Err(syn::Error::new(
-                    arg.span(),
-                    "Methods are not supported, only free functions",
-                )),
-
-                syn::FnArg::Typed(pat) => {
-                    // If the argument isn't declared with a normal identifier, we construct one so
-                    // that we have a valid identifier to use in the generated functions.
-                    let ident = match &*pat.pat {
-                        Pat::Ident(pat_ident) => pat_ident.ident.to_string(),
-                        _ => format!("__arg{}", index),
-                    };
-
-                    let ty = Primitive::from_type(&pat.ty).ok_or(syn::Error::new(
-                        pat.ty.span(),
-                        "Unknown argument type, only primitives are supported",
-                    ))?;
-
-                    Ok(FnArg::new(ident, ty))
-                }
-            })
-            .collect::<syn::Result<_>>()?;
-
-        Ok(BindgenFn {
-            ident: signature.ident.to_string(),
-            args,
-            ret: ReturnType::from_syn(signature.output)?,
-        })
+        let (ident, _, args, ret) = parse_signature(&item.sig)?;
+        Ok(BindgenFn { ident, args, ret })
     }
 
     /// Returns the raw string representation of the function's name.
@@ -87,4 +42,57 @@ impl BindgenFn {
     pub fn generated_ident(&self) -> Ident {
         Ident::new(&self.generated_name(), Span::call_site())
     }
+}
+
+pub fn parse_signature(
+    signature: &Signature,
+) -> syn::Result<(String, Option<Receiver>, Vec<FnArg>, ReturnType)> {
+    // Generate an error for async functions.
+    if let Some(asyncness) = signature.asyncness {
+        return Err(Error::new(
+            asyncness.span(),
+            "Async functions are not supported with `#[cs_bindgen]`",
+        ));
+    }
+
+    let receiver = signature.receiver().map(Receiver::from_syn).transpose()?;
+
+    // Parse function arguments.
+    let args = signature
+        .inputs
+        .iter()
+        .enumerate()
+        .map(|(index, arg)| match arg {
+            // Reject any functions that take some form of `self`. We'll eventually be able to
+            // support these by marking entire `impl` blocks with `#[cs_bindgen]`, but for now
+            // we only support free functions.
+            syn::FnArg::Receiver(_) => Err(syn::Error::new(
+                arg.span(),
+                "Methods are not supported, only free functions",
+            )),
+
+            syn::FnArg::Typed(pat) => {
+                // If the argument isn't declared with a normal identifier, we construct one so
+                // that we have a valid identifier to use in the generated functions.
+                let ident = match &*pat.pat {
+                    Pat::Ident(pat_ident) => pat_ident.ident.to_string(),
+                    _ => format!("__arg{}", index),
+                };
+
+                let ty = Primitive::from_type(&pat.ty).ok_or(syn::Error::new(
+                    pat.ty.span(),
+                    "Unknown argument type, only primitives are supported",
+                ))?;
+
+                Ok(FnArg::new(ident, ty))
+            }
+        })
+        .collect::<syn::Result<_>>()?;
+
+    Ok((
+        signature.ident.to_string(),
+        receiver,
+        args,
+        ReturnType::from_syn(&signature.output)?,
+    ))
 }
