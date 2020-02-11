@@ -2,8 +2,10 @@ use self::{class::*, func::*};
 use crate::Opt;
 use cs_bindgen_shared::*;
 use heck::*;
+use proc_macro2::TokenStream;
 use quote::*;
 use std::ffi::OsStr;
+use syn::{punctuated::Punctuated, token::Comma, Ident};
 
 mod class;
 mod func;
@@ -20,8 +22,15 @@ pub fn generate_bindings(decls: Vec<BindgenItem>, opt: &Opt) -> String {
     let raw_bindings = decls
         .iter()
         .filter_map(|item| match item {
-            BindgenItem::Fn(item) => Some(quote_raw_binding(item, dll_name)),
-            BindgenItem::Method(item) => Some(quote_raw_binding(&item.method, dll_name)),
+            BindgenItem::Fn(item) => {
+                Some(quote_raw_binding(item, &item.generated_ident(), dll_name))
+            }
+
+            BindgenItem::Method(item) => Some(quote_raw_binding(
+                &item.method,
+                &item.binding_ident(),
+                dll_name,
+            )),
 
             // No raw bindings needed for structs, the drop function is handled separately.
             BindgenItem::Struct(_) => None,
@@ -43,7 +52,7 @@ pub fn generate_bindings(decls: Vec<BindgenItem>, opt: &Opt) -> String {
         using System.Runtime.InteropServices;
         using System.Text;
 
-        internal static class __bindings
+        internal unsafe static class __bindings
         {
             [DllImport(
                 #dll_name,
@@ -78,4 +87,54 @@ pub fn generate_bindings(decls: Vec<BindgenItem>, opt: &Opt) -> String {
     };
 
     generated.to_string()
+}
+
+pub fn quote_raw_binding(
+    bindgen_fn: &BindgenFn,
+    binding_ident: &Ident,
+    dll_name: &str,
+) -> TokenStream {
+    let entry_point = binding_ident.to_string();
+
+    let binding_return_ty = match bindgen_fn.ret {
+        ReturnType::Default => quote! { void },
+        ReturnType::SelfType => quote! { void* },
+        ReturnType::Primitive(prim) => match prim {
+            Primitive::String => quote! { RustOwnedString },
+            Primitive::Char => quote! { uint },
+            Primitive::I8 => quote! { sbyte },
+            Primitive::I16 => quote! { short },
+            Primitive::I32 => quote! { int },
+            Primitive::I64 => quote! { long },
+            Primitive::U8 => quote! { byte },
+            Primitive::U16 => quote! { ushort },
+            Primitive::U32 => quote! { uint },
+            Primitive::U64 => quote! { ulong },
+            Primitive::F32 => quote! { float },
+            Primitive::F64 => quote! { double },
+            Primitive::Bool => quote! { byte },
+        },
+    };
+
+    let mut binding_args = bindgen_fn
+        .args
+        .iter()
+        .map(|arg| {
+            let ident = arg.ident();
+            let ty = quote_primitive_binding_arg(arg.ty);
+            quote! { #ty #ident }
+        })
+        .collect::<Punctuated<_, Comma>>();
+
+    if bindgen_fn.receiver.is_some() {
+        binding_args.insert(0, quote! { *void self })
+    }
+
+    quote! {
+        [DllImport(
+            #dll_name,
+            EntryPoint = #entry_point,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern #binding_return_ty #binding_ident(#binding_args);
+    }
 }

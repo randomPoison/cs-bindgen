@@ -90,14 +90,6 @@ impl BindgenFn {
     pub fn generated_ident(&self) -> Ident {
         Ident::new(&self.generated_name(), Span::call_site())
     }
-
-    pub fn generated_method_name(&self, self_ty: &str) -> String {
-        format!("__cs_bindgen_generated__{}__{}", self_ty, self.ident)
-    }
-
-    pub fn generated_method_ident(&self, self_ty: &str) -> Ident {
-        Ident::new(&self.generated_method_name(self_ty), Span::call_site())
-    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
