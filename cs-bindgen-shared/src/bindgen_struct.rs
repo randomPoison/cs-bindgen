@@ -22,6 +22,12 @@ impl BindgenStruct {
         })
     }
 
+    pub fn from_ident<I: Into<String>>(ident: I) -> Self {
+        Self {
+            ty_ident: ident.into(),
+        }
+    }
+
     pub fn raw_ident(&self) -> &str {
         &self.ty_ident
     }
