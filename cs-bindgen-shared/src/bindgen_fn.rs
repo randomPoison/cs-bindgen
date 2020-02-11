@@ -98,6 +98,10 @@ impl BindgenFn {
     pub fn generated_method_ident(&self, self_ty: &str) -> Ident {
         Ident::new(&self.generated_method_name(self_ty), Span::call_site())
     }
+
+    pub fn is_constructor(&self) -> bool {
+        self.ident == "new" && self.receiver.is_none() && self.ret == ReturnType::SelfType
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
