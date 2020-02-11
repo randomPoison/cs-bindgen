@@ -59,7 +59,7 @@ pub fn quote_raw_binding(bindgen_fn: &BindgenFn, dll_name: &str) -> TokenStream 
     }
 }
 
-pub fn quote_wrapper_body(bindgen_fn: &BindgenFn, output_ident: &Ident) -> TokenStream {
+pub fn quote_wrapper_body(bindgen_fn: &BindgenFn, output: &Ident) -> TokenStream {
     // Build the list of arguments to the wrapper function.
     let mut invoke_args = bindgen_fn
         .args
@@ -90,24 +90,28 @@ pub fn quote_wrapper_body(bindgen_fn: &BindgenFn, output_ident: &Ident) -> Token
     }
 
     let raw_ident = bindgen_fn.generated_ident();
-    let invoke_expr = match bindgen_fn.ret.primitive() {
-        None => quote! { #raw_ident(#invoke_args); },
+    let invoke_expr = match bindgen_fn.ret {
+        ReturnType::Default => quote! { #raw_ident(#invoke_args); },
 
-        Some(prim) => {
+        ReturnType::SelfType => quote! {
+            #output = #raw_ident(#invoke_args);
+        },
+
+        ReturnType::Primitive(prim) => {
             let invoke_expr = quote! { var rawResult = #raw_ident(#invoke_args); };
 
             let result_expr = match prim {
                 Primitive::String => quote! {
                     string result = Encoding.UTF8.GetString(rawResult.Ptr, (int)rawResult.Length);
                     DropString(rawResult);
-                    #output_ident = result;
+                    #output = result;
                 },
 
                 Primitive::Bool => quote! {
-                    #output_ident = rawResult != 0;
+                    #output = rawResult != 0;
                 },
 
-                _ => quote! { #output_ident = rawResult; },
+                _ => quote! { #output = rawResult; },
             };
 
             quote! {
