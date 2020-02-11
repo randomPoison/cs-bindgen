@@ -171,7 +171,18 @@ pub fn quote_wrapper_fn(bindgen_fn: &BindgenFn) -> TokenStream {
         Some(prim) => quote_primitive(prim),
     };
 
+    // Generate the declaration for the output variable and return expression. We need
+    // to treat *void* returns as a special case, since C# won't let you declare values
+    // with type `void` (*sigh*).
     let ret = format_ident!("__ret");
+    let ret_decl = match bindgen_fn.ret {
+        ReturnType::Default => TokenStream::default(),
+        _ => quote! { #cs_return_ty #ret; },
+    };
+    let ret_expr = match bindgen_fn.ret {
+        ReturnType::Default => TokenStream::default(),
+        _ => quote! { return #ret; },
+    };
 
     let args = quote_wrapper_args(bindgen_fn);
     let body = quote_wrapper_body(bindgen_fn, &ret);
@@ -185,13 +196,13 @@ pub fn quote_wrapper_fn(bindgen_fn: &BindgenFn) -> TokenStream {
     quote! {
         public #static_ #cs_return_ty #cs_fn_name(#args)
         {
-            #cs_return_ty #ret;
+            #ret_decl
             unsafe {
                 // TODO: Process args so they're ready to pass to the rust fn.
 
                 #body
             }
-            return #ret;
+            #ret_expr
         }
     }
 }

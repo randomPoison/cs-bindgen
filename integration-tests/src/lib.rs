@@ -30,3 +30,8 @@ impl PersonInfo {
         Self { name, age }
     }
 }
+
+#[cs_bindgen]
+pub fn void_return(test: i32) {
+    println!("{}", test);
+}
