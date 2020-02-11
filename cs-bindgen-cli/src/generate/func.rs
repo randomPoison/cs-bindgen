@@ -97,7 +97,7 @@ pub fn quote_wrapper_body(bindgen_fn: &BindgenFn, output: &Ident) -> TokenStream
             let result_expr = match prim {
                 Primitive::String => quote! {
                     string result = Encoding.UTF8.GetString(rawResult.Ptr, (int)rawResult.Length);
-                    DropString(rawResult);
+                    __bindings.__cs_bindgen_drop_string(rawResult);
                     #output = result;
                 },
 

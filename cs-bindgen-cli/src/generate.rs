@@ -49,7 +49,7 @@ pub fn generate_bindings(decls: Vec<BindgenItem>, opt: &Opt) -> String {
                 #dll_name,
                 EntryPoint = "__cs_bindgen_drop_string",
                 CallingConvention = CallingConvention.Cdecl)]
-            private static extern void DropString(RustOwnedString raw);
+            internal static extern void __cs_bindgen_drop_string(RustOwnedString raw);
 
             #( #raw_bindings )*
         }
