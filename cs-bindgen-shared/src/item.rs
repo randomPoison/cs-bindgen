@@ -18,7 +18,7 @@ impl BindgenItem {
         match self {
             BindgenItem::Fn(item) => item.raw_ident(),
             BindgenItem::Struct(item) => item.raw_ident(),
-            BindgenItem::Method(item) => item.raw_ident(),
+            BindgenItem::Method(item) => item.binding_ident_str(),
         }
     }
 }

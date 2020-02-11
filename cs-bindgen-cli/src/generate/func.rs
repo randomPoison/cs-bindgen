@@ -4,16 +4,6 @@ use proc_macro2::TokenStream;
 use quote::*;
 use syn::{punctuated::Punctuated, token::Comma, Ident};
 
-pub fn quote_bindgen_fn(bindgen_fn: &BindgenFn, dll_name: &str) -> TokenStream {
-    let wrapper_fn = quote_wrapper_fn(&bindgen_fn);
-    let raw_binding = quote_raw_binding(&bindgen_fn, dll_name);
-
-    quote! {
-        #raw_binding
-        #wrapper_fn
-    }
-}
-
 pub fn quote_raw_binding(bindgen_fn: &BindgenFn, dll_name: &str) -> TokenStream {
     let entry_point = bindgen_fn.generated_name();
     let binding_return_ty = match bindgen_fn.ret.primitive() {
@@ -55,7 +45,7 @@ pub fn quote_raw_binding(bindgen_fn: &BindgenFn, dll_name: &str) -> TokenStream 
             #dll_name,
             EntryPoint = #entry_point,
             CallingConvention = CallingConvention.Cdecl)]
-        private static extern #binding_return_ty #raw_ident(#binding_args);
+        internal static extern #binding_return_ty #raw_ident(#binding_args);
     }
 }
 
@@ -89,16 +79,20 @@ pub fn quote_wrapper_body(bindgen_fn: &BindgenFn, output: &Ident) -> TokenStream
         invoke_args.insert(0, quote! { _handle });
     }
 
-    let raw_ident = bindgen_fn.generated_ident();
+    let raw_binding = {
+        let raw_ident = bindgen_fn.generated_ident();
+        quote! { __bindings.#raw_ident }
+    };
+
     let invoke_expr = match bindgen_fn.ret {
-        ReturnType::Default => quote! { #raw_ident(#invoke_args); },
+        ReturnType::Default => quote! { #raw_binding(#invoke_args); },
 
         ReturnType::SelfType => quote! {
-            #output = #raw_ident(#invoke_args);
+            #output = #raw_binding(#invoke_args);
         },
 
         ReturnType::Primitive(prim) => {
-            let invoke_expr = quote! { var rawResult = #raw_ident(#invoke_args); };
+            let invoke_expr = quote! { var rawResult = #raw_binding(#invoke_args); };
 
             let result_expr = match prim {
                 Primitive::String => quote! {

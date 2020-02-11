@@ -196,7 +196,7 @@ fn quote_method(item: &Method) -> TokenStream {
     let receiver_arg_ident = format_ident!("self_");
 
     // Determine the name of the generated function.
-    let generated_fn_ident = item.ident();
+    let generated_fn_ident = item.binding_ident();
 
     let mut args = Punctuated::<_, Comma>::new();
     let mut process_args = TokenStream::default();
@@ -241,7 +241,7 @@ fn quote_method(item: &Method) -> TokenStream {
     };
 
     // Generate the expression for invoking the underlying Rust function.
-    let method_name = item.ident();
+    let method_name = item.method.ident();
     let orig_fn = quote! { #ty_ident::#method_name };
 
     arg_names.extend(item.method.args.iter().map(FnArg::ident));

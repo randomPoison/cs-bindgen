@@ -17,13 +17,24 @@ pub fn generate_bindings(decls: Vec<BindgenItem>, opt: &Opt) -> String {
 
     let class_name = format_ident!("{}", dll_name.to_camel_case());
 
+    let raw_bindings = decls
+        .iter()
+        .filter_map(|item| match item {
+            BindgenItem::Fn(item) => Some(quote_raw_binding(item, dll_name)),
+            BindgenItem::Method(item) => Some(quote_raw_binding(&item.method, dll_name)),
+
+            // No raw bindings needed for structs, the drop function is handled separately.
+            BindgenItem::Struct(_) => None,
+        })
+        .collect::<Vec<_>>();
+
     let mut fn_bindings = Vec::new();
-    let mut struct_bindings = Vec::new();
+    let mut method_bindings = Vec::new();
     for decl in &decls {
         match decl {
-            BindgenItem::Fn(decl) => fn_bindings.push(quote_bindgen_fn(decl, dll_name)),
-            BindgenItem::Struct(decl) => struct_bindings.push(quote_struct_binding(decl)),
-            BindgenItem::Impl(decl) => struct_bindings.push(quote_impl_binding(decl, dll_name)),
+            BindgenItem::Fn(decl) => fn_bindings.push(quote_wrapper_fn(decl)),
+            BindgenItem::Struct(decl) => method_bindings.push(quote_struct_binding(decl)),
+            BindgenItem::Method(decl) => method_bindings.push(quote_method_binding(decl)),
         }
     }
 
@@ -32,7 +43,7 @@ pub fn generate_bindings(decls: Vec<BindgenItem>, opt: &Opt) -> String {
         using System.Runtime.InteropServices;
         using System.Text;
 
-        public class #class_name
+        internal static class __bindings
         {
             [DllImport(
                 #dll_name,
@@ -40,25 +51,30 @@ pub fn generate_bindings(decls: Vec<BindgenItem>, opt: &Opt) -> String {
                 CallingConvention = CallingConvention.Cdecl)]
             private static extern void DropString(RustOwnedString raw);
 
-            #( #fn_bindings )*
-
-            [StructLayout(LayoutKind.Sequential)]
-            private unsafe struct RustOwnedString
-            {
-                public byte* Ptr;
-                public UIntPtr Length;
-                public UIntPtr Capacity;
-            }
-
-            [StructLayout(LayoutKind.Sequential)]
-            private unsafe struct RawCsString
-            {
-                public char* Ptr;
-                public int Length;
-            }
+            #( #raw_bindings )*
         }
 
-        #( #struct_bindings )*
+        public class #class_name
+        {
+            #( #fn_bindings )*
+        }
+
+        #( #method_bindings )*
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal unsafe struct RustOwnedString
+        {
+            public byte* Ptr;
+            public UIntPtr Length;
+            public UIntPtr Capacity;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal unsafe struct RawCsString
+        {
+            public char* Ptr;
+            public int Length;
+        }
     };
 
     generated.to_string()

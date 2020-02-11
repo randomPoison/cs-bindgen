@@ -1,7 +1,7 @@
-use crate::{BindgenFn, BindgenStruct};
+use crate::{BindgenFn, BindgenStruct, ReturnType};
+use proc_macro2::Span;
 use serde::*;
 use syn::Ident;
-use proc_macro2::Span;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Method {
@@ -23,11 +23,17 @@ impl Method {
         }
     }
 
-    pub fn ident(&self) -> Ident {
+    pub fn binding_ident(&self) -> Ident {
         Ident::new(&self.binding_name, Span::call_site())
     }
 
-    pub fn raw_ident(&self) -> &str {
+    pub fn binding_ident_str(&self) -> &str {
         &self.binding_name
+    }
+
+    pub fn is_constructor(&self) -> bool {
+        self.method.raw_ident() == "new"
+            && self.method.receiver.is_none()
+            && self.method.ret == ReturnType::SelfType
     }
 }
