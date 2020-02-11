@@ -21,7 +21,7 @@ pub fn generate_bindings(decls: Vec<BindgenItem>, opt: &Opt) -> String {
         match decl {
             BindgenItem::Fn(decl) => fn_bindings.push(quote_bindgen_fn(decl, dll_name)),
             BindgenItem::Struct(decl) => struct_bindings.push(quote_struct_binding(decl)),
-            BindgenItem::Impl(_) => todo!("Generate bindings for item impls"),
+            BindgenItem::Impl(decl) => struct_bindings.push(quote_impl_binding(decl, dll_name)),
         }
     }
 
@@ -44,8 +44,8 @@ pub fn generate_bindings(decls: Vec<BindgenItem>, opt: &Opt) -> String {
             private unsafe struct RustOwnedString
             {
                 public byte* Ptr;
-                public IntPtr Length;
-                public IntPtr Capacity;
+                public UIntPtr Length;
+                public UIntPtr Capacity;
             }
 
             [StructLayout(LayoutKind.Sequential)]
@@ -70,7 +70,7 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn, dll_name: &str) -> TokenStream {
         Some(prim) => quote_primitive_binding_return(prim),
     };
 
-    let binding_args = bindgen_fn
+    let mut binding_args = bindgen_fn
         .args
         .iter()
         .map(|arg| {
@@ -79,6 +79,10 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn, dll_name: &str) -> TokenStream {
             quote! { #ty #ident }
         })
         .collect::<Punctuated<_, Comma>>();
+
+    if bindgen_fn.receiver.is_some() {
+        binding_args.insert(0, quote! { *void self })
+    }
 
     let wrapper_fn = quote_wrapper_fn(&bindgen_fn, &raw_binding);
 
@@ -158,7 +162,7 @@ fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_binding: &Ident) -> TokenStream 
     };
 
     // Build the list of arguments to the wrapper function.
-    let args = bindgen_fn
+    let mut args = bindgen_fn
         .args
         .iter()
         .map(|arg| {
@@ -169,7 +173,7 @@ fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_binding: &Ident) -> TokenStream 
         .collect::<Punctuated<_, Comma>>();
 
     // Build the list of arguments to the wrapper function.
-    let invoke_args = bindgen_fn
+    let mut invoke_args = bindgen_fn
         .args
         .iter()
         .map(|arg| match arg.ty {
@@ -192,6 +196,12 @@ fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_binding: &Ident) -> TokenStream 
             _ => arg.ident().into_token_stream(),
         })
         .collect::<Punctuated<_, Comma>>();
+
+    // Insert additional self parameter if the function has a receiver.
+    if bindgen_fn.receiver.is_some() {
+        args.insert(0, quote! { void* self });
+        invoke_args.insert(0, quote! { _handle });
+    }
 
     let invoke_expr = match bindgen_fn.ret.primitive() {
         None => quote! { #raw_binding(#invoke_args); },
@@ -261,6 +271,22 @@ fn quote_struct_binding(bindgen_struct: &BindgenStruct) -> TokenStream {
         public unsafe partial class #ident
         {
             private void* _handle;
+        }
+    }
+}
+
+fn quote_impl_binding(bindgen_impl: &BindgenImpl, dll_name: &str) -> TokenStream {
+    let ident = bindgen_impl.ty_ident();
+
+    let methods = bindgen_impl
+        .methods
+        .iter()
+        .map(|method| quote_bindgen_fn(method, dll_name));
+
+    quote! {
+        partial class #ident
+        {
+            #( #methods )*
         }
     }
 }
