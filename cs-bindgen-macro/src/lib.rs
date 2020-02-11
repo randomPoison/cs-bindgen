@@ -205,12 +205,13 @@ fn quote_method(item: &Method) -> TokenStream {
     // Generate bindings for the method receiver (i.e. the `self` argument).
     if item.method.receiver.is_some() {
         args.push(quote! {
-            #receiver_arg_ident: std::boxed::Box<std::sync::Mutex<#ty_ident>>
+            #receiver_arg_ident: &std::sync::Mutex<#ty_ident>
         });
 
         process_args.extend(quote! {
-                    let #receiver_arg_ident = #receiver_arg_ident.lock().expect("Handle mutex was poisoned");
-                });
+            let #receiver_arg_ident = #receiver_arg_ident.lock().expect("Handle mutex was poisoned");
+            let #receiver_arg_ident = &*#receiver_arg_ident;
+        });
 
         arg_names.push(receiver_arg_ident.clone());
     }

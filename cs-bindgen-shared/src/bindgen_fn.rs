@@ -32,31 +32,25 @@ impl BindgenFn {
         let args = signature
             .inputs
             .iter()
+            .filter_map(|arg| match arg {
+                syn::FnArg::Typed(arg) => Some(arg),
+                syn::FnArg::Receiver(_) => None,
+            })
             .enumerate()
-            .map(|(index, arg)| match arg {
-                // Reject any functions that take some form of `self`. We'll eventually be able to
-                // support these by marking entire `impl` blocks with `#[cs_bindgen]`, but for now
-                // we only support free functions.
-                syn::FnArg::Receiver(_) => Err(syn::Error::new(
-                    arg.span(),
-                    "Methods are not supported, only free functions",
-                )),
+            .map(|(index, pat)| {
+                // If the argument isn't declared with a normal identifier, we construct one so
+                // that we have a valid identifier to use in the generated functions.
+                let ident = match &*pat.pat {
+                    Pat::Ident(pat_ident) => pat_ident.ident.to_string(),
+                    _ => format!("__arg{}", index),
+                };
 
-                syn::FnArg::Typed(pat) => {
-                    // If the argument isn't declared with a normal identifier, we construct one so
-                    // that we have a valid identifier to use in the generated functions.
-                    let ident = match &*pat.pat {
-                        Pat::Ident(pat_ident) => pat_ident.ident.to_string(),
-                        _ => format!("__arg{}", index),
-                    };
+                let ty = Primitive::from_type(&pat.ty).ok_or(syn::Error::new(
+                    pat.ty.span(),
+                    "Unknown argument type, only primitives are supported",
+                ))?;
 
-                    let ty = Primitive::from_type(&pat.ty).ok_or(syn::Error::new(
-                        pat.ty.span(),
-                        "Unknown argument type, only primitives are supported",
-                    ))?;
-
-                    Ok(FnArg::new(ident, ty))
-                }
+                Ok(FnArg::new(ident, ty))
             })
             .collect::<syn::Result<_>>()?;
 

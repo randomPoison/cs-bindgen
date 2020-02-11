@@ -99,7 +99,7 @@ pub fn quote_wrapper_body(
 }
 
 pub fn quote_wrapper_args(bindgen_fn: &BindgenFn) -> Punctuated<TokenStream, Comma> {
-    let mut args = bindgen_fn
+    bindgen_fn
         .args
         .iter()
         .map(|arg| {
@@ -107,14 +107,7 @@ pub fn quote_wrapper_args(bindgen_fn: &BindgenFn) -> Punctuated<TokenStream, Com
             let ty = quote_primitive(arg.ty);
             quote! { #ty #ident }
         })
-        .collect::<Punctuated<_, Comma>>();
-
-    // Insert additional self parameter if the function has a receiver.
-    if bindgen_fn.receiver.is_some() {
-        args.insert(0, quote! { void* self });
-    }
-
-    args
+        .collect()
 }
 
 pub fn quote_wrapper_fn(bindgen_fn: &BindgenFn, binding_ident: &Ident) -> TokenStream {
@@ -125,7 +118,7 @@ pub fn quote_wrapper_fn(bindgen_fn: &BindgenFn, binding_ident: &Ident) -> TokenS
     };
 
     // Generate the declaration for the output variable and return expression. We need
-    // to treat *void* returns as a special case, since C# won't let you declare values
+    // to treat `void` returns as a special case, since C# won't let you declare values
     // with type `void` (*sigh*).
     let ret = format_ident!("__ret");
     let ret_decl = match bindgen_fn.ret {

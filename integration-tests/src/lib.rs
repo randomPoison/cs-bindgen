@@ -29,6 +29,15 @@ impl PersonInfo {
     pub fn new(name: String, age: u32) -> Self {
         Self { name, age }
     }
+
+    // TODO: Change this to return `&str` once that's supported.
+    pub fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    pub fn age(&self) -> u32 {
+        self.age
+    }
 }
 
 #[cs_bindgen]

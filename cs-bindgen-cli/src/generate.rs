@@ -129,7 +129,7 @@ pub fn quote_raw_binding(
         .collect::<Punctuated<_, Comma>>();
 
     if bindgen_fn.receiver.is_some() {
-        binding_args.insert(0, quote! { *void self })
+        binding_args.insert(0, quote! { void* self })
     }
 
     quote! {
