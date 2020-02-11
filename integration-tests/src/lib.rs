@@ -21,12 +21,12 @@ pub fn string_arg(arg: String) -> String {
 #[derive(Debug, Clone)]
 pub struct PersonInfo {
     name: String,
-    age: u32,
+    age: i32,
 }
 
 #[cs_bindgen]
 impl PersonInfo {
-    pub fn new(name: String, age: u32) -> Self {
+    pub fn new(name: String, age: i32) -> Self {
         Self { name, age }
     }
 
@@ -35,7 +35,7 @@ impl PersonInfo {
         self.name.clone()
     }
 
-    pub fn age(&self) -> u32 {
+    pub fn age(&self) -> i32 {
         self.age
     }
 }

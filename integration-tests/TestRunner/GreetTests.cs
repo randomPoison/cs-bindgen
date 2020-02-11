@@ -44,5 +44,13 @@ namespace TestRunner
                 Assert.Equal("Hello, Test!", result);
             }
         }
+
+        [Fact]
+        public void CreatePersonInfo()
+        {
+            PersonInfo info = new PersonInfo("David", 12);
+            Assert.Equal("David", info.Name());
+            Assert.Equal(12, info.Age());
+        }
     }
 }
