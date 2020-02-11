@@ -15,16 +15,14 @@ pub fn quote_struct_binding(bindgen_struct: &BindgenStruct) -> TokenStream {
 }
 
 pub fn quote_impl_binding(bindgen_impl: &BindgenImpl, dll_name: &str) -> TokenStream {
-    let ident = bindgen_impl.ty_ident();
+    let struct_ident = bindgen_impl.ty_ident();
 
     let methods = bindgen_impl.methods.iter().map(|method| {
-        let raw_ident = format_ident!("__{}", method.raw_ident());
-
-        let raw_binding = quote_raw_binding(method, &raw_ident, dll_name);
+        let raw_binding = quote_raw_binding(method, dll_name);
         let wrapper_fn = if method.is_constructor() {
-            quote_constructor(&method, &ident)
+            quote_constructor(&method, &struct_ident)
         } else {
-            quote_wrapper_fn(&method, &raw_ident)
+            quote_wrapper_fn(&method)
         };
 
         quote! {
@@ -34,7 +32,7 @@ pub fn quote_impl_binding(bindgen_impl: &BindgenImpl, dll_name: &str) -> TokenSt
     });
 
     quote! {
-        partial class #ident
+        partial class #struct_ident
         {
             #( #methods )*
         }
@@ -43,7 +41,7 @@ pub fn quote_impl_binding(bindgen_impl: &BindgenImpl, dll_name: &str) -> TokenSt
 
 fn quote_constructor(method: &BindgenFn, struct_ident: &Ident) -> TokenStream {
     let args = quote_wrapper_args(&method);
-    let body = quote_wrapper_body(method, &method.ident(), &format_ident!("_handle"));
+    let body = quote_wrapper_body(method, &format_ident!("_handle"));
 
     quote! {
         public #struct_ident(#args)

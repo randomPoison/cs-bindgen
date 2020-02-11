@@ -5,10 +5,8 @@ use quote::*;
 use syn::{punctuated::Punctuated, token::Comma, Ident};
 
 pub fn quote_bindgen_fn(bindgen_fn: &BindgenFn, dll_name: &str) -> TokenStream {
-    let raw_ident = bindgen_fn.ident();
-
-    let wrapper_fn = quote_wrapper_fn(&bindgen_fn, &raw_ident);
-    let raw_binding = quote_raw_binding(&bindgen_fn, &raw_ident, dll_name);
+    let wrapper_fn = quote_wrapper_fn(&bindgen_fn);
+    let raw_binding = quote_raw_binding(&bindgen_fn, dll_name);
 
     quote! {
         #raw_binding
@@ -16,7 +14,7 @@ pub fn quote_bindgen_fn(bindgen_fn: &BindgenFn, dll_name: &str) -> TokenStream {
     }
 }
 
-pub fn quote_raw_binding(bindgen_fn: &BindgenFn, ident: &Ident, dll_name: &str) -> TokenStream {
+pub fn quote_raw_binding(bindgen_fn: &BindgenFn, dll_name: &str) -> TokenStream {
     let entry_point = bindgen_fn.generated_name();
     let binding_return_ty = match bindgen_fn.ret.primitive() {
         None => quote! { void },
@@ -51,20 +49,17 @@ pub fn quote_raw_binding(bindgen_fn: &BindgenFn, ident: &Ident, dll_name: &str) 
         binding_args.insert(0, quote! { *void self })
     }
 
+    let raw_ident = bindgen_fn.generated_ident();
     quote! {
         [DllImport(
             #dll_name,
             EntryPoint = #entry_point,
             CallingConvention = CallingConvention.Cdecl)]
-        private static extern #binding_return_ty #ident(#binding_args);
+        private static extern #binding_return_ty #raw_ident(#binding_args);
     }
 }
 
-pub fn quote_wrapper_body(
-    bindgen_fn: &BindgenFn,
-    raw_ident: &Ident,
-    output_ident: &Ident,
-) -> TokenStream {
+pub fn quote_wrapper_body(bindgen_fn: &BindgenFn, output_ident: &Ident) -> TokenStream {
     // Build the list of arguments to the wrapper function.
     let mut invoke_args = bindgen_fn
         .args
@@ -94,6 +89,7 @@ pub fn quote_wrapper_body(
         invoke_args.insert(0, quote! { _handle });
     }
 
+    let raw_ident = bindgen_fn.generated_ident();
     let invoke_expr = match bindgen_fn.ret.primitive() {
         None => quote! { #raw_ident(#invoke_args); },
 
@@ -164,7 +160,7 @@ pub fn quote_wrapper_args(bindgen_fn: &BindgenFn) -> Punctuated<TokenStream, Com
     args
 }
 
-pub fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_ident: &Ident) -> TokenStream {
+pub fn quote_wrapper_fn(bindgen_fn: &BindgenFn) -> TokenStream {
     let cs_fn_name = format_ident!("{}", bindgen_fn.raw_ident().to_camel_case());
     let cs_return_ty = match bindgen_fn.ret.primitive() {
         None => quote! { void },
@@ -174,7 +170,7 @@ pub fn quote_wrapper_fn(bindgen_fn: &BindgenFn, raw_ident: &Ident) -> TokenStrea
     let ret = format_ident!("__ret");
 
     let args = quote_wrapper_args(bindgen_fn);
-    let body = quote_wrapper_body(bindgen_fn, raw_ident, &ret);
+    let body = quote_wrapper_body(bindgen_fn, &ret);
 
     let static_ = if bindgen_fn.receiver.is_none() {
         quote! { static }
