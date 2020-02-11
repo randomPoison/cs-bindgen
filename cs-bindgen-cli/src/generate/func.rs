@@ -4,7 +4,11 @@ use proc_macro2::TokenStream;
 use quote::*;
 use syn::{punctuated::Punctuated, token::Comma, Ident};
 
-pub fn quote_wrapper_body(bindgen_fn: &BindgenFn, output: &Ident) -> TokenStream {
+pub fn quote_wrapper_body(
+    bindgen_fn: &BindgenFn,
+    binding_ident: &Ident,
+    output: &Ident,
+) -> TokenStream {
     // Build the list of arguments to the wrapper function.
     let mut invoke_args = bindgen_fn
         .args
@@ -35,7 +39,7 @@ pub fn quote_wrapper_body(bindgen_fn: &BindgenFn, output: &Ident) -> TokenStream
     }
 
     let raw_binding = {
-        let raw_ident = bindgen_fn.generated_ident();
+        let raw_ident = binding_ident;
         quote! { __bindings.#raw_ident }
     };
 
@@ -113,7 +117,7 @@ pub fn quote_wrapper_args(bindgen_fn: &BindgenFn) -> Punctuated<TokenStream, Com
     args
 }
 
-pub fn quote_wrapper_fn(bindgen_fn: &BindgenFn) -> TokenStream {
+pub fn quote_wrapper_fn(bindgen_fn: &BindgenFn, binding_ident: &Ident) -> TokenStream {
     let cs_fn_name = format_ident!("{}", bindgen_fn.raw_ident().to_camel_case());
     let cs_return_ty = match bindgen_fn.ret.primitive() {
         None => quote! { void },
@@ -134,7 +138,7 @@ pub fn quote_wrapper_fn(bindgen_fn: &BindgenFn) -> TokenStream {
     };
 
     let args = quote_wrapper_args(bindgen_fn);
-    let body = quote_wrapper_body(bindgen_fn, &ret);
+    let body = quote_wrapper_body(bindgen_fn, binding_ident, &ret);
 
     let static_ = if bindgen_fn.receiver.is_none() {
         quote! { static }

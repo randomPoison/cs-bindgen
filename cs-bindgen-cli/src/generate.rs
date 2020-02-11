@@ -41,7 +41,9 @@ pub fn generate_bindings(decls: Vec<BindgenItem>, opt: &Opt) -> String {
     let mut method_bindings = Vec::new();
     for decl in &decls {
         match decl {
-            BindgenItem::Fn(decl) => fn_bindings.push(quote_wrapper_fn(decl)),
+            BindgenItem::Fn(decl) => {
+                fn_bindings.push(quote_wrapper_fn(decl, &decl.generated_ident()))
+            }
             BindgenItem::Struct(decl) => method_bindings.push(quote_struct_binding(decl)),
             BindgenItem::Method(decl) => method_bindings.push(quote_method_binding(decl)),
         }
