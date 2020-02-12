@@ -48,9 +48,21 @@ namespace TestRunner
         [Fact]
         public void CreatePersonInfo()
         {
-            PersonInfo info = new PersonInfo("David", 12);
-            Assert.Equal("David", info.Name());
-            Assert.Equal(12, info.Age());
+            using (PersonInfo info = new PersonInfo("David", 12))
+            {
+                Assert.Equal("David", info.Name());
+                Assert.Equal(12, info.Age());
+            }
+        }
+
+        [Fact]
+        public void CreateManyPersonInfo()
+        {
+            for (int count = 0; count < 1000; count += 1)
+            {
+                PersonInfo info = new PersonInfo("Fred", 123);
+                info.Dispose();
+            }
         }
     }
 }

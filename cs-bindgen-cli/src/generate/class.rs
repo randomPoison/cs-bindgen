@@ -5,10 +5,20 @@ use quote::*;
 
 pub fn quote_struct_binding(bindgen_struct: &BindgenStruct) -> TokenStream {
     let ident = bindgen_struct.ident();
+    let drop_fn = bindgen_struct.drop_fn_ident();
     quote! {
-        public unsafe partial class #ident
+        public unsafe partial class #ident : IDisposable
         {
             private void* _handle;
+
+            public void Dispose()
+            {
+                if (_handle != null)
+                {
+                    __bindings.#drop_fn(_handle);
+                    _handle = null;
+                }
+            }
         }
     }
 }
