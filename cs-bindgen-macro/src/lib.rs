@@ -207,8 +207,8 @@ fn quote_method(item: &Method) -> TokenStream {
         });
 
         process_args.extend(quote! {
-            let #receiver_arg_ident = #receiver_arg_ident.lock().expect("Handle mutex was poisoned");
-            let #receiver_arg_ident = &*#receiver_arg_ident;
+            let mut #receiver_arg_ident = #receiver_arg_ident.lock().expect("Handle mutex was poisoned");
+            let #receiver_arg_ident = &mut *#receiver_arg_ident;
         });
 
         arg_names.push(receiver_arg_ident.clone());
