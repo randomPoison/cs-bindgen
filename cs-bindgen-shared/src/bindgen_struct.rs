@@ -35,4 +35,11 @@ impl BindgenStruct {
     pub fn ident(&self) -> Ident {
         Ident::new(&self.ty_ident, Span::call_site())
     }
+
+    pub fn drop_fn_ident(&self) -> Ident {
+        Ident::new(
+            &format!("__cs_bindgen_generated__{}_drop", self.ty_ident),
+            Span::call_site(),
+        )
+    }
 }

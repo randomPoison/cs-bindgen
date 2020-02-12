@@ -1,7 +1,7 @@
 extern crate proc_macro;
 
 use cs_bindgen_shared::{
-    BindgenFn, BindgenItem, BindgenItems, FnArg, Method, Primitive, ReturnType,
+    BindgenFn, BindgenItem, BindgenItems, BindgenStruct, FnArg, Method, Primitive, ReturnType,
 };
 use proc_macro2::TokenStream;
 use quote::*;
@@ -22,9 +22,7 @@ pub fn cs_bindgen(
         let binding = match &item {
             BindgenItem::Fn(input) => quote_bindgen_fn(input),
             BindgenItem::Method(input) => quote_method(input),
-
-            // TODO: Generate the drop function for the struct.
-            BindgenItem::Struct(_) => TokenStream::default(),
+            BindgenItem::Struct(input) => quote_drop_fn(input),
         };
 
         // Serialize the parsed item declaration into JSON so that it can be stored in
@@ -259,5 +257,14 @@ fn quote_method(item: &Method) -> TokenStream {
 
             #process_return
         }
+    }
+}
+
+fn quote_drop_fn(item: &BindgenStruct) -> TokenStream {
+    let ty_ident = item.ident();
+    let ident = item.drop_fn_ident();
+    quote! {
+        #[no_mangle]
+        pub unsafe extern "C" fn #ident(_: std::boxed::Box<std::sync::Mutex<#ty_ident>>) {}
     }
 }

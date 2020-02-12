@@ -21,19 +21,24 @@ pub fn generate_bindings(decls: Vec<BindgenItem>, opt: &Opt) -> String {
 
     let raw_bindings = decls
         .iter()
-        .filter_map(|item| match item {
-            BindgenItem::Fn(item) => {
-                Some(quote_raw_binding(item, &item.generated_ident(), dll_name))
+        .map(|item| match item {
+            BindgenItem::Fn(item) => quote_raw_binding(item, &item.generated_ident(), dll_name),
+
+            BindgenItem::Method(item) => {
+                quote_raw_binding(&item.method, &item.binding_ident(), dll_name)
             }
 
-            BindgenItem::Method(item) => Some(quote_raw_binding(
-                &item.method,
-                &item.binding_ident(),
-                dll_name,
-            )),
-
-            // No raw bindings needed for structs, the drop function is handled separately.
-            BindgenItem::Struct(_) => None,
+            BindgenItem::Struct(item) => {
+                let binding_ident = item.drop_fn_ident();
+                let entry_point = binding_ident.to_string();
+                quote! {
+                    [DllImport(
+                        #dll_name,
+                        EntryPoint = #entry_point,
+                        CallingConvention = CallingConvention.Cdecl)]
+                    internal static extern void #binding_ident(void* self);
+                }
+            }
         })
         .collect::<Vec<_>>();
 
