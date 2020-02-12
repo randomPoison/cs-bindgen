@@ -38,6 +38,10 @@ impl PersonInfo {
     pub fn age(&self) -> i32 {
         self.age
     }
+
+    pub fn set_age(&mut self, age: i32) {
+        self.age = age;
+    }
 }
 
 #[cs_bindgen]
