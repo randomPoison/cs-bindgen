@@ -17,14 +17,30 @@ pub fn string_arg(arg: String) -> String {
     format!("Hello, {}!", arg)
 }
 
-// #[cs_bindgen]
+#[cs_bindgen]
+#[derive(Debug, Clone)]
 pub struct PersonInfo {
     name: String,
-    age: u32,
+    age: i32,
 }
 
+#[cs_bindgen]
 impl PersonInfo {
-    pub fn new(name: String, age: u32) -> Self {
+    pub fn new(name: String, age: i32) -> Self {
         Self { name, age }
     }
+
+    // TODO: Change this to return `&str` once that's supported.
+    pub fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    pub fn age(&self) -> i32 {
+        self.age
+    }
+}
+
+#[cs_bindgen]
+pub fn void_return(test: i32) {
+    println!("{}", test);
 }
