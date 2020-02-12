@@ -42,6 +42,10 @@ impl PersonInfo {
     pub fn set_age(&mut self, age: i32) {
         self.age = age;
     }
+
+    pub fn static_function() -> i32 {
+        7
+    }
 }
 
 #[cs_bindgen]
