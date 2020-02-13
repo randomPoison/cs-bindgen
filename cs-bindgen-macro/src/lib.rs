@@ -1,8 +1,6 @@
 extern crate proc_macro;
 
-use cs_bindgen_shared::{
-    BindgenFn, BindgenItem, BindgenItems, BindgenStruct, FnArg, Method, Primitive, ReturnType,
-};
+use cs_bindgen_shared::meta::{Export, Func, Method, Struct};
 use proc_macro2::TokenStream;
 use quote::*;
 use syn::{punctuated::Punctuated, token::Comma, *};
@@ -17,47 +15,89 @@ pub fn cs_bindgen(
     // manually reconstruct the original input later when returning the result.
     let mut result: TokenStream = tokens.clone().into();
 
-    for item in parse_macro_input!(tokens as BindgenItems).0 {
-        // Generate the wrapper/binding functions for the item.
-        let binding = match &item {
-            BindgenItem::Fn(input) => quote_bindgen_fn(input),
-            BindgenItem::Method(input) => quote_method(input),
-            BindgenItem::Struct(input) => quote_drop_fn(input),
-        };
+    let bindings = match parse_macro_input!(tokens as Item) {
+        Item::Fn(item) => todo!(),
+        Item::Struct(item) => todo!(),
+        Item::Impl(item) => todo!(),
 
-        // Serialize the parsed item declaration into JSON so that it can be stored in
-        // a variable in the generated WASM module.
-        let decl_json = serde_json::to_string(&item).expect("Failed to serialize decl to JSON");
-        let decl_var_ident = format_ident!("__cs_bindgen_decl_json_{}", &*item.raw_ident());
-        let decl_ptr_ident = format_ident!("__cs_bindgen_decl_ptr_{}", &*item.raw_ident());
-        let decl_len_ident = format_ident!("__cs_bindgen_decl_len_{}", &*item.raw_ident());
+        // Generate an error for any unknown item types.
+        item @ _ => {
+            Error::new_spanned(item, "Item not supported with `#[cs_bindgen]`").to_compile_error()
+        }
+    };
 
-        let decl = quote! {
-            #[allow(bad_style)]
-            static #decl_var_ident: &str = #decl_json;
-
-            #[no_mangle]
-            pub extern "C" fn #decl_ptr_ident() -> *const u8 {
-                #decl_var_ident.as_ptr()
-            }
-
-            #[no_mangle]
-            pub extern "C" fn #decl_len_ident() -> usize {
-                #decl_var_ident.len()
-            }
-        };
-
-        // Append the generated binding and declaration to the result stream.
-        result.extend(binding);
-        result.extend(decl);
-    }
+    // Append the generated binding and declaration to the result stream.
+    result.extend(bindings);
 
     result.into()
 }
 
-fn quote_bindgen_fn(bindgen_fn: &BindgenFn) -> TokenStream {
+fn quote_export<T: Into<Export>>(export: T) -> TokenStream {
+    let export = export.into();
+
+    let decl_json = serde_json::to_string(&export).expect("Failed to serialize decl to JSON");
+    let decl_var_ident = format_ident!("__cs_bindgen_decl_json_{}", export.ident());
+    let decl_ptr_ident = format_ident!("__cs_bindgen_decl_ptr_{}", export.ident());
+    let decl_len_ident = format_ident!("__cs_bindgen_decl_len_{}", export.ident());
+
+    quote! {
+        #[allow(bad_style)]
+        static #decl_var_ident: &str = #decl_json;
+
+        #[no_mangle]
+        pub extern "C" fn #decl_ptr_ident() -> *const u8 {
+            #decl_var_ident.as_ptr()
+        }
+
+        #[no_mangle]
+        pub extern "C" fn #decl_len_ident() -> usize {
+            #decl_var_ident.len()
+        }
+    }
+}
+
+fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
+    // Extract the signature, which contains the bulk of the information we care about.
+    let signature = item.sig;
+
+    // Generate an error for any generic parameters.
+    let generics = signature.generics;
+    let has_generics = generics.type_params().next().is_some()
+        || generics.lifetimes().next().is_some()
+        || generics.const_params().next().is_some();
+    if has_generics {
+        return Err(Error::new_spanned(
+            generics,
+            "Generic functions not supported with `#[cs_bindgen]`",
+        ));
+    }
+
     // Determine the name of the generated function.
-    let generated_fn_ident = bindgen_fn.generated_ident();
+    let ident = signature.ident;
+    let binding_ident = format_ident!("__cs_bindgen_generated__{}", ident);
+
+    let args: Vec<(Ident, Box<Type>)> = signature
+        .inputs
+        .iter()
+        // Convert the `FnArg` arguments into the underlying `PatType`. This is safe to do
+        // in this context because we know we are processing a free function, so it cannot
+        // have a receiver.
+        .filter_map(|arg| match arg {
+            FnArg::Typed(arg) => Some(arg),
+            _ => None,
+        })
+        .enumerate()
+        .map(|(index, arg)| {
+            // If the argument isn't declared with a normal identifier, we construct one so
+            // that we have a valid identifier to use in the generated functions.
+            let ident = match &*arg.pat {
+                Pat::Ident(pat_ident) => pat_ident.ident.clone(),
+                _ => format_ident!("__arg{}", index),
+            };
+
+            Ok((ident, arg.ty.clone()))
+        })
+        .collect::<Result<_>>()?;
 
     // Process the arguments to the function. From the list of arguments, we need to
     // generate two things:
@@ -65,49 +105,42 @@ fn quote_bindgen_fn(bindgen_fn: &BindgenFn) -> TokenStream {
     // * The list of arguments the generated function needs to take.
     // * The code for processing the raw arguments and converting them to the
     //   appropriate Rust types.
-    let mut args = Punctuated::new();
-    let mut process_args = TokenStream::new();
-    build_function_args(&bindgen_fn.args, &mut args, &mut process_args);
+    let binding_args = args.iter().map(|(ident, ty)| {
+        quote! {
+            #ident: <#ty as cs_bindgen::shared::abi::FromAbi>::Abi
+        }
+    });
+    let process_args = args.iter().map(|(ident, ty)| {
+        quote! {
+            let #ident = cs_bindgen::shared::abi::FromAbi(#ident);
+        }
+    });
 
-    let arg_names = bindgen_fn
-        .args
-        .iter()
-        .map(FnArg::ident)
-        .collect::<Punctuated<_, Comma>>();
-
-    // Process the return type of the function. We need to generate two things from it:
-    //
-    // * The corresponding return type for the generated function.
-    // * The code for processing the return type of the Rust function and converting it
-    //   to the appropriate C# type.
-    let ret_val = format_ident!("ret_val");
-    let (return_type, process_return) = match bindgen_fn.ret.primitive() {
-        None => (quote! { () }, TokenStream::new()),
-
-        Some(prim) => (
-            quote_primitive_return_type(prim),
-            quote_return_expr(prim, &ret_val),
-        ),
+    let return_type = match signature.output {
+        ReturnType::Default => quote! { () },
+        ReturnType::Type(_, ty) => quote! {
+            <#ty as cs_bindgen::shared::abi::IntoAbi>::Abi
+        },
     };
 
-    // Generate the expression for invoking the underlying Rust function.
-    let orig_fn_name = bindgen_fn.ident();
+    // Generate the list of argument names. Used both for forwarding arguments into the
+    // original function, and for populating the metadata item.
+    let arg_names = args.iter().map(|(ident, _)| ident);
 
     // Compose the various pieces to generate the final function.
-    quote! {
+    let invoke_expr = quote! { #ident(#( #arg_names, )*) };
+    let generated = quote! {
         #[no_mangle]
-        pub unsafe extern "C" fn #generated_fn_ident(#args) -> #return_type {
-            use std::convert::TryInto;
-
-            #process_args
-
-            let #ret_val = #orig_fn_name(#arg_names);
-
-            #process_return
+        pub unsafe extern "C" fn #binding_ident(#( #binding_args, )*) -> #return_type {
+            #( #process_args )*
+            cs_bindgen::shared::abi::IntoAbi::into_abi(#invoke_expr)
         }
-    }
+    };
+
+    Ok(generated)
 }
 
+/*
 fn build_function_args(
     args: &[FnArg],
     arg_decls: &mut Punctuated<TokenStream, Comma>,
@@ -260,7 +293,7 @@ fn quote_method(item: &Method) -> TokenStream {
     }
 }
 
-fn quote_drop_fn(item: &BindgenStruct) -> TokenStream {
+fn quote_drop_fn(item: &Struct) -> TokenStream {
     let ty_ident = item.ident();
     let ident = item.drop_fn_ident();
     quote! {
@@ -268,3 +301,4 @@ fn quote_drop_fn(item: &BindgenStruct) -> TokenStream {
         pub unsafe extern "C" fn #ident(_: std::boxed::Box<std::sync::Mutex<#ty_ident>>) {}
     }
 }
+*/

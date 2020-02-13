@@ -1,3 +1,6 @@
+// Re-export the shared backend so that it can be accessed from generated code.
+pub use cs_bindgen_shared as shared;
+
 pub mod prelude {
     pub use cs_bindgen_macro::*;
 }

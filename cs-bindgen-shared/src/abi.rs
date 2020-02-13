@@ -48,6 +48,7 @@ unsafe impl AbiPrimitive for u64 {}
 unsafe impl AbiPrimitive for usize {}
 unsafe impl AbiPrimitive for f32 {}
 unsafe impl AbiPrimitive for f64 {}
+unsafe impl AbiPrimitive for () {}
 
 // Pointers to any ABI primitive are also valid ABI primitives.
 unsafe impl<T: AbiPrimitive> AbiPrimitive for *const T {}
