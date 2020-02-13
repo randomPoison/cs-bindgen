@@ -1,4 +1,4 @@
-mod abi;
+pub mod abi;
 mod arg;
 mod bindgen_fn;
 mod bindgen_struct;
