@@ -1,3 +1,4 @@
+mod abi;
 mod arg;
 mod bindgen_fn;
 mod bindgen_struct;
@@ -7,6 +8,7 @@ mod primitive;
 mod ret;
 
 pub use crate::{
+    abi::{FromAbi, IntoAbi},
     arg::FnArg,
     bindgen_fn::{BindgenFn, Receiver},
     bindgen_struct::BindgenStruct,
