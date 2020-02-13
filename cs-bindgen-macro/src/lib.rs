@@ -1,9 +1,9 @@
 extern crate proc_macro;
 
-use cs_bindgen_shared::meta::{Export, Func, Method, Struct};
+use cs_bindgen_shared::meta::{Export, Func};
 use proc_macro2::TokenStream;
 use quote::*;
-use syn::{punctuated::Punctuated, token::Comma, *};
+use syn::*;
 
 #[proc_macro_attribute]
 pub fn cs_bindgen(
@@ -17,8 +17,8 @@ pub fn cs_bindgen(
 
     let generated = match parse_macro_input!(tokens as Item) {
         Item::Fn(item) => quote_fn_item(item),
-        Item::Struct(item) => Ok(quote! {}),
-        Item::Impl(item) => Ok(quote! {}),
+        Item::Struct(_item) => Ok(quote! {}),
+        Item::Impl(_item) => Ok(quote! {}),
 
         // Generate an error for any unknown item types.
         item @ _ => Err(Error::new_spanned(
@@ -112,7 +112,7 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
             #ident: <#ty as cs_bindgen::shared::abi::FromAbi>::Abi
         }
     });
-    let process_args = args.iter().map(|(ident, ty)| {
+    let process_args = args.iter().map(|(ident, _)| {
         quote! {
             let #ident = cs_bindgen::shared::abi::FromAbi::from_abi(#ident);
         }
