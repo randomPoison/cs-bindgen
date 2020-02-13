@@ -15,7 +15,7 @@ pub fn cs_bindgen(
     // manually reconstruct the original input later when returning the result.
     let mut result: TokenStream = tokens.clone().into();
 
-    let result = match parse_macro_input!(tokens as Item) {
+    let generated = match parse_macro_input!(tokens as Item) {
         Item::Fn(item) => quote_fn_item(item),
         Item::Struct(item) => Ok(quote! {}),
         Item::Impl(item) => Ok(quote! {}),
@@ -29,6 +29,7 @@ pub fn cs_bindgen(
     .unwrap_or_else(|err| err.to_compile_error());
 
     // Append the generated binding and declaration to the result stream.
+    result.extend(generated);
 
     result.into()
 }
@@ -113,7 +114,7 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
     });
     let process_args = args.iter().map(|(ident, ty)| {
         quote! {
-            let #ident = cs_bindgen::shared::abi::FromAbi(#ident);
+            let #ident = cs_bindgen::shared::abi::FromAbi::from_abi(#ident);
         }
     });
 

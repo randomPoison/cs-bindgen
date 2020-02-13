@@ -20,7 +20,9 @@ macro_rules! generate_static_bindings {
     () => {
         /// Drops a `CString` that has been passed to the .NET runtime.
         #[no_mangle]
-        pub unsafe extern "C" fn __cs_bindgen_drop_string(raw: cs_bindgen::RawString) {
+        pub unsafe extern "C" fn __cs_bindgen_drop_string(
+            raw: cs_bindgen::shared::abi::RawVec<u8>,
+        ) {
             let _ = raw.into_string();
         }
     };
