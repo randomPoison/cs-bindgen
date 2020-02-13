@@ -15,19 +15,20 @@ pub fn cs_bindgen(
     // manually reconstruct the original input later when returning the result.
     let mut result: TokenStream = tokens.clone().into();
 
-    let bindings = match parse_macro_input!(tokens as Item) {
-        Item::Fn(item) => todo!(),
-        Item::Struct(item) => todo!(),
-        Item::Impl(item) => todo!(),
+    let result = match parse_macro_input!(tokens as Item) {
+        Item::Fn(item) => quote_fn_item(item),
+        Item::Struct(item) => Ok(quote! {}),
+        Item::Impl(item) => Ok(quote! {}),
 
         // Generate an error for any unknown item types.
-        item @ _ => {
-            Error::new_spanned(item, "Item not supported with `#[cs_bindgen]`").to_compile_error()
-        }
-    };
+        item @ _ => Err(Error::new_spanned(
+            item,
+            "Item not supported with `#[cs_bindgen]`",
+        )),
+    }
+    .unwrap_or_else(|err| err.to_compile_error());
 
     // Append the generated binding and declaration to the result stream.
-    result.extend(bindings);
 
     result.into()
 }
@@ -127,6 +128,14 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
     // original function, and for populating the metadata item.
     let arg_names = args.iter().map(|(ident, _)| ident);
 
+    // Export metadata.
+    let export = quote_export(Func {
+        ident: ident.to_string(),
+        binding: binding_ident.to_string(),
+        receiver: None,
+        args: args.iter().map(|(ident, _)| ident.to_string()).collect(),
+    });
+
     // Compose the various pieces to generate the final function.
     let invoke_expr = quote! { #ident(#( #arg_names, )*) };
     let generated = quote! {
@@ -135,6 +144,8 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
             #( #process_args )*
             cs_bindgen::shared::abi::IntoAbi::into_abi(#invoke_expr)
         }
+
+        #export
     };
 
     Ok(generated)
