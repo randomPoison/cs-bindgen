@@ -3,7 +3,7 @@ use cs_bindgen_shared::*;
 use proc_macro2::TokenStream;
 use quote::*;
 
-pub fn quote_struct_binding(bindgen_struct: &BindgenStruct) -> TokenStream {
+pub fn quote_struct_binding(bindgen_struct: &Struct) -> TokenStream {
     let ident = bindgen_struct.ident();
     let drop_fn = bindgen_struct.drop_fn_ident();
     quote! {

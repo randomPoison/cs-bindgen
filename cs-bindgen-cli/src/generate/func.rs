@@ -5,7 +5,7 @@ use quote::*;
 use syn::{punctuated::Punctuated, token::Comma, Ident};
 
 pub fn quote_wrapper_body(
-    bindgen_fn: &BindgenFn,
+    bindgen_fn: &Func,
     binding_ident: &Ident,
     output: &Ident,
 ) -> TokenStream {
@@ -98,7 +98,7 @@ pub fn quote_wrapper_body(
         })
 }
 
-pub fn quote_wrapper_args(bindgen_fn: &BindgenFn) -> Punctuated<TokenStream, Comma> {
+pub fn quote_wrapper_args(bindgen_fn: &Func) -> Punctuated<TokenStream, Comma> {
     bindgen_fn
         .args
         .iter()
@@ -110,7 +110,7 @@ pub fn quote_wrapper_args(bindgen_fn: &BindgenFn) -> Punctuated<TokenStream, Com
         .collect()
 }
 
-pub fn quote_wrapper_fn(bindgen_fn: &BindgenFn, binding_ident: &Ident) -> TokenStream {
+pub fn quote_wrapper_fn(bindgen_fn: &Func, binding_ident: &Ident) -> TokenStream {
     let cs_fn_name = format_ident!("{}", bindgen_fn.raw_ident().to_camel_case());
     let cs_return_ty = match bindgen_fn.ret.primitive() {
         None => quote! { void },

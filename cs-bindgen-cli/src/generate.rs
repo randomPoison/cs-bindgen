@@ -10,7 +10,7 @@ use syn::{punctuated::Punctuated, token::Comma, Ident};
 mod class;
 mod func;
 
-pub fn generate_bindings(decls: Vec<BindgenItem>, opt: &Opt) -> String {
+pub fn generate_bindings(decls: Vec<Export>, opt: &Opt) -> String {
     let dll_name = opt
         .input
         .file_stem()
@@ -22,13 +22,13 @@ pub fn generate_bindings(decls: Vec<BindgenItem>, opt: &Opt) -> String {
     let raw_bindings = decls
         .iter()
         .map(|item| match item {
-            BindgenItem::Fn(item) => quote_raw_binding(item, &item.generated_ident(), dll_name),
+            Export::Fn(item) => quote_raw_binding(item, &item.generated_ident(), dll_name),
 
-            BindgenItem::Method(item) => {
+            Export::Method(item) => {
                 quote_raw_binding(&item.method, &item.binding_ident(), dll_name)
             }
 
-            BindgenItem::Struct(item) => {
+            Export::Struct(item) => {
                 let binding_ident = item.drop_fn_ident();
                 let entry_point = binding_ident.to_string();
                 quote! {
@@ -46,11 +46,11 @@ pub fn generate_bindings(decls: Vec<BindgenItem>, opt: &Opt) -> String {
     let mut method_bindings = Vec::new();
     for decl in &decls {
         match decl {
-            BindgenItem::Fn(decl) => {
+            Export::Fn(decl) => {
                 fn_bindings.push(quote_wrapper_fn(decl, &decl.generated_ident()))
             }
-            BindgenItem::Struct(decl) => method_bindings.push(quote_struct_binding(decl)),
-            BindgenItem::Method(decl) => method_bindings.push(quote_method_binding(decl)),
+            Export::Struct(decl) => method_bindings.push(quote_struct_binding(decl)),
+            Export::Method(decl) => method_bindings.push(quote_method_binding(decl)),
         }
     }
 
@@ -97,7 +97,7 @@ pub fn generate_bindings(decls: Vec<BindgenItem>, opt: &Opt) -> String {
 }
 
 pub fn quote_raw_binding(
-    bindgen_fn: &BindgenFn,
+    bindgen_fn: &Func,
     binding_ident: &Ident,
     dll_name: &str,
 ) -> TokenStream {

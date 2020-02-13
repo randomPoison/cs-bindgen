@@ -1,12 +1,12 @@
 use crate::Opt;
-use cs_bindgen_shared::BindgenItem;
+use cs_bindgen_shared::Export;
 use snafu::*;
 use std::{fs, io, path::PathBuf, str};
 use wasmtime::*;
 
 static DECL_PTR_FN_PREFIX: &str = "__cs_bindgen_decl_ptr_";
 
-pub fn load_declarations(opt: &Opt) -> Result<Vec<BindgenItem>, Error> {
+pub fn load_declarations(opt: &Opt) -> Result<Vec<Export>, Error> {
     let store = Store::default();
 
     let test_wasm = fs::read(&opt.input).context(LoadModule {
@@ -80,7 +80,7 @@ fn deserialize_decl_string(
     decl_ptr: i32,
     len: i32,
     name: &str,
-) -> Result<BindgenItem, Error> {
+) -> Result<Export, Error> {
     // Convert the pointer and len to `usize` so that we can index into the byte array.
     let decl_ptr = decl_ptr as usize;
     let len = len as usize;
