@@ -1,1 +1,1 @@
-pub trait Decode: 'static + Sized {}
+pub trait Decode: Sized {}

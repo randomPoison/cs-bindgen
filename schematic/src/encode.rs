@@ -1,4 +1,4 @@
-pub trait Encode: 'static + Sized {
+pub trait Encode: Sized {
     fn encode<E>(encoder: E) -> Result<E::Ok, E::Error>
     where
         E: Encoder;
@@ -23,7 +23,6 @@ pub trait Encoder: Sized {
     fn encode_f64(self) -> Result<Self::Ok, Self::Error>;
     fn encode_char(self) -> Result<Self::Ok, Self::Error>;
     fn encode_str(self) -> Result<Self::Ok, Self::Error>;
-    fn encode_bytes(self) -> Result<Self::Ok, Self::Error>;
     fn encode_unit(self) -> Result<Self::Ok, Self::Error>;
 
     fn encode_option<T>(self) -> Result<Self::Ok, Self::Error>
