@@ -6,4 +6,5 @@ members = [
     "cs-bindgen-shared",
     "integration-tests",
     "integration-tests/builder",
+    "schematic",
 ]
