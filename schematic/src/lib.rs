@@ -1,9 +1,11 @@
 use encode::{Encode, Encoder};
+use serde::*;
 use std::borrow::Cow;
 
 pub mod decode;
 pub mod encode;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Schema {
     Struct(Box<Struct>),
     UnitStruct(UnitStruct),
@@ -36,18 +38,24 @@ pub enum Schema {
     Unit,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct UnitStruct {
     pub name: Cow<'static, str>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NewtypeStruct {
     pub name: Cow<'static, str>,
     pub inner: Schema,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Struct;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Enum;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TupleStruct;
 
 pub struct SchemaEncoder;
