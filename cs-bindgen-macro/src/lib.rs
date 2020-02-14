@@ -109,19 +109,19 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
     //   appropriate Rust types.
     let binding_args = args.iter().map(|(ident, ty)| {
         quote! {
-            #ident: <#ty as cs_bindgen::shared::abi::FromAbi>::Abi
+            #ident: <#ty as cs_bindgen::abi::FromAbi>::Abi
         }
     });
     let process_args = args.iter().map(|(ident, _)| {
         quote! {
-            let #ident = cs_bindgen::shared::abi::FromAbi::from_abi(#ident);
+            let #ident = cs_bindgen::abi::FromAbi::from_abi(#ident);
         }
     });
 
     let return_type = match signature.output {
         ReturnType::Default => quote! { () },
         ReturnType::Type(_, ty) => quote! {
-            <#ty as cs_bindgen::shared::abi::IntoAbi>::Abi
+            <#ty as cs_bindgen::abi::IntoAbi>::Abi
         },
     };
 
@@ -143,7 +143,7 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
         #[no_mangle]
         pub unsafe extern "C" fn #binding_ident(#( #binding_args, )*) -> #return_type {
             #( #process_args )*
-            cs_bindgen::shared::abi::IntoAbi::into_abi(#invoke_expr)
+            cs_bindgen::abi::IntoAbi::into_abi(#invoke_expr)
         }
 
         #export

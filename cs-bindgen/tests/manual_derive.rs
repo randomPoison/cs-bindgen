@@ -8,10 +8,10 @@ pub fn example_fn(first: u32, second: String) -> String {
 
 #[no_mangle]
 pub unsafe extern "C" fn __cs_bindgen_generated__example_fn(
-    first: <u32 as cs_bindgen::shared::abi::FromAbi>::Abi,
-    second: <String as cs_bindgen::shared::abi::FromAbi>::Abi,
-) -> <String as cs_bindgen::shared::abi::IntoAbi>::Abi {
-    let first = cs_bindgen::shared::abi::FromAbi::from_abi(first);
-    let second = cs_bindgen::shared::abi::FromAbi::from_abi(second);
-    cs_bindgen::shared::abi::IntoAbi::into_abi(example_fn(first, second))
+    first: <u32 as cs_bindgen::abi::FromAbi>::Abi,
+    second: <String as cs_bindgen::abi::FromAbi>::Abi,
+) -> <String as cs_bindgen::abi::IntoAbi>::Abi {
+    let first = cs_bindgen::abi::FromAbi::from_abi(first);
+    let second = cs_bindgen::abi::FromAbi::from_abi(second);
+    cs_bindgen::abi::IntoAbi::into_abi(example_fn(first, second))
 }
