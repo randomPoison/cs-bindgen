@@ -9,3 +9,4 @@ edition = "2018"
 [dependencies]
 cs-bindgen-macro = { version = "0.1", path = "../cs-bindgen-macro" }
 cs-bindgen-shared = { version = "0.1", path = "../cs-bindgen-shared" }
+serde_json = "1.0.48"

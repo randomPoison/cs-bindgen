@@ -15,3 +15,24 @@ pub unsafe extern "C" fn __cs_bindgen_generated__example_fn(
     let second = cs_bindgen::abi::FromAbi::from_abi(second);
     cs_bindgen::abi::IntoAbi::into_abi(example_fn(first, second))
 }
+
+#[no_mangle]
+pub unsafe extern "C" fn __cs_bindgen_describe__example_fn() -> Box<cs_bindgen::abi::RawVec<u8>> {
+    use cs_bindgen::shared::{schematic, Describe};
+
+    let schema = Describe {
+        name: "example_fn".into(),
+        receiver: None,
+        inputs: vec![
+            schematic::encode::<u32>().expect("Failed to generate schema for argument"),
+            schematic::encode::<String>().expect("Failed to generate schema for argument"),
+        ],
+        output: schematic::encode::<String>().expect("Failed to generate schema for return type"),
+    };
+
+    Box::new(
+        cs_bindgen::serde_json::to_string(&schema)
+            .expect("Failed to serialize schema")
+            .into(),
+    )
+}
