@@ -1,6 +1,7 @@
 use cs_bindgen::prelude::*;
 
-cs_bindgen::generate_static_bindings!();
+// Re-export core cs_bindgen functionality. Required in order for the generated Wasm module.
+pub use cs_bindgen::exports::*;
 
 #[cs_bindgen]
 pub fn greet_a_number(num: i32) -> String {
