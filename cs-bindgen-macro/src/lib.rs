@@ -121,6 +121,13 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
     let name = ident.to_string();
     let binding_name = binding_ident.to_string();
 
+    let describe_args = args.iter().map(|(ident, ty)| {
+        let name = ident.to_string();
+        quote! {
+            (#name.into(), encode::<#ty>().expect("Failed to generate schema for argument type"))
+        }
+    });
+
     // Generate the describe function.
     let describe = quote! {
         #[no_mangle]
@@ -131,7 +138,9 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
                 name: #name.into(),
                 binding: #binding_name.into(),
                 receiver: None,
-                inputs: vec![todo!("Describe args")],
+                inputs: vec![#(
+                    #describe_args,
+                )*],
                 output: encode::<$return_type>().expect("Failed to generate schema for return type"),
             };
 
