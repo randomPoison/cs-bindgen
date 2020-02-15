@@ -1,70 +1,56 @@
 use crate::Opt;
 use cs_bindgen_shared::Export;
+use parity_wasm::elements::ExportEntry;
 use snafu::*;
 use std::{fs, io, path::PathBuf, str};
-use wasmtime::*;
+use wasmi::{ImportsBuilder, Module, ModuleInstance, NopExternals, RuntimeValue};
 
 static DECL_PTR_FN_PREFIX: &str = "__cs_bindgen_decl_ptr_";
 
 pub fn load_declarations(opt: &Opt) -> Result<Vec<Export>, Error> {
-    let store = Store::default();
+    // Load the WASM module from the specified file.
+    let module = parity_wasm::deserialize_file(&opt.input).context(LoadModule)?;
 
-    let test_wasm = fs::read(&opt.input).context(LoadModule {
-        path: opt.input.clone(),
-    })?;
-    let module = Module::new(&store, &test_wasm).context(InstantiateModule)?;
-    let instance = Instance::new(&store, &module, &[]).context(InstantiateModule)?;
-
-    let memory = instance
-        .find_export_by_name("memory")
-        .and_then(Extern::memory)
+    let decl_exports = module
+        .export_section()
         .context(InvalidModule {
-            message: "`memory` not found in module, or was not a `Memory` extern",
+            message: "Wasm module has no exports",
         })?
-        .borrow();
+        .entries()
+        .iter()
+        .map(ExportEntry::field)
+        .filter(|name| name.starts_with(DECL_PTR_FN_PREFIX))
+        .map(Into::into)
+        .collect::<Vec<String>>();
+
+    // Instantiate a module with empty imports and
+    // assert that there is no `start` function.
+    let module = Module::from_parity_wasm_module(module)?;
+    let instance =
+        ModuleInstance::new(&module, &ImportsBuilder::default())?.run_start(&mut NopExternals)?;
 
     // Find any exported declarations and extract the declaration data from the module.
     let mut decls = Vec::new();
-    for func in module.exports() {
-        if func.name().starts_with("__cs_bindgen_decl_ptr_") {
-            let fn_suffix = &func.name()[DECL_PTR_FN_PREFIX.len()..];
+    for func in decl_exports {
+        let result_string_addr = instance
+            .invoke_export(&func, &[], &mut NopExternals)
+            .context(Invoke { name: func })?
+            .context();
+        dbg!(&result_string_addr);
 
-            // Get the decl function from the instance.
-            let decl_fn = instance
-                .find_export_by_name(func.name())
-                .unwrap_or_else(|| {
-                    panic!(
-                        "Failed to find export `{}` declared in module exports. This likely \
-                        indicates a bug in the `wasmtime` crate",
-                        func.name()
-                    )
-                })
-                .func()
-                .context(DeclFunction { name: func.name() })?
-                .borrow();
+        // Invoke both to get the pointer to the decl string and the length of the string.
+        let decl_ptr = decl_fn
+            .call(&[])
+            .context(Invoke { name: func.name() })
+            .and_then(|ret| extract_return(ret, func.name()))?;
+        let len = len_fn
+            .call(&[])
+            .context(Invoke { name: &len_fn_name })
+            .and_then(|ret| extract_return(ret, &len_fn_name))?;
 
-            // Get the length function from the instance.
-            let len_fn_name = format!("__cs_bindgen_decl_len_{}", fn_suffix);
-            let len_fn = instance
-                .find_export_by_name(&len_fn_name)
-                .and_then(Extern::func)
-                .context(DeclFunction { name: &len_fn_name })?
-                .borrow();
+        let decl = deserialize_decl_string(&memory, decl_ptr, len, fn_suffix)?;
 
-            // Invoke both to get the pointer to the decl string and the length of the string.
-            let decl_ptr = decl_fn
-                .call(&[])
-                .context(Invoke { name: func.name() })
-                .and_then(|ret| extract_return(ret, func.name()))?;
-            let len = len_fn
-                .call(&[])
-                .context(Invoke { name: &len_fn_name })
-                .and_then(|ret| extract_return(ret, &len_fn_name))?;
-
-            let decl = deserialize_decl_string(&memory, decl_ptr, len, fn_suffix)?;
-
-            decls.push(decl);
-        }
+        decls.push(decl);
     }
 
     Ok(decls)
@@ -105,20 +91,28 @@ fn deserialize_decl_string(
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("Could not load file from path {}: {}", path.display(), source))]
-    LoadModule { path: PathBuf, source: io::Error },
-
-    #[snafu(display("Could not instantiate wasm module: {}", source))]
-    InstantiateModule { source: anyhow::Error },
+    #[snafu(display("Could not load Wasm module: {}", source))]
+    LoadModule {
+        source: parity_wasm::elements::Error,
+    },
 
     #[snafu(display("WASM module was invalid: {}", message))]
     InvalidModule { message: &'static str },
 
-    #[snafu(display("Exported item `{}` was missing or was not a function", name))]
-    DeclFunction { name: String },
+    #[snafu(
+        display("An error occurred instantiating the Wasm module: {}", source),
+        context(false)
+    )]
+    WasmError { source: wasmi::Error },
 
-    #[snafu(display("Hit trap while invoking `{}`: {}", name, source))]
-    Invoke { name: String, source: Trap },
+    #[snafu(
+        display("An error occurred while starting Wasm module: {}", source),
+        context(false)
+    )]
+    StartError { source: wasmi::Trap },
+
+    #[snafu(display("Error while invoking `{}`: {}", name, source))]
+    Invoke { name: String, source: wasmi::Error },
 
     #[snafu(display("Declaration function `{}`: {:?}", name, ret))]
     BadReturn { name: String, ret: Box<[Val]> },
