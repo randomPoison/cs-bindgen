@@ -2,7 +2,6 @@ pub mod abi;
 
 // Re-export crates used in the generated code.
 pub use cs_bindgen_shared as shared;
-pub use serde_json;
 
 pub mod prelude {
     pub use cs_bindgen_macro::*;

@@ -20,7 +20,7 @@ pub unsafe extern "C" fn __cs_bindgen_generated__example_fn(
 pub unsafe extern "C" fn __cs_bindgen_describe__example_fn() -> Box<cs_bindgen::abi::RawVec<u8>> {
     use cs_bindgen::shared::{schematic::encode, Func};
 
-    let schema = Func {
+    let export = Func {
         name: "example_fn".into(),
         binding: "__cs_bindgen_generated__example_fn".into(),
         receiver: None,
@@ -37,9 +37,5 @@ pub unsafe extern "C" fn __cs_bindgen_describe__example_fn() -> Box<cs_bindgen::
         output: encode::<String>().expect("Failed to generate schema for return type"),
     };
 
-    Box::new(
-        cs_bindgen::serde_json::to_string(&schema)
-            .expect("Failed to serialize schema")
-            .into(),
-    )
+    Box::new(cs_bindgen::shared::serialize_export(export).into())
 }

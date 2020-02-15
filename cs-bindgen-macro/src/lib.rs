@@ -135,7 +135,7 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
         pub unsafe extern "C" fn #describe_ident() -> Box<cs_bindgen::abi::RawVec<u8>> {
             use cs_bindgen::shared::{schematic::encode, Func};
 
-            let description = Func {
+            let export = Func {
                 name: #name.into(),
                 binding: #binding_name.into(),
                 receiver: None,
@@ -145,11 +145,7 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
                 output: encode::<#return_type>().expect("Failed to generate schema for return type"),
             };
 
-            Box::new(
-                cs_bindgen::serde_json::to_string(&description)
-                    .expect("Failed to serialize schema")
-                    .into(),
-            )
+            std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())
         }
     };
 

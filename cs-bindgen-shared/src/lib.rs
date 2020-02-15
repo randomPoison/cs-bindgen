@@ -7,6 +7,11 @@ use std::borrow::Cow;
 // Re-export schematic so that dependent crates don't need to directly depend on it.
 pub use schematic;
 
+pub fn serialize_export<E: Into<Export>>(export: E) -> String {
+    let export = export.into();
+    serde_json::to_string(&export).expect("Failed to serialize export")
+}
+
 /// An item exported from the Rust as a language binding.
 #[derive(Debug, Clone, From, Serialize, Deserialize)]
 pub enum Export {
