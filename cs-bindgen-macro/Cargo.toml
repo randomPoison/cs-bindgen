@@ -8,7 +8,6 @@ edition = "2018"
 proc-macro = true
 
 [dependencies]
-cs-bindgen-shared = { version = "0.1.0", path = "../cs-bindgen-shared" }
 proc-macro2 = "1.0.8"
 quote = "1.0.2"
 serde = { version = "1.0.104", features = ["derive"] }

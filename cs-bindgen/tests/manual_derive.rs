@@ -22,10 +22,17 @@ pub unsafe extern "C" fn __cs_bindgen_describe__example_fn() -> Box<cs_bindgen::
 
     let schema = Describe {
         name: "example_fn".into(),
+        binding: "__cs_bindgen_generated__example_fn".into(),
         receiver: None,
         inputs: vec![
-            schematic::encode::<u32>().expect("Failed to generate schema for argument"),
-            schematic::encode::<String>().expect("Failed to generate schema for argument"),
+            (
+                Some("first"),
+                schematic::encode::<u32>().expect("Failed to generate schema for argument"),
+            ),
+            (
+                Some("second"),
+                schematic::encode::<String>().expect("Failed to generate schema for argument"),
+            ),
         ],
         output: schematic::encode::<String>().expect("Failed to generate schema for return type"),
     };

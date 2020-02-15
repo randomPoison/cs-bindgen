@@ -1,6 +1,5 @@
 extern crate proc_macro;
 
-use cs_bindgen_shared::meta::{Export, Func};
 use proc_macro2::TokenStream;
 use quote::*;
 use syn::*;
@@ -32,30 +31,6 @@ pub fn cs_bindgen(
     result.extend(generated);
 
     result.into()
-}
-
-fn quote_export<T: Into<Export>>(export: T) -> TokenStream {
-    let export = export.into();
-
-    let decl_json = serde_json::to_string(&export).expect("Failed to serialize decl to JSON");
-    let decl_var_ident = format_ident!("__cs_bindgen_decl_json_{}", export.ident());
-    let decl_ptr_ident = format_ident!("__cs_bindgen_decl_ptr_{}", export.ident());
-    let decl_len_ident = format_ident!("__cs_bindgen_decl_len_{}", export.ident());
-
-    quote! {
-        #[allow(bad_style)]
-        static #decl_var_ident: &str = #decl_json;
-
-        #[no_mangle]
-        pub extern "C" fn #decl_ptr_ident() -> *const u8 {
-            #decl_var_ident.as_ptr()
-        }
-
-        #[no_mangle]
-        pub extern "C" fn #decl_len_ident() -> usize {
-            #decl_var_ident.len()
-        }
-    }
 }
 
 fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
@@ -129,27 +104,49 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
     // original function, and for populating the metadata item.
     let arg_names = args.iter().map(|(ident, _)| ident);
 
-    // Export metadata.
-    let export = quote_export(Func {
-        ident: ident.to_string(),
-        binding: binding_ident.to_string(),
-        receiver: None,
-        args: args.iter().map(|(ident, _)| ident.to_string()).collect(),
-    });
-
-    // Compose the various pieces to generate the final function.
+    // Compose the various pieces together into the final binding function.
     let invoke_expr = quote! { #ident(#( #arg_names, )*) };
-    let generated = quote! {
+    let binding = quote! {
         #[no_mangle]
         pub unsafe extern "C" fn #binding_ident(#( #binding_args, )*) -> #return_type {
             #( #process_args )*
             cs_bindgen::abi::IntoAbi::into_abi(#invoke_expr)
         }
-
-        #export
     };
 
-    Ok(generated)
+    // Generate the name of the describe function.
+    let describe_ident = format_ident!("__cs_bindgen_describe__{}", ident);
+
+    // Generate string versions of the two function idents.
+    let name = ident.to_string();
+    let binding_name = binding_ident.to_string();
+
+    // Generate the describe function.
+    let describe = quote! {
+        #[no_mangle]
+        pub unsafe extern "C" fn #describe_ident() -> Box<cs_bindgen::abi::RawVec<u8>> {
+            use cs_bindgen::shared::{schematic::encode, Describe};
+
+            let describe = Describe {
+                name: #name.into(),
+                binding: #binding_name.into(),
+                receiver: None,
+                inputs: vec![todo!("Describe args")],
+                output: encode::<$return_type>().expect("Failed to generate schema for return type"),
+            };
+
+            Box::new(
+                cs_bindgen::serde_json::to_string(&schema)
+                    .expect("Failed to serialize schema")
+                    .into(),
+            )
+        }
+    };
+
+    Ok(quote! {
+        #binding
+        #describe
+    })
 }
 
 /*
