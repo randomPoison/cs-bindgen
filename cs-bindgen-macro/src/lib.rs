@@ -95,9 +95,7 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
 
     let return_type = match signature.output {
         ReturnType::Default => quote! { () },
-        ReturnType::Type(_, ty) => quote! {
-            <#ty as cs_bindgen::abi::IntoAbi>::Abi
-        },
+        ReturnType::Type(_, ty) => ty.to_token_stream(),
     };
 
     // Generate the list of argument names. Used both for forwarding arguments into the
@@ -108,7 +106,10 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
     let invoke_expr = quote! { #ident(#( #arg_names, )*) };
     let binding = quote! {
         #[no_mangle]
-        pub unsafe extern "C" fn #binding_ident(#( #binding_args, )*) -> #return_type {
+        pub unsafe extern "C" fn #binding_ident(
+            #( #binding_args, )*
+        ) -> <#return_type as cs_bindgen::abi::IntoAbi>::Abi
+    {
             #( #process_args )*
             cs_bindgen::abi::IntoAbi::into_abi(#invoke_expr)
         }
@@ -124,7 +125,7 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
     let describe_args = args.iter().map(|(ident, ty)| {
         let name = ident.to_string();
         quote! {
-            (#name.into(), encode::<#ty>().expect("Failed to generate schema for argument type"))
+            (Some(#name.into()), encode::<#ty>().expect("Failed to generate schema for argument type"))
         }
     });
 
@@ -132,20 +133,20 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
     let describe = quote! {
         #[no_mangle]
         pub unsafe extern "C" fn #describe_ident() -> Box<cs_bindgen::abi::RawVec<u8>> {
-            use cs_bindgen::shared::{schematic::encode, Describe};
+            use cs_bindgen::shared::{schematic::encode, Func};
 
-            let describe = Describe {
+            let description = Func {
                 name: #name.into(),
                 binding: #binding_name.into(),
                 receiver: None,
                 inputs: vec![#(
                     #describe_args,
                 )*],
-                output: encode::<$return_type>().expect("Failed to generate schema for return type"),
+                output: encode::<#return_type>().expect("Failed to generate schema for return type"),
             };
 
             Box::new(
-                cs_bindgen::serde_json::to_string(&schema)
+                cs_bindgen::serde_json::to_string(&description)
                     .expect("Failed to serialize schema")
                     .into(),
             )
