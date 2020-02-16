@@ -1,6 +1,7 @@
 use crate::{
     encode::{Encode, Encoder},
     schema::*,
+    TypeName,
 };
 
 pub struct SchemaEncoder;
@@ -65,7 +66,7 @@ impl<'a> Encoder for &'a mut SchemaEncoder {
         Ok(Schema::Char)
     }
 
-    fn encode_str(self) -> Result<Self::Ok, Self::Error> {
+    fn encode_string(self) -> Result<Self::Ok, Self::Error> {
         Ok(Schema::String)
     }
 
@@ -81,11 +82,11 @@ impl<'a> Encoder for &'a mut SchemaEncoder {
         Ok(Schema::Option(Box::new(inner)))
     }
 
-    fn encode_unit_struct(self, name: &'static str) -> Result<Self::Ok, Self::Error> {
-        Ok(Schema::UnitStruct(UnitStruct { name: name.into() }))
+    fn encode_unit_struct(self, name: TypeName) -> Result<Self::Ok, Self::Error> {
+        Ok(Schema::UnitStruct(UnitStruct { name }))
     }
 
-    fn encode_newtype_struct<T>(self, name: &'static str) -> Result<Self::Ok, Self::Error>
+    fn encode_newtype_struct<T>(self, name: TypeName) -> Result<Self::Ok, Self::Error>
     where
         T: Encode,
     {
@@ -96,7 +97,7 @@ impl<'a> Encoder for &'a mut SchemaEncoder {
         })))
     }
 
-    fn encode_enum<T>(self, name: &'static str) -> Result<Self::Ok, Self::Error>
+    fn encode_enum<T>(self, _name: TypeName) -> Result<Self::Ok, Self::Error>
     where
         T: Encode,
     {
@@ -107,7 +108,7 @@ impl<'a> Encoder for &'a mut SchemaEncoder {
         unimplemented!()
     }
 
-    fn encode_tuple_struct(self, name: &'static str) -> Result<Self::Ok, Self::Error> {
+    fn encode_tuple_struct(self, _name: TypeName) -> Result<Self::Ok, Self::Error> {
         unimplemented!()
     }
 
@@ -126,7 +127,7 @@ impl<'a> Encoder for &'a mut SchemaEncoder {
         unimplemented!()
     }
 
-    fn encode_struct(self, name: &'static str) -> Result<Self::Ok, Self::Error> {
+    fn encode_struct(self, _name: TypeName) -> Result<Self::Ok, Self::Error> {
         unimplemented!()
     }
 }

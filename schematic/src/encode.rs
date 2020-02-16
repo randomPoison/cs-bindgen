@@ -1,3 +1,5 @@
+use crate::TypeName;
+
 pub trait Encode: Sized {
     fn encode<E>(encoder: E) -> Result<E::Ok, E::Error>
     where
@@ -22,20 +24,20 @@ pub trait Encoder: Sized {
     fn encode_f32(self) -> Result<Self::Ok, Self::Error>;
     fn encode_f64(self) -> Result<Self::Ok, Self::Error>;
     fn encode_char(self) -> Result<Self::Ok, Self::Error>;
-    fn encode_str(self) -> Result<Self::Ok, Self::Error>;
+    fn encode_string(self) -> Result<Self::Ok, Self::Error>;
     fn encode_unit(self) -> Result<Self::Ok, Self::Error>;
 
     fn encode_option<T>(self) -> Result<Self::Ok, Self::Error>
     where
         T: Encode;
 
-    fn encode_unit_struct(self, name: &'static str) -> Result<Self::Ok, Self::Error>;
+    fn encode_unit_struct(self, name: TypeName) -> Result<Self::Ok, Self::Error>;
 
-    fn encode_enum<T>(self, name: &'static str) -> Result<Self::Ok, Self::Error>
+    fn encode_enum<T>(self, name: TypeName) -> Result<Self::Ok, Self::Error>
     where
         T: Encode;
 
-    fn encode_newtype_struct<T>(self, name: &'static str) -> Result<Self::Ok, Self::Error>
+    fn encode_newtype_struct<T>(self, name: TypeName) -> Result<Self::Ok, Self::Error>
     where
         T: Encode;
 
@@ -45,12 +47,12 @@ pub trait Encoder: Sized {
 
     fn encode_tuple(self) -> Result<Self::Ok, Self::Error>;
 
-    fn encode_tuple_struct(self, name: &'static str) -> Result<Self::Ok, Self::Error>;
+    fn encode_tuple_struct(self, name: TypeName) -> Result<Self::Ok, Self::Error>;
 
     fn encode_map<K, V>(self) -> Result<Self::Ok, Self::Error>
     where
         K: Encode,
         V: Encode;
 
-    fn encode_struct(self, name: &'static str) -> Result<Self::Ok, Self::Error>;
+    fn encode_struct(self, name: TypeName) -> Result<Self::Ok, Self::Error>;
 }

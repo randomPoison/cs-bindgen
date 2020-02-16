@@ -41,7 +41,7 @@ impl_encode! {
     u128 => encode_u128,
     bool => encode_bool,
     char => encode_char,
-    String => encode_str,
+    String => encode_string,
     Option<T> => encode_option,
     Vec<T> => encode_seq,
     VecDeque<T> => encode_seq,
@@ -59,8 +59,8 @@ impl Encode for () {
     }
 }
 
-impl<'a> Encode for &'a str {
-    fn encode<E: Encoder>(encoder: E) -> Result<E::Ok, E::Error> {
-        encoder.encode_str()
-    }
-}
+// impl<'a> Encode for &'a str {
+//     fn encode<E: Encoder>(encoder: E) -> Result<E::Ok, E::Error> {
+//         encoder.encode_str()
+//     }
+// }
