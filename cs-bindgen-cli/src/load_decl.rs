@@ -12,16 +12,15 @@ pub fn load_declarations(opt: &Opt) -> Result<Vec<Export>, Error> {
     // Load the WASM module from the specified file.
     let module = parity_wasm::deserialize_file(&opt.input)?;
 
-    let descriptor_fns = dbg!(module
+    let descriptor_fns = module
         .export_section()
         .ok_or(failure::err_msg("No exports found in Wasm module"))?
-        .entries())
-    .iter()
-    .map(ExportEntry::field)
-    .filter(|name| name.starts_with(DECL_PTR_FN_PREFIX))
-    .map(Into::into)
-    .collect::<Vec<String>>();
-    dbg!(&descriptor_fns);
+        .entries()
+        .iter()
+        .map(ExportEntry::field)
+        .filter(|name| name.starts_with(DECL_PTR_FN_PREFIX))
+        .map(Into::into)
+        .collect::<Vec<String>>();
 
     // Instantiate a module with empty imports and
     // assert that there is no `start` function.
@@ -43,7 +42,6 @@ pub fn load_declarations(opt: &Opt) -> Result<Vec<Export>, Error> {
             .ok_or(failure::err_msg("Decl function didn't return a value"))?
             .try_into::<i32>()
             .ok_or(failure::err_msg("Decl function didn't return an `i32`"))?;
-        dbg!(&result_string_addr);
 
         // Get the bytes of the `RawVec<u8>` struct that was created.
         let str_ptr = memory.get_value::<u32>(result_string_addr as u32)?;
@@ -52,14 +50,11 @@ pub fn load_declarations(opt: &Opt) -> Result<Vec<Export>, Error> {
         // Get the JSON string returned by the descriptor function.
         let json_bytes = memory.get(str_ptr, str_len as usize)?;
         let json = str::from_utf8(&json_bytes)?;
-        dbg!(json);
 
         // Deserialize the export and add it to the list.
         let export = serde_json::from_str(json)?;
         exports.push(export);
     }
-
-    dbg!(&exports);
 
     Ok(exports)
 }

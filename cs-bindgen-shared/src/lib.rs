@@ -19,16 +19,43 @@ pub enum Export {
     Struct(Struct),
 }
 
+/// A free function exported from the Rust lib.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Func {
+    /// The original name of the function, as declared in the Rust source code.
+    ///
+    /// The function with this name cannot be called directly in the built lib. The
+    /// value of `binding` specifies the name of the generated binding function.
     pub name: Cow<'static, str>,
+
+    /// The name of the generated binding function.
+    ///
+    /// This is the exported function that is directly accessible in the generated
+    /// lib. This name isn't meant to be user-facing, and should only be used
+    /// internally by the generated language bindings to call into the lib. For the
+    /// "true" name of the function, see `name`.
     pub binding: Cow<'static, str>,
+
+    /// The argument types for the function.
+    ///
+    /// Note that these are the types of the original function, NOT the generated
+    /// binding function.
     pub inputs: Vec<(Cow<'static, str>, Schema)>,
+
+    /// The return type of the function.
+    ///
+    /// Note that this is the return type of the original function, NOT the generated
+    /// binding function.
     pub output: Schema,
 }
 
 impl Func {
-    pub fn inputs(&self) -> impl Iterator<Item = (&str, &Schema)> {
+    /// Returns an iterator over the inputs to the function.
+    ///
+    /// The argument names are automatically deref'd from `Cow<str>` to `&str` for
+    /// convenience. If direct access to the `Cow<str>` is needed, the `inputs` field
+    /// can be used directly.
+    pub fn inputs(&self) -> impl Iterator<Item = (&str, &Schema)> + Clone {
         self.inputs.iter().map(|(name, schema)| (&**name, schema))
     }
 }
@@ -44,7 +71,7 @@ pub struct Method {
 }
 
 impl Method {
-    pub fn inputs(&self) -> impl Iterator<Item = (&str, &Schema)> {
+    pub fn inputs(&self) -> impl Iterator<Item = (&str, &Schema)> + Clone {
         self.inputs.iter().map(|(name, schema)| (&**name, schema))
     }
 }

@@ -1,16 +1,19 @@
 use self::{binding::*, func::*};
 use crate::Opt;
-use cs_bindgen_shared::{schematic::Schema, Export, Func, Method, Struct};
+use cs_bindgen_shared::Export;
 use heck::*;
 use quote::*;
 use std::ffi::OsStr;
-use syn::{punctuated::Punctuated, token::Comma, Ident};
 
 // mod class;
 mod binding;
 mod func;
 
 pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, failure::Error> {
+    // TODO: Add a validation pass to detect any invalid types (e.g. 128 bit integers,
+    // `()` as an argument). This would remove the need to have graceful error handling
+    // around those cases.
+
     let dll_name = opt
         .input
         .file_stem()
@@ -26,10 +29,10 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
         .collect::<Result<_, _>>()?;
 
     let mut fn_bindings = Vec::new();
-    let mut method_bindings = Vec::new();
+    // let mut method_bindings = Vec::new();
     for decl in &exports {
         match decl {
-            Export::Fn(decl) => fn_bindings.push(quote_wrapper_fn(decl, &decl.generated_ident())),
+            Export::Fn(decl) => fn_bindings.push(quote_wrapper_fn(decl)),
             Export::Struct(decl) => todo!("Generate struct binding"),
             Export::Method(decl) => todo!("Generate method binding"),
         }
@@ -56,7 +59,7 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
             #( #fn_bindings )*
         }
 
-        #( #method_bindings )*
+        // #( #method_bindings )*
 
         [StructLayout(LayoutKind.Sequential)]
         internal unsafe struct RustOwnedString
