@@ -29,7 +29,7 @@ pub fn quote_wrapper_fn(func: &Func) -> TokenStream {
     let body = quote_wrapper_body(&func.binding, func.inputs(), &func.output, &ret);
 
     quote! {
-        public static #return_ty #name(#( #args, )*)
+        public static #return_ty #name(#( #args ),*)
         {
             #ret_decl
             unsafe {

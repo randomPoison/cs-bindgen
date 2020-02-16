@@ -13,7 +13,7 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str) -> Result<TokenStream,
     match export {
         Export::Fn(item) => {
             let dll_import_attrib = quote_dll_import(dll_name, &item.binding);
-            let binding_ident = format_ident!("{}", &*item.name);
+            let binding_ident = format_ident!("{}", &*item.binding);
             let return_ty = quote_binding_return_type(&item.output)?;
             let args = quote_binding_args(item.inputs())?;
 
@@ -25,7 +25,7 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str) -> Result<TokenStream,
 
         Export::Method(item) => {
             let dll_import_attrib = quote_dll_import(dll_name, &item.binding);
-            let binding_ident = format_ident!("{}", &*item.name);
+            let binding_ident = format_ident!("{}", &*item.binding);
             let return_ty = quote_binding_return_type(&item.output)?;
             let args = quote_binding_args(item.inputs())?;
 
@@ -35,7 +35,7 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str) -> Result<TokenStream,
             })
         }
 
-        Export::Struct(item) => {
+        Export::Struct(..) => {
             todo!("Binding for handle drop fn")
             // let binding_ident = item.drop_fn_ident();
             // let entry_point = binding_ident.to_string();
@@ -80,7 +80,7 @@ fn quote_binding_args<'a>(
                 Schema::Char => quote! { uint },
 
                 // `String` is passed to Rust as a `RawCsString`.
-                Schema::String => quote! { __bindings.RawCsString },
+                Schema::String => quote! { RawCsString },
 
                 Schema::I128 | Schema::U128 => {
                     return Err(failure::err_msg("128 bit integers are not supported by C#"))
@@ -93,15 +93,15 @@ fn quote_binding_args<'a>(
                 }
 
                 // TODO: Add support for passing user-defined types out from Rust.
-                Schema::Struct(_) => todo!("Generate argument binding"),
-                Schema::UnitStruct(_) => todo!("Generate argument binding"),
-                Schema::NewtypeStruct(_) => todo!("Generate argument binding"),
-                Schema::TupleStruct(_) => todo!("Generate argument binding"),
-                Schema::Enum(_) => todo!("Generate argument binding"),
-                Schema::Option(_) => todo!("Generate argument binding"),
-                Schema::Seq(_) => todo!("Generate argument binding"),
-                Schema::Tuple(_) => todo!("Generate argument binding"),
-                Schema::Map { key, value } => todo!("Generate argument binding"),
+                Schema::Struct(_)
+                | Schema::UnitStruct(_)
+                | Schema::NewtypeStruct(_)
+                | Schema::TupleStruct(_)
+                | Schema::Enum(_)
+                | Schema::Option(_)
+                | Schema::Seq(_)
+                | Schema::Tuple(_)
+                | Schema::Map { .. } => todo!("Generate argument binding"),
             };
 
             Ok(quote! { #ty #ident })
@@ -127,7 +127,7 @@ fn quote_binding_return_type(schema: &Schema) -> Result<TokenStream, failure::Er
         Schema::Char => quote! { uint },
 
         // `String` is returned from Rust as a `RustOwnedString`.
-        Schema::String => quote! { __bindings.RustOwnedString },
+        Schema::String => quote! { RustOwnedString },
 
         Schema::I128 | Schema::U128 => {
             return Err(failure::err_msg("128 bit integers are not supported by C#"))
@@ -136,15 +136,15 @@ fn quote_binding_return_type(schema: &Schema) -> Result<TokenStream, failure::Er
         Schema::Unit => quote! { void },
 
         // TODO: Add support for passing user-defined types out from Rust.
-        Schema::Struct(_) => todo!("Generate return type binding"),
-        Schema::UnitStruct(_) => todo!("Generate return type binding"),
-        Schema::NewtypeStruct(_) => todo!("Generate return type binding"),
-        Schema::TupleStruct(_) => todo!("Generate return type binding"),
-        Schema::Enum(_) => todo!("Generate return type binding"),
-        Schema::Option(_) => todo!("Generate return type binding"),
-        Schema::Seq(_) => todo!("Generate return type binding"),
-        Schema::Tuple(_) => todo!("Generate return type binding"),
-        Schema::Map { key, value } => todo!("Generate return type binding"),
+        Schema::Struct(_)
+        | Schema::UnitStruct(_)
+        | Schema::NewtypeStruct(_)
+        | Schema::TupleStruct(_)
+        | Schema::Enum(_)
+        | Schema::Option(_)
+        | Schema::Seq(_)
+        | Schema::Tuple(_)
+        | Schema::Map { .. } => todo!("Generate return type binding"),
     };
 
     Ok(ty)
