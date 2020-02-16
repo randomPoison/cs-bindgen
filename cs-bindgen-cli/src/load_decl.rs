@@ -7,6 +7,7 @@ use wasmi::{ExternVal, ImportsBuilder, Module, ModuleInstance, NopExternals};
 
 static DECL_PTR_FN_PREFIX: &str = "__cs_bindgen_describe__";
 
+/// Loads the specified Wasm module and extracts the export declarations.
 pub fn load_declarations(opt: &Opt) -> Result<Vec<Export>, Error> {
     // Load the WASM module from the specified file.
     let module = parity_wasm::deserialize_file(&opt.input)?;

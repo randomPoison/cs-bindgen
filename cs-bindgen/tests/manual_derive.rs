@@ -23,14 +23,13 @@ pub unsafe extern "C" fn __cs_bindgen_describe__example_fn() -> Box<cs_bindgen::
     let export = Func {
         name: "example_fn".into(),
         binding: "__cs_bindgen_generated__example_fn".into(),
-        receiver: None,
         inputs: vec![
             (
-                Some("first".into()),
+                "first".into(),
                 encode::<u32>().expect("Failed to generate schema for argument"),
             ),
             (
-                Some("second".into()),
+                "second".into(),
                 encode::<String>().expect("Failed to generate schema for argument"),
             ),
         ],

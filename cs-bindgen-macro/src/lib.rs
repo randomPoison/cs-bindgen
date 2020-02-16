@@ -125,7 +125,7 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
     let describe_args = args.iter().map(|(ident, ty)| {
         let name = ident.to_string();
         quote! {
-            (Some(#name.into()), encode::<#ty>().expect("Failed to generate schema for argument type"))
+            (#name.into(), encode::<#ty>().expect("Failed to generate schema for argument type"))
         }
     });
 
@@ -138,7 +138,6 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
             let export = Func {
                 name: #name.into(),
                 binding: #binding_name.into(),
-                receiver: None,
                 inputs: vec![#(
                     #describe_args,
                 )*],

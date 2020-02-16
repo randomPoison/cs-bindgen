@@ -4,11 +4,7 @@ use proc_macro2::TokenStream;
 use quote::*;
 use syn::{punctuated::Punctuated, token::Comma, Ident};
 
-pub fn quote_wrapper_body(
-    bindgen_fn: &Func,
-    binding_ident: &Ident,
-    output: &Ident,
-) -> TokenStream {
+pub fn quote_wrapper_body(bindgen_fn: &Func, binding_ident: &Ident, output: &Ident) -> TokenStream {
     // Build the list of arguments to the wrapper function.
     let mut invoke_args = bindgen_fn
         .args
@@ -150,43 +146,5 @@ pub fn quote_wrapper_fn(bindgen_fn: &Func, binding_ident: &Ident) -> TokenStream
             }
             #ret_expr
         }
-    }
-}
-
-/// Quotes the C# type for an argument to the raw binding function.
-pub fn quote_primitive_binding_arg(arg_ty: Primitive) -> TokenStream {
-    match arg_ty {
-        Primitive::String => quote! { RawCsString },
-        Primitive::Char => quote! { uint },
-        Primitive::I8 => quote! { sbyte },
-        Primitive::I16 => quote! { short },
-        Primitive::I32 => quote! { int },
-        Primitive::I64 => quote! { long },
-        Primitive::U8 => quote! { byte },
-        Primitive::U16 => quote! { ushort },
-        Primitive::U32 => quote! { uint },
-        Primitive::U64 => quote! { ulong },
-        Primitive::F32 => quote! { float },
-        Primitive::F64 => quote! { double },
-        Primitive::Bool => quote! { byte },
-    }
-}
-
-/// Quotes the idiomatic C# type corresponding to a given primitive type.
-pub fn quote_primitive(return_ty: Primitive) -> TokenStream {
-    match return_ty {
-        Primitive::String => quote! { string },
-        Primitive::Char => quote! { uint },
-        Primitive::I8 => quote! { sbyte },
-        Primitive::I16 => quote! { short },
-        Primitive::I32 => quote! { int },
-        Primitive::I64 => quote! { long },
-        Primitive::U8 => quote! { byte },
-        Primitive::U16 => quote! { ushort },
-        Primitive::U32 => quote! { uint },
-        Primitive::U64 => quote! { ulong },
-        Primitive::F32 => quote! { float },
-        Primitive::F64 => quote! { double },
-        Primitive::Bool => quote! { bool },
     }
 }

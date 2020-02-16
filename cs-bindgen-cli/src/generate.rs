@@ -1,16 +1,16 @@
-use self::{class::*, func::*};
+use self::{binding::*, func::*};
 use crate::Opt;
-use cs_bindgen_shared::*;
+use cs_bindgen_shared::{schematic::Schema, Export, Func, Method, Struct};
 use heck::*;
-use proc_macro2::TokenStream;
 use quote::*;
 use std::ffi::OsStr;
 use syn::{punctuated::Punctuated, token::Comma, Ident};
 
-mod class;
+// mod class;
+mod binding;
 mod func;
 
-pub fn generate_bindings(decls: Vec<Export>, opt: &Opt) -> String {
+pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, failure::Error> {
     let dll_name = opt
         .input
         .file_stem()
@@ -19,38 +19,19 @@ pub fn generate_bindings(decls: Vec<Export>, opt: &Opt) -> String {
 
     let class_name = format_ident!("{}", dll_name.to_camel_case());
 
-    let raw_bindings = decls
+    // Generate the raw bindings for all exported items.
+    let raw_bindings: Vec<_> = exports
         .iter()
-        .map(|item| match item {
-            Export::Fn(item) => quote_raw_binding(item, &item.generated_ident(), dll_name),
-
-            Export::Method(item) => {
-                quote_raw_binding(&item.method, &item.binding_ident(), dll_name)
-            }
-
-            Export::Struct(item) => {
-                let binding_ident = item.drop_fn_ident();
-                let entry_point = binding_ident.to_string();
-                quote! {
-                    [DllImport(
-                        #dll_name,
-                        EntryPoint = #entry_point,
-                        CallingConvention = CallingConvention.Cdecl)]
-                    internal static extern void #binding_ident(void* self);
-                }
-            }
-        })
-        .collect::<Vec<_>>();
+        .map(|item| quote_raw_binding(item, dll_name))
+        .collect::<Result<_, _>>()?;
 
     let mut fn_bindings = Vec::new();
     let mut method_bindings = Vec::new();
-    for decl in &decls {
+    for decl in &exports {
         match decl {
-            Export::Fn(decl) => {
-                fn_bindings.push(quote_wrapper_fn(decl, &decl.generated_ident()))
-            }
-            Export::Struct(decl) => method_bindings.push(quote_struct_binding(decl)),
-            Export::Method(decl) => method_bindings.push(quote_method_binding(decl)),
+            Export::Fn(decl) => fn_bindings.push(quote_wrapper_fn(decl, &decl.generated_ident())),
+            Export::Struct(decl) => todo!("Generate struct binding"),
+            Export::Method(decl) => todo!("Generate method binding"),
         }
     }
 
@@ -93,55 +74,5 @@ pub fn generate_bindings(decls: Vec<Export>, opt: &Opt) -> String {
         }
     };
 
-    generated.to_string()
-}
-
-pub fn quote_raw_binding(
-    bindgen_fn: &Func,
-    binding_ident: &Ident,
-    dll_name: &str,
-) -> TokenStream {
-    let entry_point = binding_ident.to_string();
-
-    let binding_return_ty = match bindgen_fn.ret {
-        ReturnType::Default => quote! { void },
-        ReturnType::SelfType => quote! { void* },
-        ReturnType::Primitive(prim) => match prim {
-            Primitive::String => quote! { RustOwnedString },
-            Primitive::Char => quote! { uint },
-            Primitive::I8 => quote! { sbyte },
-            Primitive::I16 => quote! { short },
-            Primitive::I32 => quote! { int },
-            Primitive::I64 => quote! { long },
-            Primitive::U8 => quote! { byte },
-            Primitive::U16 => quote! { ushort },
-            Primitive::U32 => quote! { uint },
-            Primitive::U64 => quote! { ulong },
-            Primitive::F32 => quote! { float },
-            Primitive::F64 => quote! { double },
-            Primitive::Bool => quote! { byte },
-        },
-    };
-
-    let mut binding_args = bindgen_fn
-        .args
-        .iter()
-        .map(|arg| {
-            let ident = arg.ident();
-            let ty = quote_primitive_binding_arg(arg.ty);
-            quote! { #ty #ident }
-        })
-        .collect::<Punctuated<_, Comma>>();
-
-    if bindgen_fn.receiver.is_some() {
-        binding_args.insert(0, quote! { void* self })
-    }
-
-    quote! {
-        [DllImport(
-            #dll_name,
-            EntryPoint = #entry_point,
-            CallingConvention = CallingConvention.Cdecl)]
-        internal static extern #binding_return_ty #binding_ident(#binding_args);
-    }
+    Ok(generated.to_string())
 }
