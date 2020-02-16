@@ -73,7 +73,19 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
         internal unsafe struct RawCsString
         {
             public char* Ptr;
-            public int Length;
+            public UIntPtr Length;
+
+            public RawCsString(char* ptr, UIntPtr len)
+            {
+                Ptr = ptr;
+                Length = len;
+            }
+
+            public RawCsString(char* ptr, int len)
+            {
+                Ptr = ptr;
+                Length = (UIntPtr)len;
+            }
         }
     };
 

@@ -95,10 +95,11 @@ impl IntoAbi for String {
 }
 
 impl FromAbi for String {
-    type Abi = RawVec<u8>;
+    type Abi = RawSlice<u16>;
 
     unsafe fn from_abi(abi: Self::Abi) -> Self {
-        abi.into_string()
+        // TODO: Don't panic I guess?
+        abi.into_string().expect("Failed to decode UTF-16")
     }
 }
 

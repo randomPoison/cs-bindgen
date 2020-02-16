@@ -70,7 +70,7 @@ pub fn quote_wrapper_body<'a>(
             Schema::String => {
                 let fixed_ident = format_ident!("__fixed_{}", ident);
                 quote! {
-                    new RawCsString() { Ptr = #fixed_ident, Length = #ident.Length, }
+                    new RawCsString(#fixed_ident, #ident.Length)
                 }
             }
 
@@ -126,11 +126,13 @@ pub fn quote_wrapper_body<'a>(
         // To pass a string to Rust, we convert it into a `RawCsString` with the fixed pointer.
         // The code for wrapping the body of the function in a `fixed` block is done below,
         // since we need to generate the contents of the block first.
+        //
+        // Once we decode the Rust string into a C# string, we also need to drop the original
+        // Rust string.
         Schema::String => quote! {
-            var rawResult = #invoke;
-            string result = Encoding.UTF8.GetString(rawResult.Ptr, (int)rawResult.Length);
-            __bindings.__cs_bindgen_drop_string(rawResult);
-            #ret = result;
+            var __raw_result = #invoke;
+            #ret = Encoding.UTF8.GetString(__raw_result.Ptr, (int)__raw_result.Length);
+            __bindings.__cs_bindgen_drop_string(__raw_result);
         },
 
         Schema::Char => todo!("Support converting a C# `char` into a Rust `char`"),
