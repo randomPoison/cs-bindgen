@@ -4,6 +4,24 @@ use proc_macro2::TokenStream;
 use quote::*;
 use syn::*;
 
+macro_rules! format_binding_ident {
+    ($ident:expr) => {
+        format_ident!("__cs_bindgen_generated__{}", $ident);
+    };
+}
+
+macro_rules! format_describe_ident {
+    ($ident:expr) => {
+        format_ident!("__cs_bindgen_describe__{}", $ident);
+    };
+}
+
+macro_rules! format_drop_ident {
+    ($ident:expr) => {
+        format_ident!("__cs_bindgen_drop__{}", $ident);
+    };
+}
+
 #[proc_macro_attribute]
 pub fn cs_bindgen(
     _attr: proc_macro::TokenStream,
@@ -51,7 +69,7 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
 
     // Determine the name of the generated function.
     let ident = signature.ident;
-    let binding_ident = format_ident!("__cs_bindgen_generated__{}", ident);
+    let binding_ident = format_binding_ident!(ident);
 
     let args: Vec<(Ident, Box<Type>)> = signature
         .inputs
@@ -116,7 +134,7 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
     };
 
     // Generate the name of the describe function.
-    let describe_ident = format_ident!("__cs_bindgen_describe__{}", ident);
+    let describe_ident = format_describe_ident!(ident);
 
     // Generate string versions of the two function idents.
     let name = ident.to_string();
@@ -132,7 +150,7 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
     // Generate the describe function.
     let describe = quote! {
         #[no_mangle]
-        pub unsafe extern "C" fn #describe_ident() -> Box<cs_bindgen::abi::RawVec<u8>> {
+        pub unsafe extern "C" fn #describe_ident() -> Box<cs_bindgen::abi::RawString> {
             use cs_bindgen::shared::{schematic::encode, Func};
 
             let export = Func {
@@ -156,6 +174,8 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
 
 fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
     let ident = item.ident;
+    let describe_ident = format_describe_ident!(ident);
+    let drop_ident = format_drop_ident!(ident);
 
     Ok(quote! {
         // Implement `Encode` for the exported type.
@@ -206,7 +226,7 @@ fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
         impl<'a> cs_bindgen::abi::IntoAbi for &'a mut #ident {
             type Abi = Self;
 
-            unsafe fn into_abi(self) -> Self::Abi {
+            fn into_abi(self) -> Self::Abi {
                 self
             }
         }
@@ -219,7 +239,23 @@ fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
             }
         }
 
-        // TODO: Generate type descriptor for the struct.
+        // Export a function that describes the exported type.
+        #[no_mangle]
+        pub unsafe extern "C" fn #describe_ident() -> std::boxed::Box<cs_bindgen::abi::RawString> {
+            use cs_bindgen::shared::{schematic::{encode, type_name}, Func};
+
+            // TODO: Use the `Encode` impl for the type, rather than constructing the schema
+            // directly.
+            let export = cs_bindgen::shared::schematic::Struct {
+                name: type_name!(#ident),
+            };
+
+            std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())
+        }
+
+        // Export a function that can be used for dropping an instance of the type.
+        #[no_mangle]
+        pub unsafe extern "C" fn #drop_ident(_: <#ident as cs_bindgen::abi::FromAbi>::Abi) {}
     })
 }
 
