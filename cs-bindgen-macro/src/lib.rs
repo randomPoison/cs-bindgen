@@ -173,6 +173,18 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
 }
 
 fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
+    // Generate an error for any generic parameters.
+    let generics = item.generics;
+    let has_generics = generics.type_params().next().is_some()
+        || generics.lifetimes().next().is_some()
+        || generics.const_params().next().is_some();
+    if has_generics {
+        return Err(Error::new_spanned(
+            generics,
+            "Generic types not supported with `#[cs_bindgen]`",
+        ));
+    }
+
     let ident = item.ident;
     let describe_ident = format_describe_ident!(ident);
     let drop_ident = format_drop_ident!(ident);
@@ -258,12 +270,3 @@ fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
         pub unsafe extern "C" fn #drop_ident(_: <#ident as cs_bindgen::abi::FromAbi>::Abi) {}
     })
 }
-
-// fn quote_drop_fn(item: &Struct) -> TokenStream {
-//     let ty_ident = item.ident();
-//     let ident = item.drop_fn_ident();
-//     quote! {
-//         #[no_mangle]
-//         pub unsafe extern "C" fn #ident(_: std::boxed::Box<std::sync::Mutex<#ty_ident>>) {}
-//     }
-// }
