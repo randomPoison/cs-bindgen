@@ -103,8 +103,8 @@ pub fn quote_wrapper_body<'a>(
     // return value into the appropriate C# type.
     let invoke = quote! { #binding(#( #invoke_args )*) };
     let invoke = match output {
-        // For `void` returns there's no intermediate variable for the return value (since
-        // we can't have a `void` variable).
+        // NOTE: For `void` returns there's no intermediate variable for the return value
+        // (since we can't have a `void` variable).
         Schema::Unit => quote! { #invoke; },
 
         // Basic numeric types (currently) don't require any processing.

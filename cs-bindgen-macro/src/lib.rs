@@ -16,7 +16,7 @@ pub fn cs_bindgen(
 
     let generated = match parse_macro_input!(tokens as Item) {
         Item::Fn(item) => quote_fn_item(item),
-        Item::Struct(_item) => Ok(quote! {}),
+        Item::Struct(item) => quote_struct_item(item),
         Item::Impl(_item) => Ok(quote! {}),
 
         // Generate an error for any unknown item types.
@@ -154,165 +154,80 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
     })
 }
 
-/*
-fn build_function_args(
-    args: &[FnArg],
-    arg_decls: &mut Punctuated<TokenStream, Comma>,
-    process_args: &mut TokenStream,
-) {
-    for arg in args {
-        let ident = arg.ident();
-        let ty = match arg.ty {
-            Primitive::String => quote! { cs_bindgen::RawCsString },
-            Primitive::Char => quote! { u32 },
-            Primitive::I8 => quote! { i8 },
-            Primitive::I16 => quote! { i16 },
-            Primitive::I32 => quote! { i32 },
-            Primitive::I64 => quote! { i64 },
-            Primitive::U8 => quote! { u8 },
-            Primitive::U16 => quote! { u16 },
-            Primitive::U32 => quote! { u32 },
-            Primitive::U64 => quote! { u64 },
-            Primitive::F32 => quote! { f32 },
-            Primitive::F64 => quote! { f64 },
-            Primitive::Bool => quote! { u8 },
-        };
+fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
+    let ident = item.ident;
 
-        arg_decls.push(quote! { #ident: #ty });
-
-        match arg.ty {
-            // Strings are passed in as utf-16 arrays (specifically as a `RawCsString`), so we
-            // convert the data into a `String`.
-            Primitive::String => process_args.append_all(quote! {
-                let #ident = #ident.into_string();
-            }),
-
-            // Bools are passed in as a `u8`, so we need to re-bind the variable as a `bool` by
-            // explicitly checking the value.
-            Primitive::Bool => process_args.append_all(quote! {
-                let #ident = #ident != 0;
-            }),
-
-            // The remaining primitive types don't require any additional processing.
-            _ => {}
-        }
-    }
-}
-
-fn quote_primitive_return_type(prim: Primitive) -> TokenStream {
-    match prim {
-        Primitive::String => quote! { cs_bindgen::RawString },
-        Primitive::Char => quote! { u32 },
-        Primitive::I8 => quote! { i8 },
-        Primitive::I16 => quote! { i16 },
-        Primitive::I32 => quote! { i32 },
-        Primitive::I64 => quote! { i64 },
-        Primitive::U8 => quote! { u8 },
-        Primitive::U16 => quote! { u16 },
-        Primitive::U32 => quote! { u32 },
-        Primitive::U64 => quote! { u64 },
-        Primitive::F32 => quote! { f32 },
-        Primitive::F64 => quote! { f64 },
-        Primitive::Bool => quote! { u8 },
-    }
-}
-
-/// Generates the code for returning the final result of the function.
-fn quote_return_expr(prim: Primitive, ret_val: &Ident) -> TokenStream {
-    match prim {
-        // Convert the `String` into a `RawString`.
-        Primitive::String => quote! {
-            #ret_val.into()
-        },
-
-        // Cast the bool to a `u8` in order to pass it to C# as a numeric value.
-        Primitive::Bool => quote! {
-            #ret_val as u8
-        },
-
-        // All other primitive types are ABI-compatible with a corresponding C# type, and
-        // require no extra processing to be returned.
-        _ => quote! { #ret_val },
-    }
-}
-
-fn quote_method(item: &Method) -> TokenStream {
-    let ty_ident = item.strct.ident();
-    let receiver_arg_ident = format_ident!("self_");
-
-    // Determine the name of the generated function.
-    let generated_fn_ident = item.binding_ident();
-
-    let mut args = Punctuated::<_, Comma>::new();
-    let mut process_args = TokenStream::default();
-    let mut arg_names = Punctuated::<_, Comma>::new();
-
-    // Generate bindings for the method receiver (i.e. the `self` argument).
-    if item.method.receiver.is_some() {
-        args.push(quote! {
-            #receiver_arg_ident: &std::sync::Mutex<#ty_ident>
-        });
-
-        process_args.extend(quote! {
-            let mut #receiver_arg_ident = #receiver_arg_ident.lock().expect("Handle mutex was poisoned");
-            let #receiver_arg_ident = &mut *#receiver_arg_ident;
-        });
-
-        arg_names.push(receiver_arg_ident.clone());
-    }
-
-    // Process the remaining arguments.
-    build_function_args(&item.method.args, &mut args, &mut process_args);
-
-    // Process the return value.
-    let ret_val = format_ident!("ret_val");
-    let (return_type, process_return) = match item.method.ret {
-        ReturnType::Default => (quote! { () }, TokenStream::new()),
-
-        ReturnType::SelfType => {
-            let ty = quote! {
-                std::boxed::Box<std::sync::Mutex<#ty_ident>>
-            };
-
-            let process = quote! {
-                std::boxed::Box::new(std::sync::Mutex::new(#ret_val))
-            };
-            (ty, process)
+    Ok(quote! {
+        // Implement `Encode` for the exported type.
+        impl cs_bindgen::shared::schematic::Encode for #ident {
+            fn encode<E>(encoder: E) -> Result<E::Ok, E::Error>
+            where
+                E: cs_bindgen::shared::schematic::Encoder,
+            {
+                encoder.encode_struct(cs_bindgen::shared::schematic::type_name!(#ident))
+            }
         }
 
-        ReturnType::Primitive(prim) => (
-            quote_primitive_return_type(prim),
-            quote_return_expr(prim, &ret_val),
-        ),
-    };
+        // Implement `From/IntoAbi` conversions for the type and references to the type.
 
-    // Generate the expression for invoking the underlying Rust function.
-    let method_name = item.method.ident();
-    let orig_fn = quote! { #ty_ident::#method_name };
+        impl cs_bindgen::abi::IntoAbi for #ident {
+            type Abi = std::boxed::Box<Self>;
 
-    arg_names.extend(item.method.args.iter().map(FnArg::ident));
-
-    // Compose the various pieces to generate the final function.
-    quote! {
-        #[no_mangle]
-        pub unsafe extern "C" fn #generated_fn_ident(#args) -> #return_type {
-            use std::convert::TryInto;
-
-            #process_args
-
-            let #ret_val = #orig_fn(#arg_names);
-
-            #process_return
+            fn into_abi(self) -> Self::Abi {
+                std::boxed::Box::new(self)
+            }
         }
-    }
+
+        impl cs_bindgen::abi::FromAbi for #ident {
+            type Abi = std::boxed::Box<Self>;
+
+            unsafe fn from_abi(abi: Self::Abi) -> Self {
+                *abi
+            }
+        }
+
+
+        impl<'a> cs_bindgen::abi::IntoAbi for &'a #ident {
+            type Abi = Self;
+
+            fn into_abi(self) -> Self::Abi {
+                self
+            }
+        }
+
+        impl<'a> cs_bindgen::abi::FromAbi for &'a #ident {
+            type Abi = Self;
+
+            unsafe fn from_abi(abi: Self::Abi) -> Self {
+                abi
+            }
+        }
+
+        impl<'a> cs_bindgen::abi::IntoAbi for &'a mut #ident {
+            type Abi = Self;
+
+            unsafe fn into_abi(self) -> Self::Abi {
+                self
+            }
+        }
+
+        impl<'a> cs_bindgen::abi::FromAbi for &'a mut #ident {
+            type Abi = Self;
+
+            unsafe fn from_abi(abi: Self::Abi) -> Self {
+                abi
+            }
+        }
+
+        // TODO: Generate type descriptor for the struct.
+    })
 }
 
-fn quote_drop_fn(item: &Struct) -> TokenStream {
-    let ty_ident = item.ident();
-    let ident = item.drop_fn_ident();
-    quote! {
-        #[no_mangle]
-        pub unsafe extern "C" fn #ident(_: std::boxed::Box<std::sync::Mutex<#ty_ident>>) {}
-    }
-}
-*/
+// fn quote_drop_fn(item: &Struct) -> TokenStream {
+//     let ty_ident = item.ident();
+//     let ident = item.drop_fn_ident();
+//     quote! {
+//         #[no_mangle]
+//         pub unsafe extern "C" fn #ident(_: std::boxed::Box<std::sync::Mutex<#ty_ident>>) {}
+//     }
+// }

@@ -1,25 +1,82 @@
 use std::{convert::TryInto, mem, slice, str};
 
-/// A value that is ABI-compatible with C.
+/// The ABI-compatible equivalent to [`String`].
+///
+/// [`String`]: https://doc.rust-lang.org/std/string/struct.String.html
+pub type RawString = RawVec<u8>;
+
+/// The ABI-compatible equivalent to [`&str`].
+///
+/// [`&str`]: https://doc.rust-lang.org/std/primitive.str.html
+pub type RawStr = RawSlice<u8>;
+
+/// A value that is ABI-compatible with C#.
+///
+/// # Safety
+///
+/// This type must be FFI-compatible with the C ABI.
 pub unsafe trait AbiPrimitive {}
 
-/// A value that can be sent across a C FFI boundary.
+/// A value that can be returned from a Rust function when called from C#.
 pub trait IntoAbi {
     type Abi: AbiPrimitive;
 
     fn into_abi(self) -> Self::Abi;
 }
 
-/// A value that can be received from C FFI boundary.
+/// A value that can be accepted as an argument to a Rust function when called from C#.
 pub trait FromAbi {
     type Abi: AbiPrimitive;
 
     unsafe fn from_abi(abi: Self::Abi) -> Self;
 }
 
-// Blanket implement `FromAbi` and `IntoAbi` for all primitives.
+macro_rules! abi_primitives {
+    ($($ty:ty,)*) => {
+        $(
+            unsafe impl AbiPrimitive for $ty {}
 
-impl<T: AbiPrimitive> IntoAbi for T {
+            impl IntoAbi for $ty {
+                type Abi = Self;
+
+                fn into_abi(self) -> Self::Abi {
+                    self
+                }
+            }
+
+            impl FromAbi for $ty {
+                type Abi = Self;
+
+                unsafe fn from_abi(abi: Self::Abi) -> Self {
+                    abi
+                }
+            }
+        )*
+    };
+}
+
+// All numeric types are valid ABI primitives.
+abi_primitives! {
+    i8,
+    i16,
+    i32,
+    i64,
+    isize,
+    u8,
+    u16,
+    u32,
+    u64,
+    usize,
+    f32,
+    f64,
+}
+
+// NOTE: Unit is also a valid primitive but it's only valid as a return value, not
+// an argument. As such, we don't include it with `abi_primitives!` and instead
+// manually implement just `IntoAbi` for it.
+unsafe impl AbiPrimitive for () {}
+
+impl IntoAbi for () {
     type Abi = Self;
 
     fn into_abi(self) -> Self::Abi {
@@ -27,32 +84,12 @@ impl<T: AbiPrimitive> IntoAbi for T {
     }
 }
 
-impl<T: AbiPrimitive> FromAbi for T {
-    type Abi = Self;
-
-    unsafe fn from_abi(abi: Self::Abi) -> Self {
-        abi
-    }
-}
-
-// All numeric types are valid ABI primitives.
-unsafe impl AbiPrimitive for i8 {}
-unsafe impl AbiPrimitive for i16 {}
-unsafe impl AbiPrimitive for i32 {}
-unsafe impl AbiPrimitive for i64 {}
-unsafe impl AbiPrimitive for isize {}
-unsafe impl AbiPrimitive for u8 {}
-unsafe impl AbiPrimitive for u16 {}
-unsafe impl AbiPrimitive for u32 {}
-unsafe impl AbiPrimitive for u64 {}
-unsafe impl AbiPrimitive for usize {}
-unsafe impl AbiPrimitive for f32 {}
-unsafe impl AbiPrimitive for f64 {}
-unsafe impl AbiPrimitive for () {}
-
 // Pointers to any ABI primitive are also valid ABI primitives.
-unsafe impl<T: AbiPrimitive> AbiPrimitive for *const T {}
-unsafe impl<T: AbiPrimitive> AbiPrimitive for *mut T {}
+unsafe impl<T> AbiPrimitive for Box<T> {}
+unsafe impl<'a, T> AbiPrimitive for &'a T {}
+unsafe impl<'a, T> AbiPrimitive for &'a mut T {}
+unsafe impl<T> AbiPrimitive for *const T {}
+unsafe impl<T> AbiPrimitive for *mut T {}
 
 impl IntoAbi for char {
     type Abi = u32;
