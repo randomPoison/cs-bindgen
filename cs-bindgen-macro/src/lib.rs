@@ -35,7 +35,7 @@ pub fn cs_bindgen(
     let generated = match parse_macro_input!(tokens as Item) {
         Item::Fn(item) => quote_fn_item(item),
         Item::Struct(item) => quote_struct_item(item),
-        Item::Impl(_item) => Ok(quote! {}),
+        Item::Impl(item) => quote_impl_item(item),
 
         // Generate an error for any unknown item types.
         item @ _ => Err(Error::new_spanned(
@@ -269,4 +269,44 @@ fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
         #[no_mangle]
         pub unsafe extern "C" fn #drop_ident(_: <#ident as cs_bindgen::abi::FromAbi>::Abi) {}
     })
+}
+
+fn quote_impl_item(item: ItemImpl) -> syn::Result<TokenStream> {
+    // Generate an error for any generic parameters.
+    let generics = item.generics;
+    let has_generics = generics.type_params().next().is_some()
+        || generics.lifetimes().next().is_some()
+        || generics.const_params().next().is_some();
+    if has_generics {
+        return Err(Error::new_spanned(
+            generics,
+            "Generic impls not supported with `#[cs_bindgen]`",
+        ));
+    }
+
+    // Generate an error for trait impls. Only inherent impls are allowed for now.
+    if let Some((_, trait_, _)) = item.trait_ {
+        return Err(Error::new_spanned(
+            trait_,
+            "Trait impls not supported with `#[cs_bindgen]`",
+        ));
+    }
+
+    let self_ty = item.self_ty;
+
+    let mut result = TokenStream::new();
+    for item in item.items {
+        match item {
+            ImplItem::Method(item) => result.extend(quote_method_item(item, &self_ty)?),
+
+            // Ignore all other unsupported associated item types.
+            _ => {}
+        }
+    }
+
+    Ok(result)
+}
+
+fn quote_method_item(item: ImplItemMethod, self_ty: &Type) -> syn::Result<TokenStream> {
+    todo!()
 }
