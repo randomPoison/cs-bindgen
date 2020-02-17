@@ -1,11 +1,22 @@
-use crate::generate::func::*;
-use cs_bindgen_shared::*;
+use cs_bindgen_shared::schematic::TypeName;
 use proc_macro2::TokenStream;
 use quote::*;
 
-pub fn quote_struct_binding(bindgen_struct: &Struct) -> TokenStream {
-    let ident = bindgen_struct.ident();
-    let drop_fn = bindgen_struct.drop_fn_ident();
+pub fn quote_drop_fn(type_name: &TypeName, dll_name: &str) -> TokenStream {
+    let binding_ident = format_ident!("__cs_bindgen_drop__{}", &*type_name.name);
+    let entry_point = binding_ident.to_string();
+    quote! {
+        [DllImport(
+            #dll_name,
+            EntryPoint = #entry_point,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void #binding_ident(void* self);
+    }
+}
+
+pub fn quote_class(type_name: &TypeName) -> TokenStream {
+    let ident = format_ident!("{}", &*type_name.name);
+    let drop_fn = format_ident!("__cs_bindgen_drop__{}", &*type_name.name);
     quote! {
         public unsafe partial class #ident : IDisposable
         {
@@ -23,6 +34,7 @@ pub fn quote_struct_binding(bindgen_struct: &Struct) -> TokenStream {
     }
 }
 
+/*
 pub fn quote_method_binding(item: &Method) -> TokenStream {
     let struct_ident = item.strct.ident();
 
@@ -59,3 +71,4 @@ fn quote_constructor(item: &Method) -> TokenStream {
         }
     }
 }
+*/

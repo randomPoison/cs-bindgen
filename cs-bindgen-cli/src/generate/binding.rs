@@ -4,6 +4,7 @@
 //! function, using the `[DllImport]` attribute to load the corresponding function
 //! from the Rust dylib. This module provides
 
+use crate::generate::class;
 use cs_bindgen_shared::{schematic::Schema, Export};
 use proc_macro2::TokenStream;
 use quote::*;
@@ -35,18 +36,7 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str) -> Result<TokenStream,
             })
         }
 
-        Export::Struct(..) => {
-            todo!("Binding for handle drop fn")
-            // let binding_ident = item.drop_fn_ident();
-            // let entry_point = binding_ident.to_string();
-            // quote! {
-            //     [DllImport(
-            //         #dll_name,
-            //         EntryPoint = #entry_point,
-            //         CallingConvention = CallingConvention.Cdecl)]
-            //     internal static extern void #binding_ident(void* self);
-            // }
-        }
+        Export::Struct(item) => Ok(class::quote_drop_fn(&item.name, dll_name)),
     }
 }
 

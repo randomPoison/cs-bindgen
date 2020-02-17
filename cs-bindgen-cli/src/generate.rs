@@ -1,12 +1,12 @@
-use self::{binding::*, func::*};
+use self::{binding::*, class::*, func::*};
 use crate::Opt;
 use cs_bindgen_shared::Export;
 use heck::*;
 use quote::*;
 use std::ffi::OsStr;
 
-// mod class;
 mod binding;
+mod class;
 mod func;
 
 pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, failure::Error> {
@@ -29,12 +29,12 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
         .collect::<Result<_, _>>()?;
 
     let mut fn_bindings = Vec::new();
-    // let mut method_bindings = Vec::new();
-    for decl in &exports {
-        match decl {
-            Export::Fn(decl) => fn_bindings.push(quote_wrapper_fn(decl)),
-            Export::Struct(decl) => todo!("Generate struct binding"),
-            Export::Method(decl) => todo!("Generate method binding"),
+    let mut method_bindings = Vec::new();
+    for export in &exports {
+        match export {
+            Export::Fn(export) => fn_bindings.push(quote_wrapper_fn(export)),
+            Export::Struct(export) => method_bindings.push(quote_class(&export.name)),
+            Export::Method(_decl) => todo!("Generate method binding"),
         }
     }
 
@@ -59,7 +59,7 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
             #( #fn_bindings )*
         }
 
-        // #( #method_bindings )*
+        #( #method_bindings )*
 
         [StructLayout(LayoutKind.Sequential)]
         internal unsafe struct RustOwnedString
