@@ -1,5 +1,6 @@
 extern crate proc_macro;
 
+use crate::func::*;
 use proc_macro2::TokenStream;
 use quote::*;
 use syn::*;
@@ -21,6 +22,8 @@ macro_rules! format_drop_ident {
         format_ident!("__cs_bindgen_drop__{}", $ident);
     };
 }
+
+mod func;
 
 #[proc_macro_attribute]
 pub fn cs_bindgen(
@@ -56,79 +59,35 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
     let signature = item.sig;
 
     // Generate an error for any generic parameters.
-    let generics = signature.generics;
-    let has_generics = generics.type_params().next().is_some()
-        || generics.lifetimes().next().is_some()
-        || generics.const_params().next().is_some();
-    if has_generics {
-        return Err(Error::new_spanned(
-            generics,
-            "Generic functions not supported with `#[cs_bindgen]`",
-        ));
-    }
+    reject_generics(
+        &signature.generics,
+        "Generic functions not supported with `#[cs_bindgen]`",
+    )?;
 
     // Determine the name of the generated function.
     let ident = signature.ident;
     let binding_ident = format_binding_ident!(ident);
 
-    let args: Vec<(Ident, Box<Type>)> = signature
-        .inputs
-        .iter()
-        // Convert the `FnArg` arguments into the underlying `PatType`. This is safe to do
-        // in this context because we know we are processing a free function, so it cannot
-        // have a receiver.
-        .filter_map(|arg| match arg {
-            FnArg::Typed(arg) => Some(arg),
-            _ => None,
-        })
-        .enumerate()
-        .map(|(index, arg)| {
-            // If the argument isn't declared with a normal identifier, we construct one so
-            // that we have a valid identifier to use in the generated functions.
-            let ident = match &*arg.pat {
-                Pat::Ident(pat_ident) => pat_ident.ident.clone(),
-                _ => format_ident!("__arg{}", index),
-            };
+    // Process the arguments to the function.
+    let inputs = extract_inputs(signature.inputs)?;
+    let binding_inputs = quote_binding_inputs(&inputs);
+    let convert_inputs = quote_input_conversion(&inputs);
 
-            Ok((ident, arg.ty.clone()))
-        })
-        .collect::<Result<_>>()?;
-
-    // Process the arguments to the function. From the list of arguments, we need to
-    // generate two things:
-    //
-    // * The list of arguments the generated function needs to take.
-    // * The code for processing the raw arguments and converting them to the
-    //   appropriate Rust types.
-    let binding_args = args.iter().map(|(ident, ty)| {
-        quote! {
-            #ident: <#ty as cs_bindgen::abi::FromAbi>::Abi
-        }
-    });
-    let process_args = args.iter().map(|(ident, _)| {
-        quote! {
-            let #ident = cs_bindgen::abi::FromAbi::from_abi(#ident);
-        }
-    });
-
-    let return_type = match signature.output {
-        ReturnType::Default => quote! { () },
-        ReturnType::Type(_, ty) => ty.to_token_stream(),
-    };
+    // Normalize the return type of the function.
+    let return_type = normalize_return_type(&signature.output);
 
     // Generate the list of argument names. Used both for forwarding arguments into the
     // original function, and for populating the metadata item.
-    let arg_names = args.iter().map(|(ident, _)| ident);
+    let arg_names = inputs.iter().map(|(ident, _)| ident);
 
     // Compose the various pieces together into the final binding function.
     let invoke_expr = quote! { #ident(#( #arg_names, )*) };
     let binding = quote! {
         #[no_mangle]
         pub unsafe extern "C" fn #binding_ident(
-            #( #binding_args, )*
-        ) -> <#return_type as cs_bindgen::abi::IntoAbi>::Abi
-    {
-            #( #process_args )*
+            #( #binding_inputs, )*
+        ) -> <#return_type as cs_bindgen::abi::IntoAbi>::Abi {
+            #( #convert_inputs )*
             cs_bindgen::abi::IntoAbi::into_abi(#invoke_expr)
         }
     };
@@ -140,7 +99,7 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
     let name = ident.to_string();
     let binding_name = binding_ident.to_string();
 
-    let describe_args = args.iter().map(|(ident, ty)| {
+    let describe_args = inputs.iter().map(|(ident, ty)| {
         let name = ident.to_string();
         quote! {
             (#name.into(), encode::<#ty>().expect("Failed to generate schema for argument type"))
@@ -173,17 +132,10 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
 }
 
 fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
-    // Generate an error for any generic parameters.
-    let generics = item.generics;
-    let has_generics = generics.type_params().next().is_some()
-        || generics.lifetimes().next().is_some()
-        || generics.const_params().next().is_some();
-    if has_generics {
-        return Err(Error::new_spanned(
-            generics,
-            "Generic types not supported with `#[cs_bindgen]`",
-        ));
-    }
+    reject_generics(
+        &item.generics,
+        "Generic structs are not supported with `#[cs_bindgen]`",
+    )?;
 
     let ident = item.ident;
     let describe_ident = format_describe_ident!(ident);
@@ -273,16 +225,10 @@ fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
 
 fn quote_impl_item(item: ItemImpl) -> syn::Result<TokenStream> {
     // Generate an error for any generic parameters.
-    let generics = item.generics;
-    let has_generics = generics.type_params().next().is_some()
-        || generics.lifetimes().next().is_some()
-        || generics.const_params().next().is_some();
-    if has_generics {
-        return Err(Error::new_spanned(
-            generics,
-            "Generic impls not supported with `#[cs_bindgen]`",
-        ));
-    }
+    reject_generics(
+        &item.generics,
+        "Generic `impl` blocks are not supported with `#[cs_bindgen]`",
+    )?;
 
     // Generate an error for trait impls. Only inherent impls are allowed for now.
     if let Some((_, trait_, _)) = item.trait_ {
@@ -296,19 +242,67 @@ fn quote_impl_item(item: ItemImpl) -> syn::Result<TokenStream> {
 
     // Iterate over the items declared in the impl block and generate bindings for any
     // supported item types.
-    let mut result = TokenStream::new();
-    for item in item.items {
-        match item {
-            ImplItem::Method(item) => result.extend(quote_method_item(item, &self_ty)?),
+    item.items
+        .into_iter()
+        .filter_map(|item| {
+            match item {
+                ImplItem::Method(item) => Some(quote_method_item(item, &self_ty)),
 
-            // Ignore all other unsupported associated item types.
-            _ => {}
-        }
-    }
-
-    Ok(result)
+                // Ignore all other unsupported associated item types. We don't generate bindings
+                // for them, but it's otherwise not an error to include them in an `impl` block
+                // tagged with `#[cs_bindgen]`.
+                _ => None,
+            }
+        })
+        .collect::<syn::Result<TokenStream>>()
 }
 
 fn quote_method_item(item: ImplItemMethod, self_ty: &Type) -> syn::Result<TokenStream> {
-    todo!()
+    // TODO: Generate binding function.
+
+    // Extract the signature, which contains the bulk of the information we care about.
+    let signature = item.sig;
+
+    // Generate an error for any generic parameters.
+    reject_generics(
+        &signature.generics,
+        "Generic functions not supported with `#[cs_bindgen]`",
+    )?;
+
+    // Determine the name of the generated function.
+    let ident = signature.ident;
+    let binding_ident = format_binding_ident!(ident);
+
+    // Process the arguments to the function.
+    let inputs = extract_inputs(signature.inputs)?;
+    let binding_inputs = quote_binding_inputs(&inputs);
+    let convert_inputs = quote_input_conversion(&inputs);
+
+    // Normalize the return type of the function.
+    let return_type = normalize_return_type(&signature.output);
+
+    // Generate the list of argument names. Used both for forwarding arguments into the
+    // original function, and for populating the metadata item.
+    let arg_names = inputs.iter().map(|(ident, _)| ident);
+
+    // Compose the various pieces together into the final binding function.
+    let invoke_expr = quote! { #self_ty::#ident(self_, #( #arg_names, )*) };
+    let binding = quote! {
+        #[no_mangle]
+        pub unsafe extern "C" fn #binding_ident(
+            self_: <#self_ty as cs_bindgen::abi::FromAbi>::Abi,
+            #( #binding_inputs, )*
+        ) -> <#return_type as cs_bindgen::abi::IntoAbi>::Abi {
+            let self_ = cs_bindgen::abi::FromAbi::from_abi(self_);
+            #( #convert_inputs )*
+            cs_bindgen::abi::IntoAbi::into_abi(#invoke_expr)
+        }
+    };
+
+    // TODO: Generate descriptor function.
+
+    Ok(quote! {
+        #binding
+        // #describe
+    })
 }
