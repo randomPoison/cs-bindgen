@@ -56,7 +56,9 @@ pub fn extract_inputs(inputs: Punctuated<FnArg, Comma>) -> syn::Result<Vec<FnInp
         .collect()
 }
 
-pub fn quote_binding_inputs(inputs: &[FnInput]) -> impl Iterator<Item = TokenStream> + '_ {
+pub fn quote_binding_inputs<T: ToTokens>(
+    inputs: &[(Ident, T)],
+) -> impl Iterator<Item = TokenStream> + '_ {
     inputs.iter().map(|(ident, ty)| {
         quote! {
             #ident: <#ty as cs_bindgen::abi::FromAbi>::Abi
@@ -64,7 +66,9 @@ pub fn quote_binding_inputs(inputs: &[FnInput]) -> impl Iterator<Item = TokenStr
     })
 }
 
-pub fn quote_input_conversion(inputs: &[FnInput]) -> impl Iterator<Item = TokenStream> + '_ {
+pub fn quote_input_conversion<T: ToTokens>(
+    inputs: &[(Ident, T)],
+) -> impl Iterator<Item = TokenStream> + '_ {
     inputs.iter().map(|(ident, _)| {
         quote! {
             let #ident = cs_bindgen::abi::FromAbi::from_abi(#ident);
