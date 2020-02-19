@@ -65,7 +65,7 @@ pub struct Method {
     pub name: Cow<'static, str>,
     pub binding: Cow<'static, str>,
     pub self_type: Schema,
-    pub receiver_style: ReceiverStyle,
+    pub receiver: Option<ReceiverStyle>,
     pub inputs: Vec<(Cow<'static, str>, Schema)>,
     pub output: Schema,
 }
@@ -74,12 +74,6 @@ impl Method {
     pub fn inputs(&self) -> impl Iterator<Item = (&str, &Schema)> + Clone {
         self.inputs.iter().map(|(name, schema)| (&**name, schema))
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Receiver {
-    pub ty: Schema,
-    pub style: ReceiverStyle,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

@@ -3,7 +3,7 @@ extern crate proc_macro;
 use crate::func::*;
 use proc_macro2::TokenStream;
 use quote::*;
-use syn::{punctuated::Punctuated, token::Comma, *};
+use syn::*;
 
 macro_rules! format_binding_ident {
     ($ident:expr) => {
@@ -70,8 +70,12 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
 
     // Process the arguments to the function.
     let inputs = extract_inputs(signature.inputs)?;
-    let binding_inputs = quote_binding_inputs(&inputs);
-    let convert_inputs = quote_input_conversion(&inputs);
+    let binding_inputs = inputs
+        .iter()
+        .map(|(ident, ty)| quote_binding_inputs(ident, ty));
+    let convert_inputs = inputs
+        .iter()
+        .map(|(ident, _)| quote_input_conversion(ident));
 
     // Normalize the return type of the function.
     let return_type = normalize_return_type(&signature.output);
@@ -270,55 +274,79 @@ fn quote_method_item(item: ImplItemMethod, self_ty: &Type) -> syn::Result<TokenS
         "Generic functions not supported with `#[cs_bindgen]`",
     )?;
 
-    // Process the receiver for the method, if any.
-    let mut inputs = Vec::new();
-    if let Some(arg) = signature.receiver() {
-        let self_ty = match arg {
-            // Expand the full self type based on how the receiver was declared:
-            //
-            // * `self` -> `self_ty`
-            // * `&self` -> `&self_ty`
-            // * `&mut self` -> `&mut self_ty`
-            FnArg::Receiver(arg) => {
-                if arg.reference.is_some() {
-                    if arg.mutability.is_some() {
-                        quote! { &mut #self_ty }
+    // Process the receiver for the method, if any:
+    //
+    // * For the binding function, we need to add the additional input to the list of inputs.
+    // * For the descriptor function, we need generate the value of the `receiver` field on the
+    //   created `Method` object.
+    let (mut binding_args, describe_receiver) = match signature.receiver() {
+        Some(arg) => {
+            let (self_ty, describe) = match arg {
+                // Expand the full self type based on how the receiver was declared:
+                //
+                // * `self` -> `self_ty`
+                // * `&self` -> `&self_ty`
+                // * `&mut self` -> `&mut self_ty`
+                FnArg::Receiver(arg) => {
+                    if arg.reference.is_some() {
+                        if arg.mutability.is_some() {
+                            (
+                                quote! { &mut #self_ty },
+                                quote! { Some(ReceiverStyle::RefMut) },
+                            )
+                        } else {
+                            (quote! { & #self_ty }, quote! { Some(ReceiverStyle::Ref) })
+                        }
                     } else {
-                        quote! { & #self_ty }
+                        (
+                            self_ty.to_token_stream(),
+                            quote! { Some(ReceiverStyle::Move) },
+                        )
                     }
-                } else {
-                    self_ty.to_token_stream()
                 }
-            }
 
-            // If the method was declared using an arbitrary self type (e.g. `self: Foo`), directly
-            // used the declared type.
-            //
-            // TODO: There's likely some extra work needed here in order to fully support arbitrary
-            // self types: While the macro won't generate an error, we're probably not going to
-            // generate the ideal bindings in all cases.
-            FnArg::Typed(arg) => arg.ty.to_token_stream(),
-        };
+                // If the method was declared using an arbitrary self type (e.g. `self: Foo`), directly
+                // used the declared type.
+                //
+                // TODO: There's likely some extra work needed here in order to fully support arbitrary
+                // self types: While the macro won't generate an error, we're probably not going to
+                // generate the ideal bindings in all cases.
+                //
+                // We probably want to treat arbitrary self type functions more like static functions
+                // in C# than methods. So maybe convert it to a regular function with a normal self type,
+                // i.e. treat it as if there were no receiver?
+                FnArg::Typed(arg) => (arg.ty.to_token_stream(), quote! { None }),
+            };
 
-        inputs.push((format_ident!("self_"), self_ty));
-    }
+            (vec![(format_ident!("self_"), self_ty)], describe)
+        }
+
+        None => (Default::default(), quote! { None }),
+    };
 
     // Determine the name of the generated function.
     let ident = signature.ident;
     let binding_ident = format_binding_ident!(ident);
 
     // Process the arguments to the function.
-    inputs.extend(
-        extract_inputs(signature.inputs)?
-            .into_iter()
-            .map(|(ident, ty)| (ident, ty.into_token_stream())),
+    let inputs = extract_inputs(signature.inputs)?;
+    binding_args.extend(
+        inputs
+            .iter()
+            .map(|(ident, ty)| (ident.clone(), ty.into_token_stream())),
     );
-    let binding_inputs = quote_binding_inputs(&inputs);
-    let convert_inputs = quote_input_conversion(&inputs);
+    let binding_inputs = binding_args
+        .iter()
+        .map(|(ident, ty)| quote_binding_inputs(ident, ty));
+    let convert_inputs = binding_args
+        .iter()
+        .map(|(ident, _)| quote_input_conversion(ident));
 
     // Generate the list of argument names. Used both for forwarding arguments into the
     // original function, and for populating the metadata item.
-    let arg_names = inputs.iter().map(|(ident, _)| ident.to_token_stream());
+    let arg_names = binding_args
+        .iter()
+        .map(|(ident, _)| ident.to_token_stream());
 
     // Normalize the return type of the function.
     let return_type = normalize_return_type(&signature.output);
@@ -334,10 +362,45 @@ fn quote_method_item(item: ImplItemMethod, self_ty: &Type) -> syn::Result<TokenS
         }
     };
 
-    // TODO: Generate descriptor function.
+    // Generate the describe function.
+    // ===============================
+
+    // Generate the name of the describe function.
+    let describe_ident = format_describe_ident!(ident);
+
+    // Generate string versions of the two function idents.
+    let name = ident.to_string();
+    let binding_name = binding_ident.to_string();
+
+    let describe_args = inputs.iter().map(|(ident, ty)| {
+        let name = ident.to_string();
+        quote! {
+            (#name.into(), encode::<#ty>().expect("Failed to generate schema for argument type"))
+        }
+    });
+
+    let describe = quote! {
+        #[no_mangle]
+        pub unsafe extern "C" fn #describe_ident() -> Box<cs_bindgen::abi::RawString> {
+            use cs_bindgen::shared::{schematic::encode, Method, ReceiverStyle};
+
+            let export = Method {
+                name: #name.into(),
+                binding: #binding_name.into(),
+                self_type: encode::<#self_ty>().expect("Failed to generate schema for self type"),
+                receiver: #describe_receiver,
+                inputs: vec![#(
+                    #describe_args,
+                )*],
+                output: encode::<#return_type>().expect("Failed to generate schema for return type"),
+            };
+
+            std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())
+        }
+    };
 
     Ok(quote! {
         #binding
-        // #describe
+        #describe
     })
 }

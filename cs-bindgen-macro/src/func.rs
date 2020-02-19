@@ -56,24 +56,16 @@ pub fn extract_inputs(inputs: Punctuated<FnArg, Comma>) -> syn::Result<Vec<FnInp
         .collect()
 }
 
-pub fn quote_binding_inputs<T: ToTokens>(
-    inputs: &[(Ident, T)],
-) -> impl Iterator<Item = TokenStream> + '_ {
-    inputs.iter().map(|(ident, ty)| {
-        quote! {
-            #ident: <#ty as cs_bindgen::abi::FromAbi>::Abi
-        }
-    })
+pub fn quote_binding_inputs<T: ToTokens>(ident: &Ident, ty: T) -> TokenStream {
+    quote! {
+        #ident: <#ty as cs_bindgen::abi::FromAbi>::Abi
+    }
 }
 
-pub fn quote_input_conversion<T: ToTokens>(
-    inputs: &[(Ident, T)],
-) -> impl Iterator<Item = TokenStream> + '_ {
-    inputs.iter().map(|(ident, _)| {
-        quote! {
-            let #ident = cs_bindgen::abi::FromAbi::from_abi(#ident);
-        }
-    })
+pub fn quote_input_conversion(ident: &Ident) -> TokenStream {
+    quote! {
+        let #ident = cs_bindgen::abi::FromAbi::from_abi(#ident);
+    }
 }
 
 pub fn normalize_return_type(output: &ReturnType) -> TokenStream {
