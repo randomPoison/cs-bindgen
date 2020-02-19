@@ -3,7 +3,7 @@ extern crate proc_macro;
 use crate::func::*;
 use proc_macro2::TokenStream;
 use quote::*;
-use syn::*;
+use syn::{punctuated::Punctuated, token::Comma, *};
 
 macro_rules! format_binding_ident {
     ($ident:expr) => {
@@ -269,33 +269,72 @@ fn quote_method_item(item: ImplItemMethod, self_ty: &Type) -> syn::Result<TokenS
         "Generic functions not supported with `#[cs_bindgen]`",
     )?;
 
+    // Process the receiver for the method, if any.
+    let receiver_ident = quote! { self_ };
+    let mut binding_inputs = Punctuated::<_, Comma>::new();
+    let mut convert_inputs = Vec::new();
+    let mut arg_names = Punctuated::<_, Comma>::new();
+    if let Some(arg) = signature.receiver() {
+        let self_ty = match arg {
+            // Expand the full self type based on how the receiver was declared:
+            //
+            // * `self` -> `self_ty`
+            // * `&self` -> `&self_ty`
+            // * `&mut self` -> `&mut self_ty`
+            FnArg::Receiver(arg) => {
+                if arg.reference.is_some() {
+                    if arg.mutability.is_some() {
+                        quote! { &mut #self_ty }
+                    } else {
+                        quote! { & #self_ty }
+                    }
+                } else {
+                    self_ty.to_token_stream()
+                }
+            }
+
+            // If the method was declared using an arbitrary self type (e.g. `self: Foo`), directly
+            // used the declared type.
+            //
+            // TODO: There's likely some extra work needed here in order to fully support arbitrary
+            // self types: While the macro won't generate an error, we're probably not going to
+            // generate the ideal bindings in all cases.
+            FnArg::Typed(arg) => arg.ty.to_token_stream(),
+        };
+
+        // Generate the necessary declarations for the method receiver.
+        binding_inputs.push(quote! { #receiver_ident: #self_ty });
+        convert_inputs.push(quote! {
+            let #receiver_ident = cs_bindgen::abi::FromAbi::from_abi(#receiver_ident);
+        });
+        arg_names.push(receiver_ident.clone());
+    }
+
     // Determine the name of the generated function.
     let ident = signature.ident;
     let binding_ident = format_binding_ident!(ident);
 
     // Process the arguments to the function.
     let inputs = extract_inputs(signature.inputs)?;
-    let binding_inputs = quote_binding_inputs(&inputs);
-    let convert_inputs = quote_input_conversion(&inputs);
+    binding_inputs.extend(quote_binding_inputs(&inputs));
+    convert_inputs.extend(quote_input_conversion(&inputs));
+
+    // Generate the list of argument names. Used both for forwarding arguments into the
+    // original function, and for populating the metadata item.
+    arg_names.extend(inputs.iter().map(|(ident, _)| ident.to_token_stream()));
 
     // Normalize the return type of the function.
     let return_type = normalize_return_type(&signature.output);
 
-    // Generate the list of argument names. Used both for forwarding arguments into the
-    // original function, and for populating the metadata item.
-    let arg_names = inputs.iter().map(|(ident, _)| ident);
-
     // Compose the various pieces together into the final binding function.
-    let invoke_expr = quote! { #self_ty::#ident(self_, #( #arg_names, )*) };
     let binding = quote! {
         #[no_mangle]
         pub unsafe extern "C" fn #binding_ident(
-            self_: <#self_ty as cs_bindgen::abi::FromAbi>::Abi,
-            #( #binding_inputs, )*
+            #binding_inputs
         ) -> <#return_type as cs_bindgen::abi::IntoAbi>::Abi {
-            let self_ = cs_bindgen::abi::FromAbi::from_abi(self_);
+
             #( #convert_inputs )*
-            cs_bindgen::abi::IntoAbi::into_abi(#invoke_expr)
+            cs_bindgen::abi::IntoAbi::into_abi(#self_ty::#ident(#arg_names))
         }
     };
 

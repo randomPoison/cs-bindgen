@@ -27,7 +27,8 @@ pub struct PersonInfo {
 
 #[cs_bindgen]
 impl PersonInfo {
-    pub fn new(name: String, age: i32) -> Self {
+    // TODO: Change the return type back to `Self` once that's supported.
+    pub fn new(name: String, age: i32) -> PersonInfo {
         Self { name, age }
     }
 
