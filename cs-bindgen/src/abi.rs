@@ -1,3 +1,20 @@
+//! Traits for defining type conversions when communicating with C# code.
+//!
+//! In order to receive a value from C#, or return one to C#, the type must be
+//! converted to a format that's compatible with C#. Specifically, it must be
+//! converted to a type that's compatible with the C ABI.
+//!
+//! # Type Conversions
+//!
+//! > TODO: Describe the three unsafe primitive traits and the two conversions traits.
+//!
+//! # Safety
+//!
+//! > TODO: Describe what safety invariants have to be upheld when implementing the
+//! > unsafe traits.
+//!
+//! [nomicon-interop]: https://doc.rust-lang.org/nomicon/ffi.html#interoperability-with-foreign-code
+
 use std::{convert::TryInto, mem, slice, str};
 
 /// The ABI-compatible equivalent to [`String`].
@@ -12,21 +29,40 @@ pub type RawStr = RawSlice<u8>;
 
 /// A value that is ABI-compatible with C#.
 ///
-/// # Safety
+/// Any type that implements this trait will automatically implement [`AbiArgument`]
+/// and [`AbiReturn`] as well. You should almost always prefer to implement this
+/// trait for custom types instead of implementing [`AbiArgument`] or [`AbiReturn`]
+/// directly.
 ///
-/// This type must be FFI-compatible with the C ABI.
+/// See [the module level documentation](./index.html) for more.
+///
+/// [`AbiArgument`]: trait.AbiArgument.html
+/// [`AbiReturn`]: trait.AbiReturn.html
 pub unsafe trait AbiPrimitive {}
+
+/// A type that can be passed as an argument to an `extern "C"` function.
+///
+/// See [the module level documentation](./index.html) for more.
+pub unsafe trait AbiArgument {}
+
+/// A type that can be returned from an `extern "C"` function.
+///
+/// See [the module level documentation](./index.html) for more.
+pub unsafe trait AbiReturn {}
+
+unsafe impl<T: AbiPrimitive> AbiArgument for T {}
+unsafe impl<T: AbiPrimitive> AbiReturn for T {}
 
 /// A value that can be returned from a Rust function when called from C#.
 pub trait IntoAbi {
-    type Abi: AbiPrimitive;
+    type Abi: AbiReturn;
 
     fn into_abi(self) -> Self::Abi;
 }
 
 /// A value that can be accepted as an argument to a Rust function when called from C#.
 pub trait FromAbi {
-    type Abi: AbiPrimitive;
+    type Abi: AbiArgument;
 
     unsafe fn from_abi(abi: Self::Abi) -> Self;
 }
@@ -71,10 +107,11 @@ abi_primitives! {
     f64,
 }
 
-// NOTE: Unit is also a valid primitive but it's only valid as a return value, not
-// an argument. As such, we don't include it with `abi_primitives!` and instead
-// manually implement just `IntoAbi` for it.
-unsafe impl AbiPrimitive for () {}
+// NOTE: `()` is only valid as a return type for C FFI, since this is the convention
+// that the Rust compiler understand for declaring the equivalent of a function that
+// "returns" `void`. Zero-sized types are otherwise not valid as part of a C API, so
+// it's not safe to implement `AbiArgument` for `()`.
+unsafe impl AbiReturn for () {}
 
 impl IntoAbi for () {
     type Abi = Self;

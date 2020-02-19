@@ -294,6 +294,8 @@ fn quote_impl_item(item: ItemImpl) -> syn::Result<TokenStream> {
 
     let self_ty = item.self_ty;
 
+    // Iterate over the items declared in the impl block and generate bindings for any
+    // supported item types.
     let mut result = TokenStream::new();
     for item in item.items {
         match item {
