@@ -106,7 +106,7 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
     let describe_args = inputs.iter().map(|(ident, ty)| {
         let name = ident.to_string();
         quote! {
-            (#name.into(), encode::<#ty>().expect("Failed to generate schema for argument type"))
+            (#name.into(), describe::<#ty>().expect("Failed to generate schema for argument type"))
         }
     });
 
@@ -114,7 +114,7 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
     let describe = quote! {
         #[no_mangle]
         pub unsafe extern "C" fn #describe_ident() -> Box<cs_bindgen::abi::RawString> {
-            use cs_bindgen::shared::{schematic::encode, Func};
+            use cs_bindgen::shared::{schematic::describe, Func};
 
             let export = Func {
                 name: #name.into(),
@@ -122,7 +122,7 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
                 inputs: vec![#(
                     #describe_args,
                 )*],
-                output: encode::<#return_type>().expect("Failed to generate schema for return type"),
+                output: describe::<#return_type>().expect("Failed to generate schema for return type"),
             };
 
             std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())
@@ -146,13 +146,14 @@ fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
     let drop_ident = format_drop_ident!(ident);
 
     Ok(quote! {
-        // Implement `Encode` for the exported type.
-        impl cs_bindgen::shared::schematic::Encode for #ident {
-            fn encode<E>(encoder: E) -> Result<E::Ok, E::Error>
+        // Implement `Describe` for the exported type.
+        impl cs_bindgen::shared::schematic::Describe for #ident {
+            fn describe<E>(describer: E) -> Result<E::Ok, E::Error>
             where
-                E: cs_bindgen::shared::schematic::Encoder,
+                E: cs_bindgen::shared::schematic::Describer,
             {
-                encoder.encode_struct(cs_bindgen::shared::schematic::type_name!(#ident))
+                let describer = describer.describe_struct(cs_bindgen::shared::schematic::type_name!(#ident))?;
+                cs_bindgen::shared::schematic::DescribeStruct::end(describer)
             }
         }
 
@@ -210,12 +211,13 @@ fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
         // Export a function that describes the exported type.
         #[no_mangle]
         pub unsafe extern "C" fn #describe_ident() -> std::boxed::Box<cs_bindgen::abi::RawString> {
-            use cs_bindgen::shared::{schematic::{encode, type_name}, Func};
+            use cs_bindgen::shared::{schematic::{describe, type_name}, Func};
 
-            // TODO: Use the `Encode` impl for the type, rather than constructing the schema
+            // TODO: Use the `Describe` impl for the type, rather than constructing the schema
             // directly.
             let export = cs_bindgen::shared::schematic::Struct {
                 name: type_name!(#ident),
+                fields: Default::default(),
             };
 
             std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())
@@ -276,9 +278,14 @@ fn quote_method_item(item: ImplItemMethod, self_ty: &Type) -> syn::Result<TokenS
 
     // Process the receiver for the method, if any:
     //
-    // * For the binding function, we need to add the additional input to the list of inputs.
-    // * For the descriptor function, we need generate the value of the `receiver` field on the
-    //   created `Method` object.
+    // * For the binding function, we need to add the additional input to the list of
+    //   inputs.
+    // * For the descriptor function, we need generate the value of the `receiver` field
+    //   on the created `Method` object.
+    //
+    // TODO: Rewrite all this it's very bad and super hard to follow. Probably the thing
+    // to do would be to first parse out the receiver style as an enum, then do a
+    // separate `match` on it for each of the values we want to generate.
     let (mut binding_args, describe_receiver) = match signature.receiver() {
         Some(arg) => {
             let (self_ty, describe) = match arg {
@@ -375,24 +382,24 @@ fn quote_method_item(item: ImplItemMethod, self_ty: &Type) -> syn::Result<TokenS
     let describe_args = inputs.iter().map(|(ident, ty)| {
         let name = ident.to_string();
         quote! {
-            (#name.into(), encode::<#ty>().expect("Failed to generate schema for argument type"))
+            (#name.into(), describe::<#ty>().expect("Failed to generate schema for argument type"))
         }
     });
 
     let describe = quote! {
         #[no_mangle]
         pub unsafe extern "C" fn #describe_ident() -> Box<cs_bindgen::abi::RawString> {
-            use cs_bindgen::shared::{schematic::encode, Method, ReceiverStyle};
+            use cs_bindgen::shared::{schematic::describe, Method, ReceiverStyle};
 
             let export = Method {
                 name: #name.into(),
                 binding: #binding_name.into(),
-                self_type: encode::<#self_ty>().expect("Failed to generate schema for self type"),
+                self_type: describe::<#self_ty>().expect("Failed to generate schema for self type"),
                 receiver: #describe_receiver,
                 inputs: vec![#(
                     #describe_args,
                 )*],
-                output: encode::<#return_type>().expect("Failed to generate schema for return type"),
+                output: describe::<#return_type>().expect("Failed to generate schema for return type"),
             };
 
             std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())

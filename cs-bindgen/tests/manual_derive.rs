@@ -6,7 +6,7 @@
 //
 // * The binding function, which is exported as `extern "C"` and handles the
 //   boilerplate work of converting two and from ABI-compatible types.
-// * The describe function, which 
+// * The describe function, which
 
 pub fn example_fn(first: u32, second: String) -> String {
     format!("first: {}, second: {}", first, second)
@@ -24,7 +24,7 @@ pub unsafe extern "C" fn __cs_bindgen_generated__example_fn(
 
 #[no_mangle]
 pub unsafe extern "C" fn __cs_bindgen_describe__example_fn() -> Box<cs_bindgen::abi::RawVec<u8>> {
-    use cs_bindgen::shared::{schematic::encode, Func};
+    use cs_bindgen::shared::{schematic::describe, Func};
 
     let export = Func {
         name: "example_fn".into(),
@@ -32,14 +32,14 @@ pub unsafe extern "C" fn __cs_bindgen_describe__example_fn() -> Box<cs_bindgen::
         inputs: vec![
             (
                 "first".into(),
-                encode::<u32>().expect("Failed to generate schema for argument"),
+                describe::<u32>().expect("Failed to generate schema for argument"),
             ),
             (
                 "second".into(),
-                encode::<String>().expect("Failed to generate schema for argument"),
+                describe::<String>().expect("Failed to generate schema for argument"),
             ),
         ],
-        output: encode::<String>().expect("Failed to generate schema for return type"),
+        output: describe::<String>().expect("Failed to generate schema for return type"),
     };
 
     Box::new(cs_bindgen::shared::serialize_export(export).into())
@@ -49,12 +49,14 @@ pub struct ExampleStruct {
     _field: String,
 }
 
-impl cs_bindgen::shared::schematic::Encode for ExampleStruct {
-    fn encode<E>(encoder: E) -> Result<E::Ok, E::Error>
+impl cs_bindgen::shared::schematic::Describe for ExampleStruct {
+    fn describe<E>(describer: E) -> Result<E::Ok, E::Error>
     where
-        E: cs_bindgen::shared::schematic::Encoder,
+        E: cs_bindgen::shared::schematic::Describer,
     {
-        encoder.encode_struct(cs_bindgen::shared::schematic::type_name!(ExampleStruct))
+        let describer =
+            describer.describe_struct(cs_bindgen::shared::schematic::type_name!(ExampleStruct))?;
+        cs_bindgen::shared::schematic::DescribeStruct::end(describer)
     }
 }
 
