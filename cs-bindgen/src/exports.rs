@@ -4,7 +4,7 @@
 //! [`export`] macro once at the root of your crate:
 //!
 //! ```
-//! cs_bindgen::exports::export!();
+//! cs_bindgen::export!();
 //! ```
 //!
 //! Ideally users of this crate shouldn't need to do anything to re-export these
@@ -12,7 +12,7 @@
 //! seems like on Linux the symbols are not exported. See https://github.com/rust-lang/rfcs/issues/2771
 //! for more information.
 //!
-//! [`export`]: macro.export.html
+//! [`export`]: ../macro.export.html
 
 use crate::abi::RawString;
 
