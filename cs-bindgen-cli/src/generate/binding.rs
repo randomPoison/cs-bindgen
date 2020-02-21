@@ -34,7 +34,9 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str) -> Result<TokenStream,
             // represent refrence types, so we can't generate a full list of inputs that
             // includes the receiver.
             let mut args = quote_binding_args(item.inputs())?;
-            args.insert(0, quote! { void* self });
+            if item.receiver.is_some() {
+                args.insert(0, quote! { void* self });
+            }
 
             Ok(quote! {
                 #dll_import_attrib

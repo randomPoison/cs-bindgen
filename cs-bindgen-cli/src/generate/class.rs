@@ -72,7 +72,11 @@ pub fn quote_method_binding(item: &Method) -> TokenStream {
                 }
             }
         }
-    } else if let Some(reciever_style) = &item.receiver {
+    } else if let Some(_style) = &item.receiver {
+        // TODO: Correctly handle `self` receivers. `&self` and `&mut self` are handled
+        // correctly by passing the handle pointer directly, but in order to handle
+        // `self` we'll need some concept of "consuming" the handle. Likely this will
+        // meaning setting the handle to `null` after calling the function.
         quote_wrapper_fn(
             &*item.name,
             &*item.binding,

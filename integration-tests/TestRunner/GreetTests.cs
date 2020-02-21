@@ -65,21 +65,21 @@ namespace TestRunner
             }
         }
 
-        // [Fact]
-        // public void SetAge()
-        // {
-        //     using (PersonInfo info = new PersonInfo("David", 12))
-        //     {
-        //         Assert.Equal(12, info.Age());
-        //         info.SetAge(22);
-        //         Assert.Equal(22, info.Age());
-        //     }
-        // }
+        [Fact]
+        public void SetAge()
+        {
+            using (PersonInfo info = new PersonInfo("David", 12))
+            {
+                Assert.Equal(12, info.Age());
+                info.SetAge(22);
+                Assert.Equal(22, info.Age());
+            }
+        }
 
-        // [Fact]
-        // public void StaticFunction()
-        // {
-        //     Assert.Equal(7, PersonInfo.StaticFunction());
-        // }
+        [Fact]
+        public void StaticFunction()
+        {
+            Assert.Equal(7, PersonInfo.StaticFunction());
+        }
     }
 }
