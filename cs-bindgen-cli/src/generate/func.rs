@@ -163,7 +163,10 @@ pub fn quote_wrapper_body<'a>(
         // TODO: Look up the referenced type and process the raw return value based on the
         // type of binding being generated for the type. For now we only support treating
         // named types as handles, so we don't do any processing with the returned pointer.
-        Schema::Struct(_) => quote! { #ret = #invoke; },
+        Schema::Struct(output) => {
+            let ty_ident = format_ident!("{}", &*output.name.name);
+            quote! { #ret = new #ty_ident(#invoke); }
+        }
 
         // TODO: Add support for passing user-defined types out from Rust.
         Schema::UnitStruct(_)
