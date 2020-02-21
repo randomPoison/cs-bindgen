@@ -2,11 +2,12 @@ use cs_bindgen_shared::*;
 use heck::*;
 use proc_macro2::TokenStream;
 use quote::*;
-use syn::Ident;
+use syn::{punctuated::Punctuated, token::Comma, Ident};
 
 pub fn quote_wrapper_fn<'a>(
     name: &str,
     binding: &str,
+    receiver: Option<TokenStream>,
     inputs: impl Iterator<Item = (&'a str, &'a Schema)> + Clone + 'a,
     output: &Schema,
 ) -> TokenStream {
@@ -30,11 +31,19 @@ pub fn quote_wrapper_fn<'a>(
         _ => quote! { return #ret; },
     };
 
+    // Determine if the function should be static or not based on whether or not it has
+    // a receiver.
+    let static_ = if receiver.is_some() {
+        TokenStream::default()
+    } else {
+        quote! { static }
+    };
+
     let args = quote_args(inputs.clone());
-    let body = quote_wrapper_body(binding, inputs, output, &ret);
+    let body = quote_wrapper_body(binding, receiver, inputs, output, &ret);
 
     quote! {
-        public static #return_ty #name(#( #args ),*)
+        public #static_ #return_ty #name(#( #args ),*)
         {
             #ret_decl
             unsafe {
@@ -47,56 +56,65 @@ pub fn quote_wrapper_fn<'a>(
 
 pub fn quote_wrapper_body<'a>(
     binding_name: &str,
+    receiver: Option<TokenStream>,
     args: impl Iterator<Item = (&'a str, &'a Schema)> + Clone,
     output: &Schema,
     ret: &Ident,
 ) -> TokenStream {
     // Build the list of arguments to the wrapper function.
-    let invoke_args = args.clone().map(|(name, schema)| {
-        let ident = format_ident!("{}", name.to_mixed_case());
-        match schema {
-            // Basic numeric types (currently) don't require any processing.
-            Schema::I8
-            | Schema::I16
-            | Schema::I32
-            | Schema::I64
-            | Schema::U8
-            | Schema::U16
-            | Schema::U32
-            | Schema::U64
-            | Schema::F32
-            | Schema::F64 => ident.to_token_stream(),
+    let mut invoke_args = args
+        .clone()
+        .map(|(name, schema)| {
+            let ident = format_ident!("{}", name.to_mixed_case());
+            match schema {
+                // Basic numeric types (currently) don't require any processing.
+                Schema::I8
+                | Schema::I16
+                | Schema::I32
+                | Schema::I64
+                | Schema::U8
+                | Schema::U16
+                | Schema::U32
+                | Schema::U64
+                | Schema::F32
+                | Schema::F64 => ident.to_token_stream(),
 
-            Schema::Bool => quote! { (#ident ? 1 : 0) },
+                Schema::Bool => quote! { (#ident ? 1 : 0) },
 
-            // To pass a string to Rust, we convert it into a `RawCsString` with the fixed pointer.
-            // The code for wrapping the body of the function in a `fixed` block is done below,
-            // since we need to generate the contents of the block first.
-            Schema::String => {
-                let fixed_ident = format_ident!("__fixed_{}", ident);
-                quote! {
-                    new RawCsString(#fixed_ident, #ident.Length)
+                // To pass a string to Rust, we convert it into a `RawCsString` with the fixed pointer.
+                // The code for wrapping the body of the function in a `fixed` block is done below,
+                // since we need to generate the contents of the block first.
+                Schema::String => {
+                    let fixed_ident = format_ident!("__fixed_{}", ident);
+                    quote! {
+                        new RawCsString(#fixed_ident, #ident.Length)
+                    }
+                }
+
+                Schema::Char => todo!("Support converting a C# `char` into a Rust `char`"),
+
+                // TODO: Add support for passing user-defined types out from Rust.
+                Schema::Struct(_)
+                | Schema::UnitStruct(_)
+                | Schema::NewtypeStruct(_)
+                | Schema::TupleStruct(_)
+                | Schema::Enum(_)
+                | Schema::Option(_)
+                | Schema::Seq(_)
+                | Schema::Tuple(_)
+                | Schema::Map { .. } => todo!("Generate argument binding"),
+
+                Schema::I128 | Schema::U128 | Schema::Unit => {
+                    unreachable!("Invalid argument types should have already been rejected");
                 }
             }
+        })
+        .collect::<Punctuated<_, Comma>>();
 
-            Schema::Char => todo!("Support converting a C# `char` into a Rust `char`"),
-
-            // TODO: Add support for passing user-defined types out from Rust.
-            Schema::Struct(_)
-            | Schema::UnitStruct(_)
-            | Schema::NewtypeStruct(_)
-            | Schema::TupleStruct(_)
-            | Schema::Enum(_)
-            | Schema::Option(_)
-            | Schema::Seq(_)
-            | Schema::Tuple(_)
-            | Schema::Map { .. } => todo!("Generate argument binding"),
-
-            Schema::I128 | Schema::U128 | Schema::Unit => {
-                unreachable!("Invalid argument types should have already been rejected");
-            }
-        }
-    });
+    // Insert the receiver at the beginning of the list of arguments, if necessary.
+    if let Some(receiver) = receiver {
+        invoke_args.insert(0, receiver);
+    }
 
     // Construct the path the raw binding function.
     let binding = {
@@ -106,7 +124,7 @@ pub fn quote_wrapper_body<'a>(
 
     // Generate the expression for invoking the raw binding and then converting the raw
     // return value into the appropriate C# type.
-    let invoke = quote! { #binding(#( #invoke_args ),*) };
+    let invoke = quote! { #binding(#invoke_args) };
     let invoke = match output {
         // NOTE: For `void` returns there's no intermediate variable for the return value
         // (since we can't have a `void` variable).

@@ -35,6 +35,7 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
             Export::Fn(export) => fn_bindings.push(quote_wrapper_fn(
                 &*export.name,
                 &*export.binding,
+                None,
                 export.inputs(),
                 &export.output,
             )),

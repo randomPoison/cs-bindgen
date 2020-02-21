@@ -57,6 +57,7 @@ pub fn quote_method_binding(item: &Method) -> TokenStream {
         let args = quote_args(item.inputs());
         let body = quote_wrapper_body(
             &*item.binding,
+            None,
             item.inputs(),
             &item.output,
             &format_ident!("_handle"),
@@ -71,8 +72,22 @@ pub fn quote_method_binding(item: &Method) -> TokenStream {
                 }
             }
         }
+    } else if let Some(reciever_style) = &item.receiver {
+        quote_wrapper_fn(
+            &*item.name,
+            &*item.binding,
+            Some(quote! { this._handle }),
+            item.inputs(),
+            &item.output,
+        )
     } else {
-        quote_wrapper_fn(&*item.name, &*item.binding, item.inputs(), &item.output)
+        quote_wrapper_fn(
+            &*item.name,
+            &*item.binding,
+            None,
+            item.inputs(),
+            &item.output,
+        )
     };
 
     quote! {
