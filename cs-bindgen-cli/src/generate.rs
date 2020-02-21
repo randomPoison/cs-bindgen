@@ -1,16 +1,19 @@
-use self::{class::*, func::*};
+use self::{binding::*, class::*, func::*};
 use crate::Opt;
-use cs_bindgen_shared::*;
+use cs_bindgen_shared::Export;
 use heck::*;
-use proc_macro2::TokenStream;
 use quote::*;
 use std::ffi::OsStr;
-use syn::{punctuated::Punctuated, token::Comma, Ident};
 
+mod binding;
 mod class;
 mod func;
 
-pub fn generate_bindings(decls: Vec<BindgenItem>, opt: &Opt) -> String {
+pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, failure::Error> {
+    // TODO: Add a validation pass to detect any invalid types (e.g. 128 bit integers,
+    // `()` as an argument). This would remove the need to have graceful error handling
+    // around those cases.
+
     let dll_name = opt
         .input
         .file_stem()
@@ -19,38 +22,25 @@ pub fn generate_bindings(decls: Vec<BindgenItem>, opt: &Opt) -> String {
 
     let class_name = format_ident!("{}", dll_name.to_camel_case());
 
-    let raw_bindings = decls
+    // Generate the raw bindings for all exported items.
+    let raw_bindings: Vec<_> = exports
         .iter()
-        .map(|item| match item {
-            BindgenItem::Fn(item) => quote_raw_binding(item, &item.generated_ident(), dll_name),
-
-            BindgenItem::Method(item) => {
-                quote_raw_binding(&item.method, &item.binding_ident(), dll_name)
-            }
-
-            BindgenItem::Struct(item) => {
-                let binding_ident = item.drop_fn_ident();
-                let entry_point = binding_ident.to_string();
-                quote! {
-                    [DllImport(
-                        #dll_name,
-                        EntryPoint = #entry_point,
-                        CallingConvention = CallingConvention.Cdecl)]
-                    internal static extern void #binding_ident(void* self);
-                }
-            }
-        })
-        .collect::<Vec<_>>();
+        .map(|item| quote_raw_binding(item, dll_name))
+        .collect::<Result<_, _>>()?;
 
     let mut fn_bindings = Vec::new();
     let mut method_bindings = Vec::new();
-    for decl in &decls {
-        match decl {
-            BindgenItem::Fn(decl) => {
-                fn_bindings.push(quote_wrapper_fn(decl, &decl.generated_ident()))
-            }
-            BindgenItem::Struct(decl) => method_bindings.push(quote_struct_binding(decl)),
-            BindgenItem::Method(decl) => method_bindings.push(quote_method_binding(decl)),
+    for export in &exports {
+        match export {
+            Export::Fn(export) => fn_bindings.push(quote_wrapper_fn(
+                &*export.name,
+                &*export.binding,
+                None,
+                export.inputs(),
+                &export.output,
+            )),
+            Export::Struct(export) => method_bindings.push(quote_struct(export)),
+            Export::Method(export) => method_bindings.push(quote_method_binding(export)),
         }
     }
 
@@ -89,59 +79,21 @@ pub fn generate_bindings(decls: Vec<BindgenItem>, opt: &Opt) -> String {
         internal unsafe struct RawCsString
         {
             public char* Ptr;
-            public int Length;
+            public UIntPtr Length;
+
+            public RawCsString(char* ptr, UIntPtr len)
+            {
+                Ptr = ptr;
+                Length = len;
+            }
+
+            public RawCsString(char* ptr, int len)
+            {
+                Ptr = ptr;
+                Length = (UIntPtr)len;
+            }
         }
     };
 
-    generated.to_string()
-}
-
-pub fn quote_raw_binding(
-    bindgen_fn: &BindgenFn,
-    binding_ident: &Ident,
-    dll_name: &str,
-) -> TokenStream {
-    let entry_point = binding_ident.to_string();
-
-    let binding_return_ty = match bindgen_fn.ret {
-        ReturnType::Default => quote! { void },
-        ReturnType::SelfType => quote! { void* },
-        ReturnType::Primitive(prim) => match prim {
-            Primitive::String => quote! { RustOwnedString },
-            Primitive::Char => quote! { uint },
-            Primitive::I8 => quote! { sbyte },
-            Primitive::I16 => quote! { short },
-            Primitive::I32 => quote! { int },
-            Primitive::I64 => quote! { long },
-            Primitive::U8 => quote! { byte },
-            Primitive::U16 => quote! { ushort },
-            Primitive::U32 => quote! { uint },
-            Primitive::U64 => quote! { ulong },
-            Primitive::F32 => quote! { float },
-            Primitive::F64 => quote! { double },
-            Primitive::Bool => quote! { byte },
-        },
-    };
-
-    let mut binding_args = bindgen_fn
-        .args
-        .iter()
-        .map(|arg| {
-            let ident = arg.ident();
-            let ty = quote_primitive_binding_arg(arg.ty);
-            quote! { #ty #ident }
-        })
-        .collect::<Punctuated<_, Comma>>();
-
-    if bindgen_fn.receiver.is_some() {
-        binding_args.insert(0, quote! { void* self })
-    }
-
-    quote! {
-        [DllImport(
-            #dll_name,
-            EntryPoint = #entry_point,
-            CallingConvention = CallingConvention.Cdecl)]
-        internal static extern #binding_return_ty #binding_ident(#binding_args);
-    }
+    Ok(generated.to_string())
 }

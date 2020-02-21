@@ -1,6 +1,7 @@
 use cs_bindgen::prelude::*;
 
-cs_bindgen::generate_static_bindings!();
+// Re-export core cs_bindgen functionality. Required in order for the generated Wasm module.
+cs_bindgen::export!();
 
 #[cs_bindgen]
 pub fn greet_a_number(num: i32) -> String {
@@ -26,7 +27,8 @@ pub struct PersonInfo {
 
 #[cs_bindgen]
 impl PersonInfo {
-    pub fn new(name: String, age: i32) -> Self {
+    // TODO: Change the return type back to `Self` once that's supported.
+    pub fn new(name: String, age: i32) -> PersonInfo {
         Self { name, age }
     }
 

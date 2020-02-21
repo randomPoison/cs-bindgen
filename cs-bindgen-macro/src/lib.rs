@@ -1,11 +1,29 @@
 extern crate proc_macro;
 
-use cs_bindgen_shared::{
-    BindgenFn, BindgenItem, BindgenItems, BindgenStruct, FnArg, Method, Primitive, ReturnType,
-};
+use crate::func::*;
 use proc_macro2::TokenStream;
 use quote::*;
-use syn::{punctuated::Punctuated, token::Comma, *};
+use syn::*;
+
+macro_rules! format_binding_ident {
+    ($ident:expr) => {
+        format_ident!("__cs_bindgen_generated__{}", $ident);
+    };
+}
+
+macro_rules! format_describe_ident {
+    ($ident:expr) => {
+        format_ident!("__cs_bindgen_describe__{}", $ident);
+    };
+}
+
+macro_rules! format_drop_ident {
+    ($ident:expr) => {
+        format_ident!("__cs_bindgen_drop__{}", $ident);
+    };
+}
+
+mod func;
 
 #[proc_macro_attribute]
 pub fn cs_bindgen(
@@ -17,254 +35,377 @@ pub fn cs_bindgen(
     // manually reconstruct the original input later when returning the result.
     let mut result: TokenStream = tokens.clone().into();
 
-    for item in parse_macro_input!(tokens as BindgenItems).0 {
-        // Generate the wrapper/binding functions for the item.
-        let binding = match &item {
-            BindgenItem::Fn(input) => quote_bindgen_fn(input),
-            BindgenItem::Method(input) => quote_method(input),
-            BindgenItem::Struct(input) => quote_drop_fn(input),
-        };
+    let generated = match parse_macro_input!(tokens as Item) {
+        Item::Fn(item) => quote_fn_item(item),
+        Item::Struct(item) => quote_struct_item(item),
+        Item::Impl(item) => quote_impl_item(item),
 
-        // Serialize the parsed item declaration into JSON so that it can be stored in
-        // a variable in the generated WASM module.
-        let decl_json = serde_json::to_string(&item).expect("Failed to serialize decl to JSON");
-        let decl_var_ident = format_ident!("__cs_bindgen_decl_json_{}", &*item.raw_ident());
-        let decl_ptr_ident = format_ident!("__cs_bindgen_decl_ptr_{}", &*item.raw_ident());
-        let decl_len_ident = format_ident!("__cs_bindgen_decl_len_{}", &*item.raw_ident());
-
-        let decl = quote! {
-            #[allow(bad_style)]
-            static #decl_var_ident: &str = #decl_json;
-
-            #[no_mangle]
-            pub extern "C" fn #decl_ptr_ident() -> *const u8 {
-                #decl_var_ident.as_ptr()
-            }
-
-            #[no_mangle]
-            pub extern "C" fn #decl_len_ident() -> usize {
-                #decl_var_ident.len()
-            }
-        };
-
-        // Append the generated binding and declaration to the result stream.
-        result.extend(binding);
-        result.extend(decl);
+        // Generate an error for any unknown item types.
+        item @ _ => Err(Error::new_spanned(
+            item,
+            "Item not supported with `#[cs_bindgen]`",
+        )),
     }
+    .unwrap_or_else(|err| err.to_compile_error());
+
+    // Append the generated binding and declaration to the result stream.
+    result.extend(generated);
 
     result.into()
 }
 
-fn quote_bindgen_fn(bindgen_fn: &BindgenFn) -> TokenStream {
+fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
+    // Extract the signature, which contains the bulk of the information we care about.
+    let signature = item.sig;
+
+    // Generate an error for any generic parameters.
+    reject_generics(
+        &signature.generics,
+        "Generic functions not supported with `#[cs_bindgen]`",
+    )?;
+
     // Determine the name of the generated function.
-    let generated_fn_ident = bindgen_fn.generated_ident();
+    let ident = signature.ident;
+    let binding_ident = format_binding_ident!(ident);
 
-    // Process the arguments to the function. From the list of arguments, we need to
-    // generate two things:
-    //
-    // * The list of arguments the generated function needs to take.
-    // * The code for processing the raw arguments and converting them to the
-    //   appropriate Rust types.
-    let mut args = Punctuated::new();
-    let mut process_args = TokenStream::new();
-    build_function_args(&bindgen_fn.args, &mut args, &mut process_args);
-
-    let arg_names = bindgen_fn
-        .args
+    // Process the arguments to the function.
+    let inputs = extract_inputs(signature.inputs)?;
+    let binding_inputs = inputs
         .iter()
-        .map(FnArg::ident)
-        .collect::<Punctuated<_, Comma>>();
+        .map(|(ident, ty)| quote_binding_inputs(ident, ty));
+    let convert_inputs = inputs
+        .iter()
+        .map(|(ident, _)| quote_input_conversion(ident));
 
-    // Process the return type of the function. We need to generate two things from it:
-    //
-    // * The corresponding return type for the generated function.
-    // * The code for processing the return type of the Rust function and converting it
-    //   to the appropriate C# type.
-    let ret_val = format_ident!("ret_val");
-    let (return_type, process_return) = match bindgen_fn.ret.primitive() {
-        None => (quote! { () }, TokenStream::new()),
+    // Normalize the return type of the function.
+    let return_type = normalize_return_type(&signature.output);
 
-        Some(prim) => (
-            quote_primitive_return_type(prim),
-            quote_return_expr(prim, &ret_val),
-        ),
+    // Generate the list of argument names. Used both for forwarding arguments into the
+    // original function, and for populating the metadata item.
+    let arg_names = inputs.iter().map(|(ident, _)| ident);
+
+    // Compose the various pieces together into the final binding function.
+    let invoke_expr = quote! { #ident(#( #arg_names, )*) };
+    let binding = quote! {
+        #[no_mangle]
+        pub unsafe extern "C" fn #binding_ident(
+            #( #binding_inputs, )*
+        ) -> <#return_type as cs_bindgen::abi::IntoAbi>::Abi {
+            #( #convert_inputs )*
+            cs_bindgen::abi::IntoAbi::into_abi(#invoke_expr)
+        }
     };
 
-    // Generate the expression for invoking the underlying Rust function.
-    let orig_fn_name = bindgen_fn.ident();
+    // Generate the name of the describe function.
+    let describe_ident = format_describe_ident!(ident);
 
-    // Compose the various pieces to generate the final function.
-    quote! {
+    // Generate string versions of the two function idents.
+    let name = ident.to_string();
+    let binding_name = binding_ident.to_string();
+
+    let describe_args = inputs.iter().map(|(ident, ty)| {
+        let name = ident.to_string();
+        quote! {
+            (#name.into(), describe::<#ty>().expect("Failed to generate schema for argument type"))
+        }
+    });
+
+    // Generate the describe function.
+    let describe = quote! {
         #[no_mangle]
-        pub unsafe extern "C" fn #generated_fn_ident(#args) -> #return_type {
-            use std::convert::TryInto;
+        pub unsafe extern "C" fn #describe_ident() -> Box<cs_bindgen::abi::RawString> {
+            use cs_bindgen::shared::{schematic::describe, Func};
 
-            #process_args
+            let export = Func {
+                name: #name.into(),
+                binding: #binding_name.into(),
+                inputs: vec![#(
+                    #describe_args,
+                )*],
+                output: describe::<#return_type>().expect("Failed to generate schema for return type"),
+            };
 
-            let #ret_val = #orig_fn_name(#arg_names);
-
-            #process_return
+            std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())
         }
-    }
+    };
+
+    Ok(quote! {
+        #binding
+        #describe
+    })
 }
 
-fn build_function_args(
-    args: &[FnArg],
-    arg_decls: &mut Punctuated<TokenStream, Comma>,
-    process_args: &mut TokenStream,
-) {
-    for arg in args {
-        let ident = arg.ident();
-        let ty = match arg.ty {
-            Primitive::String => quote! { cs_bindgen::RawCsString },
-            Primitive::Char => quote! { u32 },
-            Primitive::I8 => quote! { i8 },
-            Primitive::I16 => quote! { i16 },
-            Primitive::I32 => quote! { i32 },
-            Primitive::I64 => quote! { i64 },
-            Primitive::U8 => quote! { u8 },
-            Primitive::U16 => quote! { u16 },
-            Primitive::U32 => quote! { u32 },
-            Primitive::U64 => quote! { u64 },
-            Primitive::F32 => quote! { f32 },
-            Primitive::F64 => quote! { f64 },
-            Primitive::Bool => quote! { u8 },
-        };
+fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
+    reject_generics(
+        &item.generics,
+        "Generic structs are not supported with `#[cs_bindgen]`",
+    )?;
 
-        arg_decls.push(quote! { #ident: #ty });
+    let ident = item.ident;
+    let name = ident.to_string();
+    let describe_ident = format_describe_ident!(ident);
+    let drop_ident = format_drop_ident!(ident);
 
-        match arg.ty {
-            // Strings are passed in as utf-16 arrays (specifically as a `RawCsString`), so we
-            // convert the data into a `String`.
-            Primitive::String => process_args.append_all(quote! {
-                let #ident = #ident.into_string();
-            }),
-
-            // Bools are passed in as a `u8`, so we need to re-bind the variable as a `bool` by
-            // explicitly checking the value.
-            Primitive::Bool => process_args.append_all(quote! {
-                let #ident = #ident != 0;
-            }),
-
-            // The remaining primitive types don't require any additional processing.
-            _ => {}
+    Ok(quote! {
+        // Implement `Describe` for the exported type.
+        impl cs_bindgen::shared::schematic::Describe for #ident {
+            fn describe<E>(describer: E) -> Result<E::Ok, E::Error>
+            where
+                E: cs_bindgen::shared::schematic::Describer,
+            {
+                let describer = describer.describe_struct(cs_bindgen::shared::schematic::type_name!(#ident))?;
+                cs_bindgen::shared::schematic::DescribeStruct::end(describer)
+            }
         }
-    }
+
+        // Implement `From/IntoAbi` conversions for the type and references to the type.
+
+        impl cs_bindgen::abi::IntoAbi for #ident {
+            type Abi = std::boxed::Box<Self>;
+
+            fn into_abi(self) -> Self::Abi {
+                std::boxed::Box::new(self)
+            }
+        }
+
+        impl cs_bindgen::abi::FromAbi for #ident {
+            type Abi = std::boxed::Box<Self>;
+
+            unsafe fn from_abi(abi: Self::Abi) -> Self {
+                *abi
+            }
+        }
+
+
+        impl<'a> cs_bindgen::abi::IntoAbi for &'a #ident {
+            type Abi = Self;
+
+            fn into_abi(self) -> Self::Abi {
+                self
+            }
+        }
+
+        impl<'a> cs_bindgen::abi::FromAbi for &'a #ident {
+            type Abi = Self;
+
+            unsafe fn from_abi(abi: Self::Abi) -> Self {
+                abi
+            }
+        }
+
+        impl<'a> cs_bindgen::abi::IntoAbi for &'a mut #ident {
+            type Abi = Self;
+
+            fn into_abi(self) -> Self::Abi {
+                self
+            }
+        }
+
+        impl<'a> cs_bindgen::abi::FromAbi for &'a mut #ident {
+            type Abi = Self;
+
+            unsafe fn from_abi(abi: Self::Abi) -> Self {
+                abi
+            }
+        }
+
+        // Export a function that describes the exported type.
+        #[no_mangle]
+        pub unsafe extern "C" fn #describe_ident() -> std::boxed::Box<cs_bindgen::abi::RawString> {
+            let export = cs_bindgen::shared::Struct {
+                name: #name.into(),
+                binding_style: cs_bindgen::shared::BindingStyle::Handle,
+                schema: cs_bindgen::shared::schematic::describe::<#ident>().expect("Failed to describe struct type"),
+            };
+
+            std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())
+        }
+
+        // Export a function that can be used for dropping an instance of the type.
+        #[no_mangle]
+        pub unsafe extern "C" fn #drop_ident(_: <#ident as cs_bindgen::abi::FromAbi>::Abi) {}
+    })
 }
 
-fn quote_primitive_return_type(prim: Primitive) -> TokenStream {
-    match prim {
-        Primitive::String => quote! { cs_bindgen::RawString },
-        Primitive::Char => quote! { u32 },
-        Primitive::I8 => quote! { i8 },
-        Primitive::I16 => quote! { i16 },
-        Primitive::I32 => quote! { i32 },
-        Primitive::I64 => quote! { i64 },
-        Primitive::U8 => quote! { u8 },
-        Primitive::U16 => quote! { u16 },
-        Primitive::U32 => quote! { u32 },
-        Primitive::U64 => quote! { u64 },
-        Primitive::F32 => quote! { f32 },
-        Primitive::F64 => quote! { f64 },
-        Primitive::Bool => quote! { u8 },
+fn quote_impl_item(item: ItemImpl) -> syn::Result<TokenStream> {
+    // Generate an error for any generic parameters.
+    reject_generics(
+        &item.generics,
+        "Generic `impl` blocks are not supported with `#[cs_bindgen]`",
+    )?;
+
+    // Generate an error for trait impls. Only inherent impls are allowed for now.
+    if let Some((_, trait_, _)) = item.trait_ {
+        return Err(Error::new_spanned(
+            trait_,
+            "Trait impls not supported with `#[cs_bindgen]`",
+        ));
     }
+
+    let self_ty = item.self_ty;
+
+    // Iterate over the items declared in the impl block and generate bindings for any
+    // supported item types.
+    item.items
+        .into_iter()
+        .filter_map(|item| {
+            match item {
+                ImplItem::Method(item) => Some(quote_method_item(item, &self_ty)),
+
+                // Ignore all other unsupported associated item types. We don't generate bindings
+                // for them, but it's otherwise not an error to include them in an `impl` block
+                // tagged with `#[cs_bindgen]`.
+                _ => None,
+            }
+        })
+        .collect::<syn::Result<TokenStream>>()
 }
 
-/// Generates the code for returning the final result of the function.
-fn quote_return_expr(prim: Primitive, ret_val: &Ident) -> TokenStream {
-    match prim {
-        // Convert the `String` into a `RawString`.
-        Primitive::String => quote! {
-            #ret_val.into()
-        },
+fn quote_method_item(item: ImplItemMethod, self_ty: &Type) -> syn::Result<TokenStream> {
+    // Generate the binding function
+    // =============================
 
-        // Cast the bool to a `u8` in order to pass it to C# as a numeric value.
-        Primitive::Bool => quote! {
-            #ret_val as u8
-        },
+    // Extract the signature, which contains the bulk of the information we care about.
+    let signature = item.sig;
 
-        // All other primitive types are ABI-compatible with a corresponding C# type, and
-        // require no extra processing to be returned.
-        _ => quote! { #ret_val },
-    }
-}
+    // Generate an error for any generic parameters.
+    reject_generics(
+        &signature.generics,
+        "Generic functions not supported with `#[cs_bindgen]`",
+    )?;
 
-fn quote_method(item: &Method) -> TokenStream {
-    let ty_ident = item.strct.ident();
-    let receiver_arg_ident = format_ident!("self_");
+    // Process the receiver for the method, if any:
+    //
+    // * For the binding function, we need to add the additional input to the list of
+    //   inputs.
+    // * For the descriptor function, we need generate the value of the `receiver` field
+    //   on the created `Method` object.
+    //
+    // TODO: Rewrite all this it's very bad and super hard to follow. Probably the thing
+    // to do would be to first parse out the receiver style as an enum, then do a
+    // separate `match` on it for each of the values we want to generate.
+    let (mut binding_args, describe_receiver) = match signature.receiver() {
+        Some(arg) => {
+            let (self_ty, describe) = match arg {
+                // Expand the full self type based on how the receiver was declared:
+                //
+                // * `self` -> `self_ty`
+                // * `&self` -> `&self_ty`
+                // * `&mut self` -> `&mut self_ty`
+                FnArg::Receiver(arg) => {
+                    if arg.reference.is_some() {
+                        if arg.mutability.is_some() {
+                            (
+                                quote! { &mut #self_ty },
+                                quote! { Some(ReceiverStyle::RefMut) },
+                            )
+                        } else {
+                            (quote! { & #self_ty }, quote! { Some(ReceiverStyle::Ref) })
+                        }
+                    } else {
+                        (
+                            self_ty.to_token_stream(),
+                            quote! { Some(ReceiverStyle::Move) },
+                        )
+                    }
+                }
+
+                // If the method was declared using an arbitrary self type (e.g. `self: Foo`), directly
+                // used the declared type.
+                //
+                // TODO: There's likely some extra work needed here in order to fully support arbitrary
+                // self types: While the macro won't generate an error, we're probably not going to
+                // generate the ideal bindings in all cases.
+                //
+                // We probably want to treat arbitrary self type functions more like static functions
+                // in C# than methods. So maybe convert it to a regular function with a normal self type,
+                // i.e. treat it as if there were no receiver?
+                FnArg::Typed(arg) => (arg.ty.to_token_stream(), quote! { None }),
+            };
+
+            (vec![(format_ident!("self_"), self_ty)], describe)
+        }
+
+        None => (Default::default(), quote! { None }),
+    };
 
     // Determine the name of the generated function.
-    let generated_fn_ident = item.binding_ident();
+    let ident = signature.ident;
+    let binding_ident = format_binding_ident!(ident);
 
-    let mut args = Punctuated::<_, Comma>::new();
-    let mut process_args = TokenStream::default();
-    let mut arg_names = Punctuated::<_, Comma>::new();
+    // Process the arguments to the function.
+    let inputs = extract_inputs(signature.inputs)?;
+    binding_args.extend(
+        inputs
+            .iter()
+            .map(|(ident, ty)| (ident.clone(), ty.into_token_stream())),
+    );
+    let binding_inputs = binding_args
+        .iter()
+        .map(|(ident, ty)| quote_binding_inputs(ident, ty));
+    let convert_inputs = binding_args
+        .iter()
+        .map(|(ident, _)| quote_input_conversion(ident));
 
-    // Generate bindings for the method receiver (i.e. the `self` argument).
-    if item.method.receiver.is_some() {
-        args.push(quote! {
-            #receiver_arg_ident: &std::sync::Mutex<#ty_ident>
-        });
+    // Generate the list of argument names. Used both for forwarding arguments into the
+    // original function, and for populating the metadata item.
+    let arg_names = binding_args
+        .iter()
+        .map(|(ident, _)| ident.to_token_stream());
 
-        process_args.extend(quote! {
-            let mut #receiver_arg_ident = #receiver_arg_ident.lock().expect("Handle mutex was poisoned");
-            let #receiver_arg_ident = &mut *#receiver_arg_ident;
-        });
+    // Normalize the return type of the function.
+    let return_type = normalize_return_type(&signature.output);
 
-        arg_names.push(receiver_arg_ident.clone());
-    }
-
-    // Process the remaining arguments.
-    build_function_args(&item.method.args, &mut args, &mut process_args);
-
-    // Process the return value.
-    let ret_val = format_ident!("ret_val");
-    let (return_type, process_return) = match item.method.ret {
-        ReturnType::Default => (quote! { () }, TokenStream::new()),
-
-        ReturnType::SelfType => {
-            let ty = quote! {
-                std::boxed::Box<std::sync::Mutex<#ty_ident>>
-            };
-
-            let process = quote! {
-                std::boxed::Box::new(std::sync::Mutex::new(#ret_val))
-            };
-            (ty, process)
+    // Compose the various pieces together into the final binding function.
+    let binding = quote! {
+        #[no_mangle]
+        pub unsafe extern "C" fn #binding_ident(
+            #( #binding_inputs, )*
+        ) -> <#return_type as cs_bindgen::abi::IntoAbi>::Abi {
+            #( #convert_inputs )*
+            cs_bindgen::abi::IntoAbi::into_abi(#self_ty::#ident(#( #arg_names, )*))
         }
-
-        ReturnType::Primitive(prim) => (
-            quote_primitive_return_type(prim),
-            quote_return_expr(prim, &ret_val),
-        ),
     };
 
-    // Generate the expression for invoking the underlying Rust function.
-    let method_name = item.method.ident();
-    let orig_fn = quote! { #ty_ident::#method_name };
+    // Generate the describe function.
+    // ===============================
 
-    arg_names.extend(item.method.args.iter().map(FnArg::ident));
+    // Generate the name of the describe function.
+    let describe_ident = format_describe_ident!(ident);
 
-    // Compose the various pieces to generate the final function.
-    quote! {
-        #[no_mangle]
-        pub unsafe extern "C" fn #generated_fn_ident(#args) -> #return_type {
-            use std::convert::TryInto;
+    // Generate string versions of the two function idents.
+    let name = ident.to_string();
+    let binding_name = binding_ident.to_string();
 
-            #process_args
-
-            let #ret_val = #orig_fn(#arg_names);
-
-            #process_return
+    let describe_args = inputs.iter().map(|(ident, ty)| {
+        let name = ident.to_string();
+        quote! {
+            (#name.into(), describe::<#ty>().expect("Failed to generate schema for argument type"))
         }
-    }
-}
+    });
 
-fn quote_drop_fn(item: &BindgenStruct) -> TokenStream {
-    let ty_ident = item.ident();
-    let ident = item.drop_fn_ident();
-    quote! {
+    let describe = quote! {
         #[no_mangle]
-        pub unsafe extern "C" fn #ident(_: std::boxed::Box<std::sync::Mutex<#ty_ident>>) {}
-    }
+        pub unsafe extern "C" fn #describe_ident() -> Box<cs_bindgen::abi::RawString> {
+            use cs_bindgen::shared::{schematic::describe, Method, ReceiverStyle};
+
+            let export = Method {
+                name: #name.into(),
+                binding: #binding_name.into(),
+                self_type: describe::<#self_ty>().expect("Failed to generate schema for self type"),
+                receiver: #describe_receiver,
+                inputs: vec![#(
+                    #describe_args,
+                )*],
+                output: describe::<#return_type>().expect("Failed to generate schema for return type"),
+            };
+
+            std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())
+        }
+    };
+
+    Ok(quote! {
+        #binding
+        #describe
+    })
 }

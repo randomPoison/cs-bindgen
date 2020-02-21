@@ -7,7 +7,9 @@ mod load_decl;
 
 fn main() {
     let opt = Opt::from_args();
-    let decls = match load_declarations(&opt) {
+
+    let result = load_declarations(&opt).and_then(|decls| generate::generate_bindings(decls, &opt));
+    let generated = match result {
         Ok(decls) => decls,
         Err(err) => {
             // TODO: Provide suggestions for what users can do to resolve the issue.
@@ -16,11 +18,9 @@ fn main() {
         }
     };
 
-    let result = generate::generate_bindings(decls, &opt);
-
     match opt.output {
         // If no output file was specified, print to stdout.
-        None => println!("{}", result),
+        None => println!("{}", generated),
 
         // Write the generated code the specified output file.
         Some(out_path) => {
@@ -30,7 +30,7 @@ fn main() {
             }
 
             let mut file = File::create(&out_path).expect("Failed to open output file");
-            file.write_all(result.as_bytes())
+            file.write_all(generated.as_bytes())
                 .expect("Failed to write to output file");
         }
     }
