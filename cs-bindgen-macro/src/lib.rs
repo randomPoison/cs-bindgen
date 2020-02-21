@@ -142,6 +142,7 @@ fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
     )?;
 
     let ident = item.ident;
+    let name = ident.to_string();
     let describe_ident = format_describe_ident!(ident);
     let drop_ident = format_drop_ident!(ident);
 
@@ -211,13 +212,10 @@ fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
         // Export a function that describes the exported type.
         #[no_mangle]
         pub unsafe extern "C" fn #describe_ident() -> std::boxed::Box<cs_bindgen::abi::RawString> {
-            use cs_bindgen::shared::{schematic::{describe, type_name}, Func};
-
-            // TODO: Use the `Describe` impl for the type, rather than constructing the schema
-            // directly.
-            let export = cs_bindgen::shared::schematic::Struct {
-                name: type_name!(#ident),
-                fields: Default::default(),
+            let export = cs_bindgen::shared::Struct {
+                name: #name.into(),
+                binding_style: cs_bindgen::shared::BindingStyle::Handle,
+                schema: cs_bindgen::shared::schematic::describe::<#ident>().expect("Failed to describe struct type"),
             };
 
             std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())

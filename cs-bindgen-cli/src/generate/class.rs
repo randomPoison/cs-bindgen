@@ -1,9 +1,8 @@
-use cs_bindgen_shared::schematic::TypeName;
 use proc_macro2::TokenStream;
 use quote::*;
 
-pub fn quote_drop_fn(type_name: &TypeName, dll_name: &str) -> TokenStream {
-    let binding_ident = format_ident!("__cs_bindgen_drop__{}", &*type_name.name);
+pub fn quote_drop_fn(name: &str, dll_name: &str) -> TokenStream {
+    let binding_ident = format_ident!("__cs_bindgen_drop__{}", name);
     let entry_point = binding_ident.to_string();
     quote! {
         [DllImport(
@@ -14,9 +13,9 @@ pub fn quote_drop_fn(type_name: &TypeName, dll_name: &str) -> TokenStream {
     }
 }
 
-pub fn quote_class(type_name: &TypeName) -> TokenStream {
-    let ident = format_ident!("{}", &*type_name.name);
-    let drop_fn = format_ident!("__cs_bindgen_drop__{}", &*type_name.name);
+pub fn quote_class(type_name: &str) -> TokenStream {
+    let ident = format_ident!("{}", type_name);
+    let drop_fn = format_ident!("__cs_bindgen_drop__{}", type_name);
     quote! {
         public unsafe partial class #ident : IDisposable
         {

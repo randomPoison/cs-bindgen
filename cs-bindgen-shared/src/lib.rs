@@ -4,7 +4,7 @@ use std::borrow::Cow;
 
 // Re-export schematic so that dependent crates don't need to directly depend on it.
 pub use schematic;
-pub use schematic::{Schema, Struct};
+pub use schematic::Schema;
 
 pub fn serialize_export<E: Into<Export>>(export: E) -> String {
     let export = export.into();
@@ -60,6 +60,13 @@ impl Func {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Struct {
+    pub name: Cow<'static, str>,
+    pub binding_style: BindingStyle,
+    pub schema: Schema,
+}
+
 #[derive(Debug, Clone, From, Serialize, Deserialize)]
 pub struct Method {
     pub name: Cow<'static, str>,
@@ -81,4 +88,11 @@ pub enum ReceiverStyle {
     Move,
     Ref,
     RefMut,
+}
+
+/// The style of binding generated for an exported type.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum BindingStyle {
+    /// The type is exported as a class wrapping an opaque handle.
+    Handle,
 }
