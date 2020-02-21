@@ -1,12 +1,12 @@
 //! Example of what the code generated from `#[cs_bindgen]` should look like. Used
 //! to verify that the generated code ABI is valid and will compile, and is useful
 //! for understanding how the code generation works.
-
-// For an exported function, we generate two items:
-//
-// * The binding function, which is exported as `extern "C"` and handles the
-//   boilerplate work of converting two and from ABI-compatible types.
-// * The describe function, which
+//!
+//! For an exported function, we generate two items:
+//!
+//! * The binding function, which is exported as `extern "C"` and handles the
+//!   boilerplate work of converting two and from ABI-compatible types.
+//! * The describe function, which
 
 pub fn example_fn(first: u32, second: String) -> String {
     format!("first: {}, second: {}", first, second)

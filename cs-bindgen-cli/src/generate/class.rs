@@ -63,7 +63,7 @@ pub fn quote_method_binding(item: &Method) -> TokenStream {
         );
 
         quote! {
-            public #class_ident(#( #args, )*)
+            public #class_ident(#( #args ),*)
             {
                 unsafe
                 {

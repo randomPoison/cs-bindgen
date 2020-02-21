@@ -106,7 +106,7 @@ pub fn quote_wrapper_body<'a>(
 
     // Generate the expression for invoking the raw binding and then converting the raw
     // return value into the appropriate C# type.
-    let invoke = quote! { #binding(#( #invoke_args )*) };
+    let invoke = quote! { #binding(#( #invoke_args ),*) };
     let invoke = match output {
         // NOTE: For `void` returns there's no intermediate variable for the return value
         // (since we can't have a `void` variable).

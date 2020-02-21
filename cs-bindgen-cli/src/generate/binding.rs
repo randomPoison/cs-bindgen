@@ -28,11 +28,17 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str) -> Result<TokenStream,
             let dll_import_attrib = quote_dll_import(dll_name, &item.binding);
             let binding_ident = format_ident!("{}", &*item.binding);
             let return_ty = quote_binding_return_type(&item.output)?;
-            let args = quote_binding_args(item.inputs())?;
+
+            // TODO: Unify input handling for raw bindings. It shouldn't be necessary to
+            // manually insert the receiver. The current blocker is that schematic can't
+            // represent refrence types, so we can't generate a full list of inputs that
+            // includes the receiver.
+            let mut args = quote_binding_args(item.inputs())?;
+            args.insert(0, quote! { void* self });
 
             Ok(quote! {
                 #dll_import_attrib
-                internal static extern #return_ty #binding_ident(void* self, #args);
+                internal static extern #return_ty #binding_ident(#args);
             })
         }
 
