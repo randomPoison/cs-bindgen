@@ -63,14 +63,19 @@ pub fn quote_method_binding(item: &Method) -> TokenStream {
     // should not) be treated as a constructor.
     let is_constructor = item.receiver.is_none() && item.output == item.self_type;
 
+    // Generate the right type of function for the exported method. There are three options:
+    //
+    // * A constructor.
+    // * A non-static method.
+    // * A static method.
     let wrapper_fn = if is_constructor {
+        let binding = format_ident!("{}", &*item.binding);
         let args = quote_args(item.inputs());
-        let body = quote_wrapper_body(
-            &*item.binding,
-            None,
+        let invoke_args = quote_invoke_args(item.inputs());
+
+        let invoke = fold_fixed_blocks(
+            quote! { _handle = __bindings.#binding(#invoke_args); },
             item.inputs(),
-            &item.output,
-            &format_ident!("_handle"),
         );
 
         quote! {
@@ -78,7 +83,7 @@ pub fn quote_method_binding(item: &Method) -> TokenStream {
             {
                 unsafe
                 {
-                    #body
+                    #invoke
                 }
             }
         }
