@@ -1,4 +1,5 @@
 pub mod abi;
+pub mod exports;
 
 // Re-export crates used in the generated code.
 pub use cs_bindgen_shared as shared;
@@ -7,25 +8,29 @@ pub mod prelude {
     pub use cs_bindgen_macro::*;
 }
 
-/// Shared functionality that needs to be exported in the built dylib.
+/// Exports additional bindings such that they are accessible in the built dylib.
 ///
-/// All symbols in this module MUST be re-exported in the final crate that is being
-/// used with cs_bindgen. Put the following in the root module of your crate:
+/// This MUST be invoked once at the root of your crate:
 ///
 /// ```
-/// pub use cs_bindgen::exports::*;
+/// cs_bindgen::export!();
 /// ```
 ///
-/// Ideally users of this crate shouldn't need to do anything to re-export these
-/// symbols, cs_bindgen should be able to handle this automatically. In practice, it
-/// seems like on Linux the symbols are not exported. See https://github.com/rust-lang/rfcs/issues/2771
-/// for more information.
-pub mod exports {
-    use crate::abi::RawVec;
+/// See [the `exports` module](exports/index.html) for more information.
+#[macro_export]
+macro_rules! export {
+    (fn $name:ident($( $arg:ident : $type:ty ),*) -> $ret:ty) => {
+        #[no_mangle]
+        pub unsafe extern "C" fn $name($( $arg : $type),*) -> $ret {
+            $crate::exports::$name($( $arg ),*)
+        }
+    };
 
-    /// Drops a `CString` that has been passed to the .NET runtime.
-    #[no_mangle]
-    pub unsafe extern "C" fn __cs_bindgen_drop_string(raw: RawVec<u8>) {
-        let _ = raw.into_string();
-    }
+    (fn $name:ident($( $arg:ident : $type:ty ),*)) => {
+        $crate::export!(fn $name($( $arg : $type),*) -> ());
+    };
+
+    () => {
+        $crate::export!(fn __cs_bindgen_drop_string(raw: $crate::abi::RawString));
+    };
 }
