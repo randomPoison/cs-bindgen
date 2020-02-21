@@ -4,29 +4,34 @@ use proc_macro2::TokenStream;
 use quote::*;
 use syn::Ident;
 
-pub fn quote_wrapper_fn(func: &Func) -> TokenStream {
+pub fn quote_wrapper_fn<'a>(
+    name: &str,
+    binding: &str,
+    inputs: impl Iterator<Item = (&'a str, &'a Schema)> + Clone + 'a,
+    output: &Schema,
+) -> TokenStream {
     // Determine the name of the wrapper function. The original function name is
     // going to be in `snake_case`, so we need to convert it to `CamelCase` to keep
     // with C# naming conventions.
-    let name = format_ident!("{}", func.name.to_camel_case());
+    let name = format_ident!("{}", name.to_camel_case());
 
-    let return_ty = quote_cs_type(&func.output);
+    let return_ty = quote_cs_type(&output);
 
     // Generate the declaration for the output variable and return expression. We need
     // to treat `void` returns as a special case, since C# won't let you declare values
     // with type `void` (*sigh*).
     let ret = format_ident!("__ret");
-    let ret_decl = match func.output {
+    let ret_decl = match output {
         Schema::Unit => TokenStream::default(),
         _ => quote! { #return_ty #ret; },
     };
-    let ret_expr = match func.output {
+    let ret_expr = match output {
         Schema::Unit => TokenStream::default(),
         _ => quote! { return #ret; },
     };
 
-    let args = quote_args(func.inputs());
-    let body = quote_wrapper_body(&func.binding, func.inputs(), &func.output, &ret);
+    let args = quote_args(inputs.clone());
+    let body = quote_wrapper_body(binding, inputs, output, &ret);
 
     quote! {
         public static #return_ty #name(#( #args ),*)
@@ -137,9 +142,13 @@ pub fn quote_wrapper_body<'a>(
 
         Schema::Char => todo!("Support converting a C# `char` into a Rust `char`"),
 
+        // TODO: Look up the referenced type and process the raw return value based on the
+        // type of binding being generated for the type. For now we only support treating
+        // named types as handles, so we don't do any processing with the returned pointer.
+        Schema::Struct(_) => quote! { #ret = #invoke; },
+
         // TODO: Add support for passing user-defined types out from Rust.
-        Schema::Struct(_)
-        | Schema::UnitStruct(_)
+        Schema::UnitStruct(_)
         | Schema::NewtypeStruct(_)
         | Schema::TupleStruct(_)
         | Schema::Enum(_)
@@ -173,7 +182,10 @@ pub fn quote_wrapper_body<'a>(
     })
 }
 
-fn quote_args<'a>(
+/// Generates the argument declarations for a C# wrapper function.
+///
+/// Attempts to use the most idiomatic C# type that corresponds to the original type.
+pub fn quote_args<'a>(
     args: impl Iterator<Item = (&'a str, &'a Schema)> + 'a,
 ) -> impl Iterator<Item = TokenStream> + 'a {
     args.map(|(name, schema)| {
@@ -211,9 +223,10 @@ pub fn quote_cs_type(schema: &Schema) -> TokenStream {
 
         Schema::Char => todo!("Support passing single chars"),
 
+        Schema::Struct(struct_) => format_ident!("{}", &*struct_.name.name).to_token_stream(),
+
         // TODO: Add support for passing user-defined types out from Rust.
-        Schema::Struct(_)
-        | Schema::UnitStruct(_)
+        Schema::UnitStruct(_)
         | Schema::NewtypeStruct(_)
         | Schema::TupleStruct(_)
         | Schema::Enum(_)

@@ -32,9 +32,14 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
     let mut method_bindings = Vec::new();
     for export in &exports {
         match export {
-            Export::Fn(export) => fn_bindings.push(quote_wrapper_fn(export)),
-            Export::Struct(export) => method_bindings.push(quote_class(&export.name)),
-            Export::Method(_decl) => todo!("Generate method binding"),
+            Export::Fn(export) => fn_bindings.push(quote_wrapper_fn(
+                &*export.name,
+                &*export.binding,
+                export.inputs(),
+                &export.output,
+            )),
+            Export::Struct(export) => method_bindings.push(quote_struct(export)),
+            Export::Method(export) => method_bindings.push(quote_method_binding(export)),
         }
     }
 

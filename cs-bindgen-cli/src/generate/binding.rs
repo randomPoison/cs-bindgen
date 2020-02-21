@@ -125,9 +125,14 @@ fn quote_binding_return_type(schema: &Schema) -> Result<TokenStream, failure::Er
 
         Schema::Unit => quote! { void },
 
+        // TODO: Actually look up the referenced type in the set of exported types and
+        // determine what style of binding is used for it (or if it even has valid bindings
+        // at all). For now, the only supported binding style for user-defined types is to
+        // treat them as a handle, so we hard code that case here.
+        Schema::Struct(_) => quote! { void* },
+
         // TODO: Add support for passing user-defined types out from Rust.
-        Schema::Struct(_)
-        | Schema::UnitStruct(_)
+        Schema::UnitStruct(_)
         | Schema::NewtypeStruct(_)
         | Schema::TupleStruct(_)
         | Schema::Enum(_)
