@@ -54,6 +54,57 @@ pub fn quote_wrapper_fn<'a>(
     }
 }
 
+pub fn quote_invoke_args<'a>(
+    args: impl Iterator<Item = (&'a str, &'a Schema)>,
+) -> Punctuated<TokenStream, Comma> {
+    args.map(|(name, schema)| {
+        let ident = format_ident!("{}", name.to_mixed_case());
+        match schema {
+            // Basic numeric types (currently) don't require any processing.
+            Schema::I8
+            | Schema::I16
+            | Schema::I32
+            | Schema::I64
+            | Schema::U8
+            | Schema::U16
+            | Schema::U32
+            | Schema::U64
+            | Schema::F32
+            | Schema::F64 => ident.to_token_stream(),
+
+            Schema::Bool => quote! { (#ident ? 1 : 0) },
+
+            // To pass a string to Rust, we convert it into a `RawCsString` with the fixed pointer.
+            // The code for wrapping the body of the function in a `fixed` block is done below,
+            // since we need to generate the contents of the block first.
+            Schema::String => {
+                let fixed_ident = format_ident!("__fixed_{}", ident);
+                quote! {
+                    new RawCsString(#fixed_ident, #ident.Length)
+                }
+            }
+
+            Schema::Char => todo!("Support converting a C# `char` into a Rust `char`"),
+
+            // TODO: Add support for passing user-defined types out from Rust.
+            Schema::Struct(_)
+            | Schema::UnitStruct(_)
+            | Schema::NewtypeStruct(_)
+            | Schema::TupleStruct(_)
+            | Schema::Enum(_)
+            | Schema::Option(_)
+            | Schema::Seq(_)
+            | Schema::Tuple(_)
+            | Schema::Map { .. } => todo!("Generate argument binding"),
+
+            Schema::I128 | Schema::U128 | Schema::Unit => {
+                unreachable!("Invalid argument types should have already been rejected");
+            }
+        }
+    })
+    .collect::<Punctuated<_, Comma>>()
+}
+
 pub fn quote_wrapper_body<'a>(
     binding_name: &str,
     receiver: Option<TokenStream>,
@@ -61,57 +112,9 @@ pub fn quote_wrapper_body<'a>(
     output: &Schema,
     ret: &Ident,
 ) -> TokenStream {
-    // Build the list of arguments to the wrapper function.
-    let mut invoke_args = args
-        .clone()
-        .map(|(name, schema)| {
-            let ident = format_ident!("{}", name.to_mixed_case());
-            match schema {
-                // Basic numeric types (currently) don't require any processing.
-                Schema::I8
-                | Schema::I16
-                | Schema::I32
-                | Schema::I64
-                | Schema::U8
-                | Schema::U16
-                | Schema::U32
-                | Schema::U64
-                | Schema::F32
-                | Schema::F64 => ident.to_token_stream(),
-
-                Schema::Bool => quote! { (#ident ? 1 : 0) },
-
-                // To pass a string to Rust, we convert it into a `RawCsString` with the fixed pointer.
-                // The code for wrapping the body of the function in a `fixed` block is done below,
-                // since we need to generate the contents of the block first.
-                Schema::String => {
-                    let fixed_ident = format_ident!("__fixed_{}", ident);
-                    quote! {
-                        new RawCsString(#fixed_ident, #ident.Length)
-                    }
-                }
-
-                Schema::Char => todo!("Support converting a C# `char` into a Rust `char`"),
-
-                // TODO: Add support for passing user-defined types out from Rust.
-                Schema::Struct(_)
-                | Schema::UnitStruct(_)
-                | Schema::NewtypeStruct(_)
-                | Schema::TupleStruct(_)
-                | Schema::Enum(_)
-                | Schema::Option(_)
-                | Schema::Seq(_)
-                | Schema::Tuple(_)
-                | Schema::Map { .. } => todo!("Generate argument binding"),
-
-                Schema::I128 | Schema::U128 | Schema::Unit => {
-                    unreachable!("Invalid argument types should have already been rejected");
-                }
-            }
-        })
-        .collect::<Punctuated<_, Comma>>();
-
-    // Insert the receiver at the beginning of the list of arguments, if necessary.
+    // Build the list of arguments to the wrapper function and insert the receiver at
+    // the beginning of the list of arguments if necessary.
+    let mut invoke_args = quote_invoke_args(args.clone());
     if let Some(receiver) = receiver {
         invoke_args.insert(0, receiver);
     }
@@ -162,8 +165,11 @@ pub fn quote_wrapper_body<'a>(
 
         // TODO: Look up the referenced type and process the raw return value based on the
         // type of binding being generated for the type. For now we only support treating
-        // named types as handles, so we don't do any processing with the returned pointer.
-        Schema::Struct(_) => quote! { #ret = #invoke; },
+        // named types as handles, so we always pass the handle to the type's constructor.
+        Schema::Struct(output) => {
+            let ty_ident = format_ident!("{}", &*output.name.name);
+            quote! { #ret = new #ty_ident(#invoke); }
+        }
 
         // TODO: Add support for passing user-defined types out from Rust.
         Schema::UnitStruct(_)
@@ -184,7 +190,14 @@ pub fn quote_wrapper_body<'a>(
     // be passed as pointers to Rust (just strings for now). We use `Iterator::fold` to
     // generate a series of nested `fixed` blocks. This is very smart code and won't be
     // hard to maintain at all, I'm sure.
-    args.fold(invoke, |body, (name, schema)| match schema {
+    fold_fixed_blocks(invoke, args)
+}
+
+pub fn fold_fixed_blocks<'a>(
+    base_invoke: TokenStream,
+    args: impl Iterator<Item = (&'a str, &'a Schema)>,
+) -> TokenStream {
+    args.fold(base_invoke, |body, (name, schema)| match schema {
         Schema::String => {
             let arg_ident = format_ident!("{}", name.to_mixed_case());
             let fixed_ident = format_ident!("__fixed_{}", arg_ident);

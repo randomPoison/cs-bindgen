@@ -2,6 +2,7 @@ use crate::generate::func::*;
 use cs_bindgen_shared::{BindingStyle, Method, Schema, Struct};
 use proc_macro2::TokenStream;
 use quote::*;
+use syn::Ident;
 
 pub fn quote_drop_fn(name: &str, dll_name: &str) -> TokenStream {
     let binding_ident = format_ident!("__cs_bindgen_drop__{}", name);
@@ -20,19 +21,28 @@ pub fn quote_struct(export: &Struct) -> TokenStream {
         BindingStyle::Handle => {
             let ident = format_ident!("{}", &*export.name);
             let drop_fn = format_ident!("__cs_bindgen_drop__{}", &*export.name);
-            quote! {
-                public unsafe partial class #ident : IDisposable
-                {
-                    private void* _handle;
+            quote_handle_type(&ident, &drop_fn)
+        }
+    }
+}
 
-                    public void Dispose()
-                    {
-                        if (_handle != null)
-                        {
-                            __bindings.#drop_fn(_handle);
-                            _handle = null;
-                        }
-                    }
+fn quote_handle_type(name: &Ident, drop_fn: &Ident) -> TokenStream {
+    quote! {
+        public unsafe partial class #name : IDisposable
+        {
+            private void* _handle;
+
+            internal #name(void* handle)
+            {
+                _handle = handle;
+            }
+
+            public void Dispose()
+            {
+                if (_handle != null)
+                {
+                    __bindings.#drop_fn(_handle);
+                    _handle = null;
                 }
             }
         }
@@ -53,14 +63,19 @@ pub fn quote_method_binding(item: &Method) -> TokenStream {
     // should not) be treated as a constructor.
     let is_constructor = item.receiver.is_none() && item.output == item.self_type;
 
+    // Generate the right type of function for the exported method. There are three options:
+    //
+    // * A constructor.
+    // * A non-static method.
+    // * A static method.
     let wrapper_fn = if is_constructor {
+        let binding = format_ident!("{}", &*item.binding);
         let args = quote_args(item.inputs());
-        let body = quote_wrapper_body(
-            &*item.binding,
-            None,
+        let invoke_args = quote_invoke_args(item.inputs());
+
+        let invoke = fold_fixed_blocks(
+            quote! { _handle = __bindings.#binding(#invoke_args); },
             item.inputs(),
-            &item.output,
-            &format_ident!("_handle"),
         );
 
         quote! {
@@ -68,7 +83,7 @@ pub fn quote_method_binding(item: &Method) -> TokenStream {
             {
                 unsafe
                 {
-                    #body
+                    #invoke
                 }
             }
         }

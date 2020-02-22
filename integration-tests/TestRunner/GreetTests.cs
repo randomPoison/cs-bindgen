@@ -81,5 +81,34 @@ namespace TestRunner
         {
             Assert.Equal(7, PersonInfo.StaticFunction());
         }
+
+        [Fact]
+        public void PersonAddress()
+        {
+            using (PersonInfo info = new PersonInfo("David", 12))
+            {
+                using (Address address = info.Address())
+                {
+                    Assert.Equal(123u, address.StreetNumber());
+                    Assert.Equal("Cool Kids Lane", address.StreetName());
+                }
+            }
+        }
+
+        [Fact]
+        public void CreateManyPersonAddresses()
+        {
+            using (PersonInfo info = new PersonInfo("David", 12))
+            {
+                for (var count = 0; count < 1000; count += 1)
+                {
+                    using (Address address = info.Address())
+                    {
+                        Assert.Equal(123u, address.StreetNumber());
+                        Assert.Equal("Cool Kids Lane", address.StreetName());
+                    }
+                }
+            }
+        }
     }
 }

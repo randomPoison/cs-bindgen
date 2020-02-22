@@ -23,13 +23,21 @@ pub fn string_arg(arg: String) -> String {
 pub struct PersonInfo {
     name: String,
     age: i32,
+    address: Address,
 }
 
 #[cs_bindgen]
 impl PersonInfo {
     // TODO: Change the return type back to `Self` once that's supported.
     pub fn new(name: String, age: i32) -> PersonInfo {
-        Self { name, age }
+        Self {
+            name,
+            age,
+            address: Address {
+                street_number: 123,
+                street: "Cool Kids Lane".into(),
+            },
+        }
     }
 
     // TODO: Change this to return `&str` once that's supported.
@@ -47,6 +55,29 @@ impl PersonInfo {
 
     pub fn static_function() -> i32 {
         7
+    }
+
+    pub fn address(&self) -> Address {
+        self.address.clone()
+    }
+}
+
+#[cs_bindgen]
+#[derive(Debug, Clone)]
+pub struct Address {
+    street_number: u32,
+    street: String,
+}
+
+#[cs_bindgen]
+impl Address {
+    pub fn street_number(&self) -> u32 {
+        self.street_number
+    }
+
+    // TODO: Change this to return `&str` once that's supported.
+    pub fn street_name(&self) -> String {
+        self.street.clone()
     }
 }
 
