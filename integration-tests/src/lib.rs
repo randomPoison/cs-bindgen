@@ -40,10 +40,6 @@ impl PersonInfo {
         }
     }
 
-    pub fn with_address(name: String, age: i32, address: Address) -> PersonInfo {
-        Self { name, age, address }
-    }
-
     // TODO: Change this to return `&str` once that's supported.
     pub fn name(&self) -> String {
         self.name.clone()
