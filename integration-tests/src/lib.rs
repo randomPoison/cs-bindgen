@@ -19,6 +19,11 @@ pub fn string_arg(arg: String) -> String {
 }
 
 #[cs_bindgen]
+pub fn is_seven(value: i32) -> bool {
+    value == 7
+}
+
+#[cs_bindgen]
 #[derive(Debug, Clone)]
 pub struct PersonInfo {
     name: String,
@@ -59,6 +64,10 @@ impl PersonInfo {
 
     pub fn address(&self) -> Address {
         self.address.clone()
+    }
+
+    pub fn is_minor(&self) -> bool {
+        self.age < 21
     }
 }
 
