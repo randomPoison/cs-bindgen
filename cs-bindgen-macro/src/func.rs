@@ -24,7 +24,7 @@ pub fn reject_generics<M: Display>(generics: &Generics, message: M) -> syn::Resu
     }
 }
 
-/// Process the raw list of arguments into a format suitable for use in code
+/// Processes the raw list of arguments into a format suitable for use in code
 /// generation.
 ///
 /// Extracts all of the non-receiver arguments (i.e. everything but the initial
@@ -56,19 +56,33 @@ pub fn extract_inputs(inputs: Punctuated<FnArg, Comma>) -> syn::Result<Vec<FnInp
         .collect()
 }
 
+/// Generates the declaration for an argument to the binding function.
+///
+/// This function takes the ident and type of an argument in the original function
+/// and generates the `ident: type` declaration for the corresponding argument in
+/// the binding function. The ident is reused directly, and `Abi` associated type
+/// on the `FromAbi` impl for `ty` is used as the type of the generated argument.
 pub fn quote_binding_inputs<T: ToTokens>(ident: &Ident, ty: T) -> TokenStream {
     quote! {
         #ident: <#ty as cs_bindgen::abi::FromAbi>::Abi
     }
 }
 
+/// Generates the call to `FromAbi::from_abi` to convert the raw binding argument.
 pub fn quote_input_conversion(ident: &Ident) -> TokenStream {
     quote! {
         let #ident = cs_bindgen::abi::FromAbi::from_abi(#ident);
     }
 }
 
+/// Extracts the specified return type for the function, explicitly using `()` for
+/// the default return.
+///
+/// This simplifies the logic needed for quoting the return type of the binding
+/// function, since it removes the need to distinguish between an explicit return vs
+/// the default return (i.e. returning `()`).
 pub fn normalize_return_type(output: &ReturnType) -> TokenStream {
+    // TODO: Generate an error for `impl trait` returns.
     match output {
         ReturnType::Default => quote! { () },
         ReturnType::Type(_, ty) => ty.to_token_stream(),
