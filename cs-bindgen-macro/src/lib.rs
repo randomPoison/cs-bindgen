@@ -1,6 +1,6 @@
 extern crate proc_macro;
 
-use crate::func::*;
+use crate::{enumeration::*, func::*};
 use proc_macro2::TokenStream;
 use quote::*;
 use syn::*;
@@ -23,6 +23,7 @@ macro_rules! format_drop_ident {
     };
 }
 
+mod enumeration;
 mod func;
 
 #[proc_macro_attribute]
@@ -35,10 +36,13 @@ pub fn cs_bindgen(
     // manually reconstruct the original input later when returning the result.
     let mut result: TokenStream = tokens.clone().into();
 
+    // Generate the bindings for the annotated item, or generate an error if the
+    // item/attribute is invalid.
     let generated = match parse_macro_input!(tokens as Item) {
         Item::Fn(item) => quote_fn_item(item),
         Item::Struct(item) => quote_struct_item(item),
         Item::Impl(item) => quote_impl_item(item),
+        Item::Enum(item) => quote_enum_item(item),
 
         // Generate an error for any unknown item types.
         item @ _ => Err(Error::new_spanned(
@@ -175,7 +179,6 @@ fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
                 *abi
             }
         }
-
 
         impl<'a> cs_bindgen::abi::IntoAbi for &'a #ident {
             type Abi = Self;
