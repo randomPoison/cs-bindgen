@@ -94,3 +94,18 @@ impl Address {
 pub fn void_return(test: i32) {
     println!("{}", test);
 }
+
+#[cs_bindgen]
+pub enum SimpleEnum {
+    Foo,
+    Bar,
+    Baz = 12,
+    Quux,
+}
+
+#[cs_bindgen]
+pub enum DataEnum {
+    Foo,
+    Bar(String),
+    Baz { name: String, value: i32 },
+}
