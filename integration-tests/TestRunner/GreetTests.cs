@@ -46,6 +46,13 @@ namespace TestRunner
         }
 
         [Fact]
+        public void BoolReturn()
+        {
+            Assert.True(IntegrationTests.IsSeven(7));
+            Assert.False(IntegrationTests.IsSeven(12));
+        }
+
+        [Fact]
         public void CreatePersonInfo()
         {
             using (PersonInfo info = new PersonInfo("David", 12))
@@ -71,8 +78,11 @@ namespace TestRunner
             using (PersonInfo info = new PersonInfo("David", 12))
             {
                 Assert.Equal(12, info.Age());
+                Assert.True(info.IsMinor());
+
                 info.SetAge(22);
                 Assert.Equal(22, info.Age());
+                Assert.False(info.IsMinor());
             }
         }
 

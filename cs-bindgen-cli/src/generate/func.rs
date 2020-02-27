@@ -249,7 +249,7 @@ pub fn quote_cs_type(schema: &Schema) -> TokenStream {
         Schema::U64 => quote! { ulong },
         Schema::F32 => quote! { float },
         Schema::F64 => quote! { double },
-        Schema::Bool => quote! { byte },
+        Schema::Bool => quote! { bool },
         Schema::String => quote! { string },
 
         Schema::Char => todo!("Support passing single chars"),
