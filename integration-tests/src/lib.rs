@@ -96,10 +96,19 @@ pub fn void_return(test: i32) {
 }
 
 #[cs_bindgen]
-pub enum SimpleEnum {
+pub enum SimpleCEnum {
     Foo,
     Bar,
     Baz,
+}
+
+#[cs_bindgen]
+pub enum CEnumWithDiscriminants {
+    Hello,
+    There = 5,
+    How,
+    Are,
+    You = -12,
 }
 
 // #[cs_bindgen]

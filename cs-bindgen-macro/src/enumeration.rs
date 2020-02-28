@@ -50,7 +50,7 @@ fn quote_simple_enum(item: ItemEnum) -> syn::Result<TokenStream> {
     let discriminant_ty = quote! { isize };
 
     // Generate constants for each discriminant of the enum. This is to handle arbitrary expressions for discriminant values.
-    let mut prev_discriminant = None;
+    let mut next_discriminant = quote! { 0 };
     let discriminant_consts = item.variants.iter().map(|variant| {
         let const_ident = format_ident!(
             "__cs_bindgen_generated__{}__{}__DISCRIMINANT",
@@ -64,22 +64,17 @@ fn quote_simple_enum(item: ItemEnum) -> syn::Result<TokenStream> {
         // * Otherwise, the discriminant is the previous discriminant plus 1.
         // * Otherwise the default is 0 (in the case where there was no previous discriminant).
         //
-        // This matches the default behavior for how discriminant values are determined:
+        // This matches the behavior for how discriminant values are determined:
         // https://doc.rust-lang.org/reference/items/enumerations.html#custom-discriminant-values-for-field-less-enumerations
         let expr = variant
             .discriminant
             .as_ref()
             .map(|(_, expr)| expr.to_token_stream())
-            .or_else(|| {
-                prev_discriminant.take().map(|prev_discriminant| {
-                    quote! {
-                        #prev_discriminant + 1
-                    }
-                })
-            })
-            .unwrap_or(quote! { 0 });
+            .unwrap_or(next_discriminant.clone());
 
-        prev_discriminant = Some(const_ident.clone());
+        // Generate the expression for the next variant's discriminant based on the
+        // constant for the current variant.
+        next_discriminant = quote! { #const_ident + 1 };
 
         quote! {
             const #const_ident: #discriminant_ty = #expr;
