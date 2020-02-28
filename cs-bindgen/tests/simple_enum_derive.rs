@@ -40,7 +40,7 @@ fn simple_enum_explicit_discriminants() {
 
     #[cs_bindgen]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
-    pub enum Simple {
+    pub enum ExplicitDiscrim {
         Foo,
         Bar,
         Baz = 5,
@@ -57,9 +57,9 @@ fn simple_enum_explicit_discriminants() {
         NegativePlusTwo,
     }
 
-    for variant in Simple::iter() {
+    for variant in ExplicitDiscrim::iter() {
         let abi = variant.into_abi();
-        let result = unsafe { Simple::from_abi(abi) };
+        let result = unsafe { ExplicitDiscrim::from_abi(abi) };
         assert_eq!(variant, result);
     }
 }
@@ -68,15 +68,15 @@ fn simple_enum_explicit_discriminants() {
 fn simple_enum_explicit_first_discriminant() {
     #[cs_bindgen]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
-    enum Simple {
+    enum FirstDiscriminant {
         Zero = 123,
         One,
         Two,
     }
 
-    for variant in Simple::iter() {
+    for variant in FirstDiscriminant::iter() {
         let abi = variant.into_abi();
-        let result = unsafe { Simple::from_abi(abi) };
+        let result = unsafe { FirstDiscriminant::from_abi(abi) };
         assert_eq!(variant, result);
     }
 }
