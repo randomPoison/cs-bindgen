@@ -11,7 +11,7 @@ namespace TestRunner
         {
             foreach (var variant in Enum.GetValues(typeof(SimpleCEnum)).Cast<SimpleCEnum>())
             {
-                SimpleCEnum result = IntegrationTests.RoundTripSimpleCEnum(variant);
+                SimpleCEnum result = IntegrationTests.RoundtripSimpleEnum(variant);
                 Assert.Equal(variant, result);
             }
         }

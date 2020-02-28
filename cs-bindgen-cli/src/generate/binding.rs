@@ -94,12 +94,17 @@ fn quote_binding_args<'a>(
                     ))
                 }
 
-                // TODO: Add support for passing user-defined types out from Rust.
+                // TODO: Actually look up the referenced type to determine what style of binding is
+                // being used and what the repr of the discriminant is. For now we only have support
+                // for simple (C-like) enums without an explicit repr, so the raw value will always
+                // be an `isize`.
+                Schema::Enum(_) => quote! { UIntPtr },
+
+                // TODO: Add support for passing user-defined types to Rust.
                 Schema::Struct(_)
                 | Schema::UnitStruct(_)
                 | Schema::NewtypeStruct(_)
                 | Schema::TupleStruct(_)
-                | Schema::Enum(_)
                 | Schema::Option(_)
                 | Schema::Seq(_)
                 | Schema::Tuple(_)
@@ -143,11 +148,16 @@ fn quote_binding_return_type(schema: &Schema) -> Result<TokenStream, failure::Er
         // treat them as a handle, so we hard code that case here.
         Schema::Struct(_) => quote! { void* },
 
+        // TODO: Actually look up the referenced type to determine what style of binding is
+        // being used and what the repr of the discriminant is. For now we only have support
+        // for simple (C-like) enums without an explicit repr, so the raw value will always
+        // be an `isize`.
+        Schema::Enum(_) => quote! { UIntPtr },
+
         // TODO: Add support for passing user-defined types out from Rust.
         Schema::UnitStruct(_)
         | Schema::NewtypeStruct(_)
         | Schema::TupleStruct(_)
-        | Schema::Enum(_)
         | Schema::Option(_)
         | Schema::Seq(_)
         | Schema::Tuple(_)
