@@ -9,3 +9,7 @@ edition = "2018"
 [dependencies]
 cs-bindgen-macro = { version = "0.1", path = "../cs-bindgen-macro" }
 cs-bindgen-shared = { version = "0.1", path = "../cs-bindgen-shared" }
+strum = "0.17.1"
+
+[dev-dependencies]
+strum = { version = "0.17.1", features = ["derive"] }
