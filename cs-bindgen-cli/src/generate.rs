@@ -41,6 +41,7 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
             )),
             Export::Struct(export) => method_bindings.push(quote_struct(export)),
             Export::Method(export) => method_bindings.push(quote_method_binding(export)),
+            Export::Enum(_export) => {}
         }
     }
 

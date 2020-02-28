@@ -23,6 +23,8 @@ pub fn quote_struct(export: &Struct) -> TokenStream {
             let drop_fn = format_ident!("__cs_bindgen_drop__{}", &*export.name);
             quote_handle_type(&ident, &drop_fn)
         }
+
+        BindingStyle::Value => unimplemented!("Pass struct by value"),
     }
 }
 

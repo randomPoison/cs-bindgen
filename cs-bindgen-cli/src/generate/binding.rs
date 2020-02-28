@@ -44,7 +44,11 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str) -> Result<TokenStream,
             })
         }
 
+        // TODO: Only generate a drop fn if we're binding the struct as a handle type.
         Export::Struct(item) => Ok(class::quote_drop_fn(&item.name, dll_name)),
+
+        // TODO: Generate a drop function if we're binding the enum as a handle type.
+        Export::Enum(_) => Ok(Default::default()),
     }
 }
 
