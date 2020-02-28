@@ -103,12 +103,24 @@ pub enum SimpleCEnum {
 }
 
 #[cs_bindgen]
+pub fn roundtrip_simple_enum(val: SimpleCEnum) -> SimpleCEnum {
+    val
+}
+
+#[cs_bindgen]
 pub enum CEnumWithDiscriminants {
     Hello,
     There = 5,
     How,
     Are,
     You = -12,
+}
+
+#[cs_bindgen]
+pub fn roundtrip_simple_enum_with_discriminants(
+    val: CEnumWithDiscriminants,
+) -> CEnumWithDiscriminants {
+    val
 }
 
 // #[cs_bindgen]
