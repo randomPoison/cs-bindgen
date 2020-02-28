@@ -17,6 +17,7 @@ pub enum Export {
     Fn(Func),
     Method(Method),
     Struct(Struct),
+    Enum(Enum),
 }
 
 /// A free function exported from the Rust lib.
@@ -67,6 +68,13 @@ pub struct Struct {
     pub schema: Schema,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Enum {
+    pub name: Cow<'static, str>,
+    pub binding_style: BindingStyle,
+    pub schema: Schema,
+}
+
 #[derive(Debug, Clone, From, Serialize, Deserialize)]
 pub struct Method {
     pub name: Cow<'static, str>,
@@ -95,4 +103,7 @@ pub enum ReceiverStyle {
 pub enum BindingStyle {
     /// The type is exported as a class wrapping an opaque handle.
     Handle,
+
+    /// Values of the type are marshalled directly into C# values.
+    Value,
 }

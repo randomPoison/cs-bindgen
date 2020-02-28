@@ -31,6 +31,8 @@ pub fn quote_enum_item(item: ItemEnum) -> syn::Result<TokenStream> {
 
 fn quote_simple_enum(item: ItemEnum) -> syn::Result<TokenStream> {
     let ident = item.ident;
+    let name = ident.to_string();
+    let describe_ident = format_describe_ident!(ident);
 
     // TODO: Check for a `#[repr(...)]` attribute and handle alternate types for the
     // discriminant.
@@ -123,7 +125,17 @@ fn quote_simple_enum(item: ItemEnum) -> syn::Result<TokenStream> {
             }
         }
 
-        // TODO: Generate the descriptor function.
+        // Export a function that describes the exported type.
+        #[no_mangle]
+        pub unsafe extern "C" fn #describe_ident() -> std::boxed::Box<cs_bindgen::abi::RawString> {
+            let export = cs_bindgen::shared::Enum {
+                name: #name.into(),
+                binding_style: cs_bindgen::shared::BindingStyle::Handle,
+                schema: cs_bindgen::shared::schematic::describe::<#ident>().expect("Failed to describe enum type"),
+            };
+
+            std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())
+        }
     })
 }
 
