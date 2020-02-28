@@ -95,15 +95,26 @@ pub fn void_return(test: i32) {
     println!("{}", test);
 }
 
+const DISCRIMINANT: isize = 45;
+
+// TODO: Write a test that checks each of the variants and confirms that the
+// `FromAbi` and `IntoAbi` impls agree on the discriminant values.
 #[cs_bindgen]
 pub enum SimpleEnum {
     Foo,
     Bar,
-    Baz = 12,
-    Quux,
+    Baz = 5,
+    Baa,
+    Bab,
+    Quux = 1 + 2 + 3 + 4,
+    Cool,
+    Wool,
+    SomeDiscriminant = DISCRIMINANT,
+    AnotherOne,
+    YetAnotherOne,
 }
 
-#[cs_bindgen]
+// #[cs_bindgen]
 pub enum DataEnum {
     Foo,
     Bar(String),
