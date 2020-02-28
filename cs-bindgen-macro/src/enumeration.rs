@@ -34,6 +34,17 @@ fn quote_simple_enum(item: ItemEnum) -> syn::Result<TokenStream> {
     let name = ident.to_string();
     let describe_ident = format_describe_ident!(ident);
 
+    let describe_variants = item.variants.iter().map(|variant| {
+        let variant_name = variant.ident.to_string();
+        quote! {
+            cs_bindgen::shared::schematic::DescribeEnum::describe_unit_variant(
+                &mut describer,
+                #variant_name,
+                None,
+            )?;
+        }
+    });
+
     // TODO: Check for a `#[repr(...)]` attribute and handle alternate types for the
     // discriminant.
     let discriminant_ty = quote! { isize };
@@ -96,7 +107,11 @@ fn quote_simple_enum(item: ItemEnum) -> syn::Result<TokenStream> {
             where
                 E: cs_bindgen::shared::schematic::Describer,
             {
-                todo!("Describe the enum")
+                let mut describer = describer.describe_enum(
+                    cs_bindgen::shared::schematic::type_name!(#ident),
+                )?;
+                #( #describe_variants )*
+                cs_bindgen::shared::schematic::DescribeEnum::end(describer)
             }
         }
 
