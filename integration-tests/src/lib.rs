@@ -94,3 +94,38 @@ impl Address {
 pub fn void_return(test: i32) {
     println!("{}", test);
 }
+
+#[cs_bindgen]
+pub enum SimpleCEnum {
+    Foo,
+    Bar,
+    Baz,
+}
+
+#[cs_bindgen]
+pub fn roundtrip_simple_enum(val: SimpleCEnum) -> SimpleCEnum {
+    val
+}
+
+#[cs_bindgen]
+pub enum EnumWithDiscriminants {
+    Hello,
+    There = 5,
+    How,
+    Are,
+    You = -12,
+}
+
+#[cs_bindgen]
+pub fn roundtrip_simple_enum_with_discriminants(
+    val: EnumWithDiscriminants,
+) -> EnumWithDiscriminants {
+    val
+}
+
+// #[cs_bindgen]
+pub enum DataEnum {
+    Foo,
+    Bar(String),
+    Baz { name: String, value: i32 },
+}

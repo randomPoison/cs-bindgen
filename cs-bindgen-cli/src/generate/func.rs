@@ -1,3 +1,4 @@
+use crate::generate::quote_primitive_type;
 use cs_bindgen_shared::*;
 use heck::*;
 use proc_macro2::TokenStream;
@@ -86,12 +87,22 @@ pub fn quote_invoke_args<'a>(
 
             Schema::Char => todo!("Support converting a C# `char` into a Rust `char`"),
 
+            // TODO: Actually look up the referenced type to determine what style of binding is
+            // being used. For now we only have support for simple (C-like) enums, so we simply
+            // cast the value to the appropriate integer type based on the enum repr.
+            Schema::Enum(schema) => {
+                let repr = schema
+                    .repr
+                    .map(quote_primitive_type)
+                    .unwrap_or_else(|| quote! { IntPtr });
+                quote! { (#repr)#ident }
+            }
+
             // TODO: Add support for passing user-defined types out from Rust.
             Schema::Struct(_)
             | Schema::UnitStruct(_)
             | Schema::NewtypeStruct(_)
             | Schema::TupleStruct(_)
-            | Schema::Enum(_)
             | Schema::Option(_)
             | Schema::Seq(_)
             | Schema::Tuple(_)
@@ -171,15 +182,22 @@ pub fn quote_wrapper_body<'a>(
             quote! { #ret = new #ty_ident(#invoke); }
         }
 
+        // TODO: Look up the referenced type and process the raw return value based on the
+        // type of binding being generated for the type. For now we only support treating
+        // named types as handles, so we always pass the handle to the type's constructor.
+        Schema::Enum(output) => {
+            let ty_ident = format_ident!("{}", &*output.name.name);
+            quote! { #ret = (#ty_ident)#invoke; }
+        }
+
         // TODO: Add support for passing user-defined types out from Rust.
         Schema::UnitStruct(_)
         | Schema::NewtypeStruct(_)
         | Schema::TupleStruct(_)
-        | Schema::Enum(_)
         | Schema::Option(_)
         | Schema::Seq(_)
         | Schema::Tuple(_)
-        | Schema::Map { .. } => todo!("Generate argument binding"),
+        | Schema::Map { .. } => todo!("Generate return value conversion in wrapper function"),
 
         Schema::I128 | Schema::U128 => {
             unreachable!("Invalid argument types should have already been rejected");
@@ -254,13 +272,16 @@ pub fn quote_cs_type(schema: &Schema) -> TokenStream {
 
         Schema::Char => todo!("Support passing single chars"),
 
-        Schema::Struct(struct_) => format_ident!("{}", &*struct_.name.name).to_token_stream(),
+        // TODO: When referencing generated types in function signatures, take custom
+        // namespacing into account. Custom namespaces aren't currently supported, but
+        // once they are it won't be sufficient to directly quote the name of the type.
+        Schema::Struct(schema) => format_ident!("{}", &*schema.name.name).to_token_stream(),
+        Schema::Enum(schema) => format_ident!("{}", &*schema.name.name).to_token_stream(),
 
         // TODO: Add support for passing user-defined types out from Rust.
         Schema::UnitStruct(_)
         | Schema::NewtypeStruct(_)
         | Schema::TupleStruct(_)
-        | Schema::Enum(_)
         | Schema::Option(_)
         | Schema::Seq(_)
         | Schema::Tuple(_)
