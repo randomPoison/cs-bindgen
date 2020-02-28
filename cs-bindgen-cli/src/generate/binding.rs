@@ -98,7 +98,7 @@ fn quote_binding_args<'a>(
                 // being used and what the repr of the discriminant is. For now we only have support
                 // for simple (C-like) enums without an explicit repr, so the raw value will always
                 // be an `isize`.
-                Schema::Enum(_) => quote! { UIntPtr },
+                Schema::Enum(_) => quote! { IntPtr },
 
                 // TODO: Add support for passing user-defined types to Rust.
                 Schema::Struct(_)
@@ -152,7 +152,7 @@ fn quote_binding_return_type(schema: &Schema) -> Result<TokenStream, failure::Er
         // being used and what the repr of the discriminant is. For now we only have support
         // for simple (C-like) enums without an explicit repr, so the raw value will always
         // be an `isize`.
-        Schema::Enum(_) => quote! { UIntPtr },
+        Schema::Enum(_) => quote! { IntPtr },
 
         // TODO: Add support for passing user-defined types out from Rust.
         Schema::UnitStruct(_)

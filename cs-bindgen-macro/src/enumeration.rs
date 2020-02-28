@@ -36,11 +36,16 @@ fn quote_simple_enum(item: ItemEnum) -> syn::Result<TokenStream> {
 
     let describe_variants = item.variants.iter().map(|variant| {
         let variant_name = variant.ident.to_string();
+        let discriminant = match &variant.discriminant {
+            Some((_, expr)) => quote! { Some((#expr).into()) },
+            None => quote! { None },
+        };
+
         quote! {
             cs_bindgen::shared::schematic::DescribeEnum::describe_unit_variant(
                 &mut describer,
                 #variant_name,
-                None,
+                #discriminant,
             )?;
         }
     });

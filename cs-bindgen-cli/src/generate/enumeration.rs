@@ -1,7 +1,6 @@
 use cs_bindgen_shared::{schematic, schematic::Variant, Enum};
 use proc_macro2::TokenStream;
 use quote::*;
-use syn::LitInt;
 
 pub fn quote_enum_binding(item: &Enum) -> TokenStream {
     let schema = item
@@ -43,7 +42,7 @@ fn quote_simple_enum_binding(item: &Enum, schema: &schematic::Enum) -> TokenStre
         let variant_ident = format_ident!("{}", &**name);
         let discriminant = match discriminant {
             Some(discriminant) => {
-                let lit = syn::parse_str::<LitInt>(&discriminant.to_string())
+                let lit = syn::parse_str::<syn::Expr>(&discriminant.to_string())
                     .expect("Failed to parse discriminant as a `LitInt`");
                 quote! { = #lit }
             }

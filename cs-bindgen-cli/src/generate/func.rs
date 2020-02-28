@@ -94,7 +94,7 @@ pub fn quote_invoke_args<'a>(
                 let repr = schema
                     .repr
                     .map(quote_primitive_type)
-                    .unwrap_or_else(|| quote! { UIntPtr });
+                    .unwrap_or_else(|| quote! { IntPtr });
                 quote! { (#repr)#ident }
             }
 
