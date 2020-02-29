@@ -9,6 +9,8 @@ pub fn quote_enum_item(item: ItemEnum) -> syn::Result<TokenStream> {
         "Generic enums not supported with `#[cs_bindgen]`",
     )?;
 
+    let mut result = quote_describe_impl(&item)?;
+
     // Check the variants to determine if we're dealing with a C-style enum or one that
     // carries additional data.
     let mut has_fields = false;
@@ -22,33 +24,21 @@ pub fn quote_enum_item(item: ItemEnum) -> syn::Result<TokenStream> {
         }
     }
 
-    if has_fields {
-        quote_complex_enum(item)
+    let bindings = if has_fields {
+        quote_complex_enum(&item)?
     } else {
-        quote_simple_enum(item)
-    }
+        quote_simple_enum(&item)?
+    };
+
+    result.extend(bindings);
+
+    Ok(result)
 }
 
-fn quote_simple_enum(item: ItemEnum) -> syn::Result<TokenStream> {
-    let ident = item.ident;
+fn quote_simple_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
+    let ident = &item.ident;
     let name = ident.to_string();
     let describe_ident = format_describe_ident!(ident);
-
-    let describe_variants = item.variants.iter().map(|variant| {
-        let variant_name = variant.ident.to_string();
-        let discriminant = match &variant.discriminant {
-            Some((_, expr)) => quote! { Some((#expr).into()) },
-            None => quote! { None },
-        };
-
-        quote! {
-            cs_bindgen::shared::schematic::DescribeEnum::describe_unit_variant(
-                &mut describer,
-                #variant_name,
-                #discriminant,
-            )?;
-        }
-    });
 
     // TODO: Check for a `#[repr(...)]` attribute and handle alternate types for the
     // discriminant.
@@ -101,20 +91,6 @@ fn quote_simple_enum(item: ItemEnum) -> syn::Result<TokenStream> {
     });
 
     Ok(quote! {
-        // Implement `Describe` for the enum.
-        impl cs_bindgen::shared::schematic::Describe for #ident {
-            fn describe<E>(describer: E) -> Result<E::Ok, E::Error>
-            where
-                E: cs_bindgen::shared::schematic::Describer,
-            {
-                let mut describer = describer.describe_enum(
-                    cs_bindgen::shared::schematic::type_name!(#ident),
-                )?;
-                #( #describe_variants )*
-                cs_bindgen::shared::schematic::DescribeEnum::end(describer)
-            }
-        }
-
         // Implement `FromAbi` and `IntoAbi` for the enum.
 
         impl cs_bindgen::abi::IntoAbi for #ident {
@@ -154,6 +130,55 @@ fn quote_simple_enum(item: ItemEnum) -> syn::Result<TokenStream> {
     })
 }
 
-fn quote_complex_enum(_item: ItemEnum) -> syn::Result<TokenStream> {
-    todo!("Generate bindings for data-carrying enum");
+fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
+    let ident = &item.ident;
+    let name = ident.to_string();
+    let describe_ident = format_describe_ident!(ident);
+
+    Ok(quote! {
+        // TODO: Generate the `From/IntoAbi` impls for the enum.
+
+        // TODO: Generate the descriptor function.
+    })
+}
+
+fn quote_describe_impl(item: &ItemEnum) -> syn::Result<TokenStream> {
+    let ident = &item.ident;
+
+    let describe_variants = item.variants.iter().map(|variant| {
+        let variant_name = variant.ident.to_string();
+        let discriminant = match &variant.discriminant {
+            Some((_, expr)) => quote! { Some((#expr).into()) },
+            None => quote! { None },
+        };
+
+        match &variant.fields {
+            Fields::Unit => quote! {
+                cs_bindgen::shared::schematic::DescribeEnum::describe_unit_variant(
+                    &mut describer,
+                    #variant_name,
+                    #discriminant,
+                )?;
+            },
+
+            Fields::Unnamed(_fields) => todo!(),
+
+            Fields::Named(_fields) => todo!(),
+        }
+    });
+
+    Ok(quote! {
+        impl cs_bindgen::shared::schematic::Describe for #ident {
+            fn describe<E>(describer: E) -> Result<E::Ok, E::Error>
+            where
+                E: cs_bindgen::shared::schematic::Describer,
+            {
+                let mut describer = describer.describe_enum(
+                    cs_bindgen::shared::schematic::type_name!(#ident),
+                )?;
+                #( #describe_variants )*
+                cs_bindgen::shared::schematic::DescribeEnum::end(describer)
+            }
+        }
+    })
 }
