@@ -132,8 +132,8 @@ fn quote_simple_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
 
 fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
     let ident = &item.ident;
-    let name = ident.to_string();
-    let describe_ident = format_describe_ident!(ident);
+    // let name = ident.to_string();
+    // let describe_ident = format_describe_ident!(ident);
 
     Ok(quote! {
         // TODO: Generate the `From/IntoAbi` impls for the enum.
