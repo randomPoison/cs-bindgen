@@ -123,7 +123,7 @@ pub fn roundtrip_simple_enum_with_discriminants(
     val
 }
 
-// #[cs_bindgen]
+#[cs_bindgen]
 pub enum DataEnum {
     Foo,
     Bar(String),

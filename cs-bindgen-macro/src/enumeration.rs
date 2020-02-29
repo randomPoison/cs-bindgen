@@ -147,23 +147,77 @@ fn quote_describe_impl(item: &ItemEnum) -> syn::Result<TokenStream> {
 
     let describe_variants = item.variants.iter().map(|variant| {
         let variant_name = variant.ident.to_string();
-        let discriminant = match &variant.discriminant {
-            Some((_, expr)) => quote! { Some((#expr).into()) },
-            None => quote! { None },
-        };
 
         match &variant.fields {
-            Fields::Unit => quote! {
-                cs_bindgen::shared::schematic::DescribeEnum::describe_unit_variant(
-                    &mut describer,
-                    #variant_name,
-                    #discriminant,
-                )?;
+            Fields::Unit => {
+                let discriminant = match &variant.discriminant {
+                    Some((_, expr)) => quote! { Some((#expr).into()) },
+                    None => quote! { None },
+                };
+
+                quote! {
+                    cs_bindgen::shared::schematic::DescribeEnum::describe_unit_variant(
+                        &mut describer,
+                        #variant_name,
+                        #discriminant,
+                    )?;
+                }
             },
+            
 
-            Fields::Unnamed(_fields) => todo!(),
+            Fields::Unnamed(fields) => {
+                let describe_elements = fields.unnamed.iter().map(|field| {
+                    let ty = &field.ty;
 
-            Fields::Named(_fields) => todo!(),
+                    quote! {
+                        cs_bindgen::shared::schematic::DescribeTupleVariant::describe_element::<#ty>(
+                            &mut variant_describer,
+                        )?;
+                    }
+                });
+
+                quote! {
+                    {
+                        let mut variant_describer = cs_bindgen::shared::schematic::DescribeEnum::start_tuple_variant(
+                            &mut describer,
+                            #variant_name,
+                        )?;
+                        #( #describe_elements )*
+                        cs_bindgen::shared::schematic::DescribeEnum::end_tuple_variant(
+                            &mut describer,
+                            variant_describer,
+                        )?;
+                    }
+                }
+            }
+
+            Fields::Named(fields) => {
+                let describe_fields = fields.named.iter().map(|field| {
+                    let name = field.ident.as_ref().unwrap().to_string();
+                    let ty = &field.ty;
+
+                    quote! {
+                        cs_bindgen::shared::schematic::DescribeStructVariant::describe_field::<#ty>(
+                            &mut variant_describer,
+                            #name,
+                        )?;
+                    }
+                });
+
+                quote! {
+                    {
+                        let mut variant_describer = cs_bindgen::shared::schematic::DescribeEnum::start_struct_variant(
+                            &mut describer,
+                            #variant_name,
+                        )?;
+                        #( #describe_fields )*
+                        cs_bindgen::shared::schematic::DescribeEnum::end_struct_variant(
+                            &mut describer,
+                            variant_describer,
+                        )?;
+                    }
+                }
+            }
         }
     });
 
