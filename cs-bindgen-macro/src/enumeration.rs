@@ -1,7 +1,7 @@
 use crate::func::*;
 use proc_macro2::TokenStream;
 use quote::*;
-use syn::*;
+use syn::{punctuated::Punctuated, token::Comma, *};
 
 pub fn quote_enum_item(item: ItemEnum) -> syn::Result<TokenStream> {
     reject_generics(
@@ -140,9 +140,76 @@ fn quote_simple_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
 
 fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
     let ident = &item.ident;
+    let union_ty = format_ident!("__cs_bindgen_generated_raw__{}", ident);
+
+    // TODO: Check the repr of the enum to determine the actual discriminant type.
+    let discriminant_ty = quote! { isize };
+
+    // Generate binding struct for each variant of the enum.
+    let raw_variant_types = item.variants.iter().map(|variant| {
+        let ident = format_ident!("{}__{}", union_ty, variant.ident);
+
+        let fields: Punctuated<_, Comma> = match &variant.fields {
+            // NOTE: No binding struct is generated for unit variants, since only the
+            // discriminant is needed to restore it.
+            Fields::Unit => return quote! {},
+
+            Fields::Named(fields) => fields.named.iter().map(|field| {
+                let field_ident = field.ident.as_ref().unwrap();
+                let field_ty = &field.ty;
+                quote! {
+                    #field_ident: core::mem::ManuallyDrop<<#field_ty as cs_bindgen::abi::IntoAbi>::Abi>
+                }
+            }).collect(),
+
+            Fields::Unnamed(fields) => fields.unnamed.iter().enumerate().map(|(index, field)| {
+                let field_ident = format_ident!("element_{}", index);
+                let field_ty = &field.ty;
+                quote! {
+                    #field_ident: core::mem::ManuallyDrop<<#field_ty as cs_bindgen::abi::IntoAbi>::Abi>
+                }
+            }).collect(),
+        };
+
+        quote! {
+            #[repr(C)]
+            pub struct #ident {
+                #fields
+            }
+        }
+    });
+
+    let union_fields = item.variants.iter().enumerate().map(|(index, _variant)| {
+        let _field_ident = format_ident!("variant_{}", index);
+        quote! {}
+    });
 
     Ok(quote! {
-        // TODO: Generate the `From/IntoAbi` impls for the enum.
+        #[repr(C)]
+        pub union #union_ty {
+            #( #union_fields, )*
+        }
+
+        unsafe impl cs_bindgen::abi::AbiPrimitive for #union_ty {}
+
+        #( #raw_variant_types )*
+
+        // Generate the `From/IntoAbi` impls for the enum.
+        impl cs_bindgen::abi::FromAbi for #ident {
+            type Abi = cs_bindgen::abi::RawEnum<#discriminant_ty, #union_ty>;
+
+            unsafe fn from_abi(abi: Self::Abi) -> Self {
+                todo!()
+            }
+        }
+
+        impl cs_bindgen::abi::IntoAbi for #ident {
+            type Abi = cs_bindgen::abi::RawEnum<#discriminant_ty, #union_ty>;
+
+            fn into_abi(self) -> Self::Abi {
+                todo!()
+            }
+        }
     })
 }
 
