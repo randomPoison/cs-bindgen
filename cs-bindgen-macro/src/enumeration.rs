@@ -9,6 +9,9 @@ pub fn quote_enum_item(item: ItemEnum) -> syn::Result<TokenStream> {
         "Generic enums not supported with `#[cs_bindgen]`",
     )?;
 
+    // Derive `Describe` for the enum.
+    //
+    // TODO: Move this into a dedicated derive macro for schematic.
     let mut result = quote_describe_impl(&item)?;
 
     // Check the variants to determine if we're dealing with a C-style enum or one that
@@ -32,13 +35,32 @@ pub fn quote_enum_item(item: ItemEnum) -> syn::Result<TokenStream> {
 
     result.extend(bindings);
 
+    // Export a function that describes the exported type.
+    let ident = &item.ident;
+    let describe_ident = format_describe_ident!(ident);
+    let name = ident.to_string();
+    result.extend(quote! {
+        #[no_mangle]
+        pub unsafe extern "C" fn #describe_ident() -> std::boxed::Box<cs_bindgen::abi::RawString> {
+            let export = cs_bindgen::shared::Enum {
+                name: #name.into(),
+                schema: cs_bindgen::shared::schematic::describe::<#ident>().expect("Failed to describe enum type"),
+
+                // NOTE: Currently we always pass enums by value. At some point we'll likely also
+                // want to support exporting enums as handles, at which point we'll need to update
+                // this bit of code generation.
+                binding_style: cs_bindgen::shared::BindingStyle::Value,
+            };
+
+            std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())
+        }
+    });
+
     Ok(result)
 }
 
 fn quote_simple_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
     let ident = &item.ident;
-    let name = ident.to_string();
-    let describe_ident = format_describe_ident!(ident);
 
     // TODO: Check for a `#[repr(...)]` attribute and handle alternate types for the
     // discriminant.
@@ -91,8 +113,6 @@ fn quote_simple_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
     });
 
     Ok(quote! {
-        // Implement `FromAbi` and `IntoAbi` for the enum.
-
         impl cs_bindgen::abi::IntoAbi for #ident {
             type Abi = #discriminant_ty;
 
@@ -115,40 +135,27 @@ fn quote_simple_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
                 }
             }
         }
-
-        // Export a function that describes the exported type.
-        #[no_mangle]
-        pub unsafe extern "C" fn #describe_ident() -> std::boxed::Box<cs_bindgen::abi::RawString> {
-            let export = cs_bindgen::shared::Enum {
-                name: #name.into(),
-                binding_style: cs_bindgen::shared::BindingStyle::Handle,
-                schema: cs_bindgen::shared::schematic::describe::<#ident>().expect("Failed to describe enum type"),
-            };
-
-            std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())
-        }
     })
 }
 
 fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
-    // let ident = &item.ident;
-    // let name = ident.to_string();
-    // let describe_ident = format_describe_ident!(ident);
+    let ident = &item.ident;
 
     Ok(quote! {
         // TODO: Generate the `From/IntoAbi` impls for the enum.
-
-        // TODO: Generate the descriptor function.
     })
 }
 
 fn quote_describe_impl(item: &ItemEnum) -> syn::Result<TokenStream> {
     let ident = &item.ident;
 
+    // Iterate over the enum variants and generate the describe logic for each one.
     let describe_variants = item.variants.iter().map(|variant| {
         let variant_name = variant.ident.to_string();
 
         match &variant.fields {
+            // Unit variants are described with a single call to `describe_unit_variant`. We
+            // also need to pass in the value of the discriminant, if one was specified.
             Fields::Unit => {
                 let discriminant = match &variant.discriminant {
                     Some((_, expr)) => quote! { Some((#expr).into()) },
@@ -163,8 +170,9 @@ fn quote_describe_impl(item: &ItemEnum) -> syn::Result<TokenStream> {
                     )?;
                 }
             },
-            
 
+            // For tuple variants, we generate initially call `start_tuple_variant` and then
+            // generate a call to `describe_element` for each element in the tuple.
             Fields::Unnamed(fields) => {
                 let describe_elements = fields.unnamed.iter().map(|field| {
                     let ty = &field.ty;
@@ -191,6 +199,8 @@ fn quote_describe_impl(item: &ItemEnum) -> syn::Result<TokenStream> {
                 }
             }
 
+            // For struct variants, we generate initially call `start_struct_variant` and
+            // then generate a call to `describe_field` for each field.
             Fields::Named(fields) => {
                 let describe_fields = fields.named.iter().map(|field| {
                     let name = field.ident.as_ref().unwrap().to_string();
