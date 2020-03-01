@@ -315,3 +315,26 @@ impl<'a> From<&'a str> for RawSlice<u8> {
         }
     }
 }
+
+/// Deconstructed representation of an enum, compatible with FFI.
+///
+/// The raw representation of an enum is an explicit discriminant value paired with
+/// a union of all the fields. When converting back from the raw representation, use
+/// the value of the discriminant to determine which union field is valid.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct RawEnum<D, V> {
+    pub discriminant: D,
+    pub value: V,
+}
+
+impl<D, V> RawEnum<D, V> {
+    pub const fn new(discriminant: D, value: V) -> Self {
+        Self {
+            discriminant,
+            value,
+        }
+    }
+}
+
+unsafe impl<D: AbiPrimitive, V: AbiPrimitive> AbiPrimitive for RawEnum<D, V> {}
