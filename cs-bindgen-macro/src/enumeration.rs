@@ -1,5 +1,5 @@
 use crate::func::*;
-use proc_macro2::TokenStream;
+use proc_macro2::{Literal, TokenStream};
 use quote::*;
 use syn::*;
 
@@ -147,12 +147,12 @@ fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
 
     // Generate binding struct for each variant of the enum.
     let raw_variant_types = item.variants.iter().filter_map(|variant| {
-        let ident = format_ident!("{}__{}", union_ty, variant.ident);
+        let abi_ident = format_ident!("{}__{}", union_ty, variant.ident);
 
         // NOTE: No binding struct is generated for unit variants or struct/tuple-like
         // variants that don't actually contain data, since only the discriminant is
         // needed to restore it.
-        if variant.fields == Fields::Unit || variant.fields.is_empty() {
+        if variant.fields.is_empty() {
             return None;
         }
 
@@ -175,34 +175,78 @@ fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
         Some(quote! {
             #[repr(C)]
             #[derive(Debug, Clone, Copy)]
-            pub struct #ident {
+            #[allow(bad_style)]
+            pub struct #abi_ident {
                 #( #fields, )*
             }
         })
     });
 
-    let union_fields = item
-        .variants
-        .iter()
-        .enumerate()
-        .filter_map(|(index, variant)| {
-            // NOTE: No binding struct is generated for unit variants or empty variants, since only
-            // the discriminant is needed to restore it.
-            if variant.fields == Fields::Unit || variant.fields.is_empty() {
-                return None;
+    let union_fields = item.variants.iter().filter_map(|variant| {
+        // NOTE: No binding struct is generated for unit variants or empty variants, since only
+        // the discriminant is needed to restore it.
+        if variant.fields == Fields::Unit || variant.fields.is_empty() {
+            return None;
+        }
+
+        let field_ident = &variant.ident;
+        let field_ty = format_ident!("{}__{}", union_ty, variant.ident);
+
+        Some(quote! {
+            #field_ident: core::mem::ManuallyDrop<#field_ty>
+        })
+    });
+
+    let into_abi_match_arms = item.variants.iter().enumerate().map(|(index, variant)| {
+        let variant_ident = &variant.ident;
+        let discriminant = Literal::usize_unsuffixed(index);
+        let abi_ident = format_ident!("{}__{}", union_ty, variant.ident);
+
+        let field_idents = variant
+            .fields
+            .iter()
+            .enumerate()
+            .map(|(index, field)| field_ident(index, field));
+
+        // Generate the destructuring expression for the fields of the variant.
+        let destructure = match &variant.fields {
+            Fields::Named { .. } => quote! { { #( #field_idents, )* } },
+            Fields::Unnamed { .. } => quote! { ( #( #field_idents, )* ) },
+            Fields::Unit => quote! {},
+        };
+
+        // For empty variants use `RawEnum::unit` to create an enum representation with just
+        // a discriminant.
+        if variant.fields.is_empty() {
+            return quote! {
+                Self::#variant_ident #destructure => cs_bindgen::abi::RawEnum::unit(#discriminant)
+            };
+        }
+
+        let convert_fields = variant.fields.iter().enumerate().map(|(index, field)| {
+            let field_ident = field_ident(index, field);
+
+            quote! {
+                #field_ident: cs_bindgen::abi::IntoAbi::into_abi(#field_ident)
             }
-
-            let field_ident = format_ident!("variant_{}", index);
-            let field_ty = format_ident!("{}__{}", union_ty, variant.ident);
-
-            Some(quote! {
-                #field_ident: core::mem::ManuallyDrop<#field_ty>
-            })
         });
+
+        quote! {
+            Self::#variant_ident #destructure => cs_bindgen::abi::RawEnum::new(
+                #discriminant,
+                #union_ty {
+                    #variant_ident: core::mem::ManuallyDrop::new(#abi_ident {
+                        #( #convert_fields, )*
+                    }),
+                },
+            )
+        }
+    });
 
     Ok(quote! {
         #[repr(C)]
         #[derive(Clone, Copy)]
+        #[allow(bad_style)]
         pub union #union_ty {
             #( #union_fields, )*
         }
@@ -216,7 +260,11 @@ fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
             type Abi = cs_bindgen::abi::RawEnum<#discriminant_ty, #union_ty>;
 
             unsafe fn from_abi(abi: Self::Abi) -> Self {
-                todo!()
+                match abi.discriminant {
+                    // #( #from_abi_match_arms, )*
+
+                    _ => panic!("Unknown discriminant {} for {}", abi.discriminant, stringify!(#ident)),
+                }
             }
         }
 
@@ -224,7 +272,9 @@ fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
             type Abi = cs_bindgen::abi::RawEnum<#discriminant_ty, #union_ty>;
 
             fn into_abi(self) -> Self::Abi {
-                todo!()
+                match self {
+                    #( #into_abi_match_arms, )*
+                }
             }
         }
     })
@@ -329,4 +379,12 @@ fn quote_describe_impl(item: &ItemEnum) -> syn::Result<TokenStream> {
             }
         }
     })
+}
+
+fn field_ident(index: usize, field: &Field) -> Ident {
+    field
+        .ident
+        .as_ref()
+        .map(Clone::clone)
+        .unwrap_or_else(|| format_ident!("element_{}", index))
 }
