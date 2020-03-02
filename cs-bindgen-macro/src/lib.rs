@@ -165,18 +165,18 @@ fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
         // Implement `From/IntoAbi` conversions for the type and references to the type.
 
         impl cs_bindgen::abi::IntoAbi for #ident {
-            type Abi = std::boxed::Box<Self>;
+            type Abi = *mut Self;
 
             fn into_abi(self) -> Self::Abi {
-                std::boxed::Box::new(self)
+                std::boxed::Box::into_raw(std::boxed::Box::new(self))
             }
         }
 
         impl cs_bindgen::abi::FromAbi for #ident {
-            type Abi = std::boxed::Box<Self>;
+            type Abi = *mut Self;
 
             unsafe fn from_abi(abi: Self::Abi) -> Self {
-                *abi
+                *std::boxed::Box::from_raw(abi)
             }
         }
 
@@ -197,18 +197,18 @@ fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
         }
 
         impl<'a> cs_bindgen::abi::IntoAbi for &'a mut #ident {
-            type Abi = Self;
+            type Abi = *mut #ident;
 
             fn into_abi(self) -> Self::Abi {
-                self
+                self as *mut _
             }
         }
 
         impl<'a> cs_bindgen::abi::FromAbi for &'a mut #ident {
-            type Abi = Self;
+            type Abi = *mut #ident;
 
             unsafe fn from_abi(abi: Self::Abi) -> Self {
-                abi
+                &mut *abi
             }
         }
 

@@ -38,17 +38,17 @@ pub type RawStr = RawSlice<u8>;
 ///
 /// [`AbiArgument`]: trait.AbiArgument.html
 /// [`AbiReturn`]: trait.AbiReturn.html
-pub unsafe trait AbiPrimitive {}
+pub unsafe trait AbiPrimitive: Copy {}
 
 /// A type that can be passed as an argument to an `extern "C"` function.
 ///
 /// See [the module level documentation](./index.html) for more.
-pub unsafe trait AbiArgument {}
+pub unsafe trait AbiArgument: Copy {}
 
 /// A type that can be returned from an `extern "C"` function.
 ///
 /// See [the module level documentation](./index.html) for more.
-pub unsafe trait AbiReturn {}
+pub unsafe trait AbiReturn: Copy {}
 
 unsafe impl<T: AbiPrimitive> AbiArgument for T {}
 unsafe impl<T: AbiPrimitive> AbiReturn for T {}
@@ -122,11 +122,25 @@ impl IntoAbi for () {
 }
 
 // Pointers to any ABI primitive are also valid ABI primitives.
-unsafe impl<T> AbiPrimitive for Box<T> {}
 unsafe impl<'a, T> AbiPrimitive for &'a T {}
-unsafe impl<'a, T> AbiPrimitive for &'a mut T {}
 unsafe impl<T> AbiPrimitive for *const T {}
 unsafe impl<T> AbiPrimitive for *mut T {}
+
+impl<T> FromAbi for Box<T> {
+    type Abi = *mut T;
+
+    unsafe fn from_abi(abi: Self::Abi) -> Self {
+        Box::from_raw(abi)
+    }
+}
+
+impl<T> IntoAbi for Box<T> {
+    type Abi = *mut T;
+
+    fn into_abi(self) -> Self::Abi {
+        Box::into_raw(self)
+    }
+}
 
 impl IntoAbi for char {
     type Abi = u32;

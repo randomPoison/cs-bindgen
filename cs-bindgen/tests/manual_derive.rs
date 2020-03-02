@@ -61,18 +61,18 @@ impl cs_bindgen::shared::schematic::Describe for ExampleStruct {
 }
 
 impl cs_bindgen::abi::IntoAbi for ExampleStruct {
-    type Abi = std::boxed::Box<Self>;
+    type Abi = *mut Self;
 
     fn into_abi(self) -> Self::Abi {
-        std::boxed::Box::new(self)
+        std::boxed::Box::into_raw(std::boxed::Box::new(self))
     }
 }
 
 impl cs_bindgen::abi::FromAbi for ExampleStruct {
-    type Abi = std::boxed::Box<Self>;
+    type Abi = *mut Self;
 
     unsafe fn from_abi(abi: Self::Abi) -> Self {
-        *abi
+        *std::boxed::Box::from_raw(abi)
     }
 }
 
