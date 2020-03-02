@@ -4,7 +4,6 @@
 
 use cs_bindgen::{abi::*, shared::*};
 use schematic::*;
-use std::mem::ManuallyDrop;
 
 // For an exported function, we generate two items:
 //
@@ -159,14 +158,14 @@ pub enum ComplexEnum {
 }
 
 impl FromAbi for ComplexEnum {
-    type Abi = RawEnum<isize, ComplexEnumAbi>;
+    type Abi = RawEnum<isize, ComplexEnum_FromAbi>;
 
     unsafe fn from_abi(abi: Self::Abi) -> Self {
         match abi.discriminant {
             0 => Self::Foo,
 
             1 => {
-                let value = ManuallyDrop::into_inner(abi.value.assume_init().Bar);
+                let value = abi.value.assume_init().Bar;
                 Self::Bar(
                     FromAbi::from_abi(value.element_0),
                     FromAbi::from_abi(value.element_1),
@@ -174,7 +173,7 @@ impl FromAbi for ComplexEnum {
             }
 
             2 => {
-                let value = ManuallyDrop::into_inner(abi.value.assume_init().Baz);
+                let value = abi.value.assume_init().Baz;
                 Self::Baz {
                     first: FromAbi::from_abi(value.first),
                     second: FromAbi::from_abi(value.second),
@@ -190,29 +189,29 @@ impl FromAbi for ComplexEnum {
 }
 
 impl IntoAbi for ComplexEnum {
-    type Abi = RawEnum<isize, ComplexEnumAbi>;
+    type Abi = RawEnum<isize, ComplexEnum_IntoAbi>;
 
     fn into_abi(self) -> Self::Abi {
         match self {
-            Self::Foo => RawEnum::simple(0),
+            Self::Foo => RawEnum::unit(0),
 
             Self::Bar(element_0, element_1) => RawEnum::new(
                 1,
-                ComplexEnumAbi {
-                    Bar: ManuallyDrop::new(ComplexEnumAbi_Bar {
+                ComplexEnum_IntoAbi {
+                    Bar: ComplexEnum_IntoAbi_Bar {
                         element_0: element_0.into_abi(),
                         element_1: element_1.into_abi(),
-                    }),
+                    },
                 },
             ),
 
             Self::Baz { first, second } => RawEnum::new(
                 2,
-                ComplexEnumAbi {
-                    Baz: ManuallyDrop::new(ComplexEnumAbi_Baz {
+                ComplexEnum_IntoAbi {
+                    Baz: ComplexEnum_IntoAbi_Baz {
                         first: first.into_abi(),
                         second: second.into_abi(),
-                    }),
+                    },
                 },
             ),
         }
@@ -222,23 +221,46 @@ impl IntoAbi for ComplexEnum {
 #[repr(C)]
 #[derive(Clone, Copy)]
 #[allow(bad_style)]
-pub union ComplexEnumAbi {
-    Bar: ManuallyDrop<ComplexEnumAbi_Bar>,
-    Baz: ManuallyDrop<ComplexEnumAbi_Baz>,
+pub union ComplexEnum_FromAbi {
+    Bar: ComplexEnum_FromAbi_Bar,
+    Baz: ComplexEnum_FromAbi_Baz,
 }
-
-unsafe impl AbiPrimitive for ComplexEnumAbi {}
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct ComplexEnumAbi_Bar {
+#[allow(bad_style)]
+pub union ComplexEnum_IntoAbi {
+    Bar: ComplexEnum_IntoAbi_Bar,
+    Baz: ComplexEnum_IntoAbi_Baz,
+}
+
+unsafe impl AbiPrimitive for ComplexEnum_FromAbi {}
+unsafe impl AbiPrimitive for ComplexEnum_IntoAbi {}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct ComplexEnum_FromAbi_Bar {
     element_0: <String as FromAbi>::Abi,
     element_1: <u32 as FromAbi>::Abi,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct ComplexEnumAbi_Baz {
+pub struct ComplexEnum_FromAbi_Baz {
     first: <SimpleEnum as FromAbi>::Abi,
     second: <String as FromAbi>::Abi,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct ComplexEnum_IntoAbi_Bar {
+    element_0: <String as IntoAbi>::Abi,
+    element_1: <u32 as IntoAbi>::Abi,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct ComplexEnum_IntoAbi_Baz {
+    first: <SimpleEnum as IntoAbi>::Abi,
+    second: <String as IntoAbi>::Abi,
 }

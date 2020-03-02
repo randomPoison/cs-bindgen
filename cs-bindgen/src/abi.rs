@@ -360,7 +360,7 @@ impl<D, V> RawEnum<D, V> {
         }
     }
 
-    pub const fn simple(discriminant: D) -> Self {
+    pub const fn unit(discriminant: D) -> Self {
         Self {
             discriminant,
             value: MaybeUninit::uninit(),
