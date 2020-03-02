@@ -1,7 +1,7 @@
 use crate::func::*;
 use proc_macro2::TokenStream;
 use quote::*;
-use syn::{punctuated::Punctuated, token::Comma, *};
+use syn::*;
 
 pub fn quote_enum_item(item: ItemEnum) -> syn::Result<TokenStream> {
     reject_generics(
@@ -146,46 +146,63 @@ fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
     let discriminant_ty = quote! { isize };
 
     // Generate binding struct for each variant of the enum.
-    let raw_variant_types = item.variants.iter().map(|variant| {
+    let raw_variant_types = item.variants.iter().filter_map(|variant| {
         let ident = format_ident!("{}__{}", union_ty, variant.ident);
 
-        let fields: Punctuated<_, Comma> = match &variant.fields {
-            // NOTE: No binding struct is generated for unit variants, since only the
-            // discriminant is needed to restore it.
-            Fields::Unit => return quote! {},
-
-            Fields::Named(fields) => fields.named.iter().map(|field| {
-                let field_ident = field.ident.as_ref().unwrap();
-                let field_ty = &field.ty;
-                quote! {
-                    #field_ident: core::mem::ManuallyDrop<<#field_ty as cs_bindgen::abi::IntoAbi>::Abi>
-                }
-            }).collect(),
-
-            Fields::Unnamed(fields) => fields.unnamed.iter().enumerate().map(|(index, field)| {
-                let field_ident = format_ident!("element_{}", index);
-                let field_ty = &field.ty;
-                quote! {
-                    #field_ident: core::mem::ManuallyDrop<<#field_ty as cs_bindgen::abi::IntoAbi>::Abi>
-                }
-            }).collect(),
-        };
-
-        quote! {
-            #[repr(C)]
-            pub struct #ident {
-                #fields
-            }
+        // NOTE: No binding struct is generated for unit variants or struct/tuple-like
+        // variants that don't actually contain data, since only the discriminant is
+        // needed to restore it.
+        if variant.fields == Fields::Unit || variant.fields.is_empty() {
+            return None;
         }
+
+        // Extract the list of fields for the binding struct. The generated struct is the
+        // same for both struct-like and tuple-like variants, though in the latter case we
+        // have to manually generate names for the fields based on the index of the element.
+        let fields = variant.fields.iter().enumerate().map(|(index, field)| {
+            let field_ty = &field.ty;
+            let field_ident = field
+                .ident
+                .as_ref()
+                .map(Clone::clone)
+                .unwrap_or_else(|| format_ident!("element_{}", index));
+
+            quote! {
+                #field_ident: <#field_ty as cs_bindgen::abi::IntoAbi>::Abi
+            }
+        });
+
+        Some(quote! {
+            #[repr(C)]
+            #[derive(Debug, Clone, Copy)]
+            pub struct #ident {
+                #( #fields, )*
+            }
+        })
     });
 
-    let union_fields = item.variants.iter().enumerate().map(|(index, _variant)| {
-        let _field_ident = format_ident!("variant_{}", index);
-        quote! {}
-    });
+    let union_fields = item
+        .variants
+        .iter()
+        .enumerate()
+        .filter_map(|(index, variant)| {
+            // NOTE: No binding struct is generated for unit variants or empty variants, since only
+            // the discriminant is needed to restore it.
+            if variant.fields == Fields::Unit || variant.fields.is_empty() {
+                return None;
+            }
+
+            let field_ident = format_ident!("variant_{}", index);
+            let field_ty = format_ident!("{}__{}", union_ty, variant.ident);
+
+            Some(quote! {
+                #field_ident: core::mem::ManuallyDrop<#field_ty>
+            })
+        });
 
     Ok(quote! {
         #[repr(C)]
+        #[derive(Clone, Copy)]
         pub union #union_ty {
             #( #union_fields, )*
         }
