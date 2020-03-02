@@ -164,6 +164,7 @@ impl FromAbi for ComplexEnum {
     unsafe fn from_abi(abi: Self::Abi) -> Self {
         match abi.discriminant {
             0 => Self::Foo,
+
             1 => {
                 let value = ManuallyDrop::into_inner(abi.value.assume_init().Bar);
                 Self::Bar(
@@ -171,6 +172,7 @@ impl FromAbi for ComplexEnum {
                     FromAbi::from_abi(value.element_1),
                 )
             }
+
             2 => {
                 let value = ManuallyDrop::into_inner(abi.value.assume_init().Baz);
                 Self::Baz {
@@ -191,7 +193,29 @@ impl IntoAbi for ComplexEnum {
     type Abi = RawEnum<isize, ComplexEnumAbi>;
 
     fn into_abi(self) -> Self::Abi {
-        todo!();
+        match self {
+            Self::Foo => RawEnum::simple(0),
+
+            Self::Bar(element_0, element_1) => RawEnum::new(
+                1,
+                ComplexEnumAbi {
+                    Bar: ManuallyDrop::new(ComplexEnumAbi_Bar {
+                        element_0: element_0.into_abi(),
+                        element_1: element_1.into_abi(),
+                    }),
+                },
+            ),
+
+            Self::Baz { first, second } => RawEnum::new(
+                2,
+                ComplexEnumAbi {
+                    Baz: ManuallyDrop::new(ComplexEnumAbi_Baz {
+                        first: first.into_abi(),
+                        second: second.into_abi(),
+                    }),
+                },
+            ),
+        }
     }
 }
 

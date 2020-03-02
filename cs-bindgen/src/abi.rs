@@ -359,6 +359,13 @@ impl<D, V> RawEnum<D, V> {
             value: MaybeUninit::new(value),
         }
     }
+
+    pub const fn simple(discriminant: D) -> Self {
+        Self {
+            discriminant,
+            value: MaybeUninit::uninit(),
+        }
+    }
 }
 
 unsafe impl<D: AbiPrimitive, V: AbiPrimitive> AbiPrimitive for RawEnum<D, V> {}
