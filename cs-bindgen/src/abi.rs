@@ -15,6 +15,7 @@
 //!
 //! [nomicon-interop]: https://doc.rust-lang.org/nomicon/ffi.html#interoperability-with-foreign-code
 
+use core::mem::MaybeUninit;
 use std::{convert::TryInto, mem, slice, str};
 
 /// The ABI-compatible equivalent to [`String`].
@@ -336,17 +337,26 @@ impl<'a> From<&'a str> for RawSlice<u8> {
 /// a union of all the fields. When converting back from the raw representation, use
 /// the value of the discriminant to determine which union field is valid.
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Copy)]
 pub struct RawEnum<D, V> {
     pub discriminant: D,
-    pub value: V,
+    pub value: MaybeUninit<V>,
+}
+
+impl<D: Clone, V: Copy> Clone for RawEnum<D, V> {
+    fn clone(&self) -> Self {
+        Self {
+            discriminant: self.discriminant.clone(),
+            value: self.value.clone(),
+        }
+    }
 }
 
 impl<D, V> RawEnum<D, V> {
     pub const fn new(discriminant: D, value: V) -> Self {
         Self {
             discriminant,
-            value,
+            value: MaybeUninit::new(value),
         }
     }
 }
