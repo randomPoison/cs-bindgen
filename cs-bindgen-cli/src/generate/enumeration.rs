@@ -1,5 +1,6 @@
 use crate::generate::quote_cs_type;
 use cs_bindgen_shared::{schematic, schematic::Variant, BindingStyle, Enum};
+use heck::*;
 use proc_macro2::TokenStream;
 use quote::*;
 
@@ -64,8 +65,8 @@ fn quote_complex_enum_binding(item: &Enum, schema: &schematic::Enum) -> TokenStr
             let field_ident = field
                 .name
                 .as_ref()
-                .map(|name| format_ident!("{}", name))
-                .unwrap_or_else(|| format_ident!("element_{}", index));
+                .map(|name| format_ident!("{}", name.to_camel_case()))
+                .unwrap_or_else(|| format_ident!("Element{}", index));
 
             let ty = quote_cs_type(field.schema);
 
