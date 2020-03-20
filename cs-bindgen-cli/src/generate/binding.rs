@@ -5,18 +5,18 @@
 //! from the Rust dylib. This module provides
 
 use crate::generate::class;
-use cs_bindgen_shared::{schematic::Schema, Export};
+use cs_bindgen_shared::{schematic::Schema, BindingStyle, Export};
 use proc_macro2::TokenStream;
 use quote::*;
 use syn::{punctuated::Punctuated, token::Comma};
 
 pub fn quote_raw_binding(export: &Export, dll_name: &str) -> TokenStream {
     match export {
-        Export::Fn(item) => {
-            let dll_import_attrib = quote_dll_import(dll_name, &item.binding);
-            let binding_ident = format_ident!("{}", &*item.binding);
-            let return_ty = quote_binding_return_type(&item.output);
-            let args = quote_binding_args(item.inputs());
+        Export::Fn(export) => {
+            let dll_import_attrib = quote_dll_import(dll_name, &export.binding);
+            let binding_ident = format_ident!("{}", &*export.binding);
+            let return_ty = quote_binding_return_type(&export.output);
+            let args = quote_binding_args(export.inputs());
 
             quote! {
                 #dll_import_attrib
@@ -24,17 +24,17 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str) -> TokenStream {
             }
         }
 
-        Export::Method(item) => {
-            let dll_import_attrib = quote_dll_import(dll_name, &item.binding);
-            let binding_ident = format_ident!("{}", &*item.binding);
-            let return_ty = quote_binding_return_type(&item.output);
+        Export::Method(export) => {
+            let dll_import_attrib = quote_dll_import(dll_name, &export.binding);
+            let binding_ident = format_ident!("{}", &*export.binding);
+            let return_ty = quote_binding_return_type(&export.output);
 
             // TODO: Unify input handling for raw bindings. It shouldn't be necessary to
             // manually insert the receiver. The current blocker is that schematic can't
             // represent reference types, so we can't generate a full list of inputs that
             // includes the receiver.
-            let mut args = quote_binding_args(item.inputs());
-            if item.receiver.is_some() {
+            let mut args = quote_binding_args(export.inputs());
+            if export.receiver.is_some() {
                 args.insert(0, quote! { void* self });
             }
 
@@ -44,11 +44,13 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str) -> TokenStream {
             }
         }
 
-        // TODO: Only generate a drop fn if we're binding the struct as a handle type.
-        Export::Struct(item) => class::quote_drop_fn(&item.name, dll_name),
-
-        // TODO: Generate a drop function if we're binding the enum as a handle type.
-        Export::Enum(_) => Default::default(),
+        Export::Named(export) => {
+            if export.binding_style == BindingStyle::Handle {
+                class::quote_drop_fn(&export.name, dll_name)
+            } else {
+                quote! {}
+            }
+        }
     }
 }
 

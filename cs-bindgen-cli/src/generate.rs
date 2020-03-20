@@ -44,9 +44,21 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
                 export.inputs(),
                 &export.output,
             )),
-            Export::Struct(export) => binding_items.push(quote_struct(export)),
+
+            Export::Named(export) => match &export.schema {
+                Schema::Struct(schema) => binding_items.push(quote_struct(export, schema)),
+                Schema::Enum(schema) => binding_items.push(quote_enum_binding(export, schema)),
+
+                _ => {
+                    return Err(failure::format_err!(
+                        "Invalid schema for exported type {}: {:?}",
+                        export.name,
+                        export.schema
+                    ))
+                }
+            },
+
             Export::Method(export) => binding_items.push(quote_method_binding(export)),
-            Export::Enum(export) => binding_items.push(quote_enum_binding(export)),
         }
     }
 

@@ -1,15 +1,10 @@
 use crate::generate::{binding, quote_cs_type};
-use cs_bindgen_shared::{schematic, schematic::Variant, BindingStyle, Enum};
+use cs_bindgen_shared::{schematic::Enum, schematic::Variant, BindingStyle, NamedType};
 use heck::*;
 use proc_macro2::TokenStream;
 use quote::*;
 
-pub fn quote_enum_binding(item: &Enum) -> TokenStream {
-    let schema = item
-        .schema
-        .as_enum()
-        .expect("Enum item's schema does not describe an enum");
-
+pub fn quote_enum_binding(item: &NamedType, schema: &Enum) -> TokenStream {
     // Determine if we're dealing with a simple (C-like) enum or one with fields.
     if schema.has_data() {
         quote_complex_enum_binding(item, schema)
@@ -18,7 +13,7 @@ pub fn quote_enum_binding(item: &Enum) -> TokenStream {
     }
 }
 
-fn quote_simple_enum_binding(item: &Enum, schema: &schematic::Enum) -> TokenStream {
+fn quote_simple_enum_binding(item: &NamedType, schema: &Enum) -> TokenStream {
     let ident = format_ident!("{}", &*item.name);
     let variants = schema.variants.iter().map(|variant| {
         let (name, discriminant) = match variant {
@@ -49,7 +44,7 @@ fn quote_simple_enum_binding(item: &Enum, schema: &schematic::Enum) -> TokenStre
     }
 }
 
-fn quote_complex_enum_binding(item: &Enum, schema: &schematic::Enum) -> TokenStream {
+fn quote_complex_enum_binding(item: &NamedType, schema: &Enum) -> TokenStream {
     assert_eq!(
         item.binding_style,
         BindingStyle::Value,
