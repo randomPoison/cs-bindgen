@@ -215,7 +215,7 @@ fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
         // Export a function that describes the exported type.
         #[no_mangle]
         pub unsafe extern "C" fn #describe_ident() -> std::boxed::Box<cs_bindgen::abi::RawString> {
-            let export = cs_bindgen::shared::Struct {
+            let export = cs_bindgen::shared::NamedType {
                 name: #name.into(),
                 binding_style: cs_bindgen::shared::BindingStyle::Handle,
                 schema: cs_bindgen::shared::schematic::describe::<#ident>().expect("Failed to describe struct type"),
