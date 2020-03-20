@@ -193,7 +193,7 @@ fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
         let field_ty = format_ident!("{}__{}", union_ty, variant.ident);
 
         Some(quote! {
-            #field_ident: core::mem::ManuallyDrop<#field_ty>
+            #field_ident: #field_ty
         })
     });
 
@@ -235,11 +235,55 @@ fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
             Self::#variant_ident #destructure => cs_bindgen::abi::RawEnum::new(
                 #discriminant,
                 #union_ty {
-                    #variant_ident: core::mem::ManuallyDrop::new(#abi_ident {
+                    #variant_ident: #abi_ident {
                         #( #convert_fields, )*
-                    }),
+                    },
                 },
             )
+        }
+    });
+
+    let from_abi_match_arms = item.variants.iter().enumerate().map(|(index, variant)| {
+        let variant_ident = &variant.ident;
+        let discriminant = Literal::usize_unsuffixed(index);
+        let abi_ident = format_ident!("{}__{}", union_ty, variant.ident);
+
+        let braces = match &variant.fields {
+            Fields::Named { .. } => quote! { {} },
+            Fields::Unnamed { .. } => quote! { () },
+            Fields::Unit => quote! {},
+        };
+
+        if variant.fields.is_empty() {
+            return quote! {
+                #discriminant => Self::#variant_ident #braces
+            };
+        }
+
+        let field_idents = variant
+            .fields
+            .iter()
+            .enumerate()
+            .map(|(index, field)| field_ident(index, field))
+            .collect::<Vec<_>>();
+
+        let populate_variant = match &variant.fields {
+            Fields::Named { .. } => quote! {
+                { #( #field_idents: cs_bindgen::abi::FromAbi::from_abi(#field_idents), )* }
+            },
+
+            Fields::Unnamed { .. } => quote! {
+                ( #( cs_bindgen::abi::FromAbi::from_abi(#field_idents), )* )
+            },
+
+            Fields::Unit => unreachable!(),
+        };
+
+        quote! {
+            #discriminant => {
+                let #abi_ident { #( #field_idents, )* } = abi.value.assume_init().#variant_ident;
+                Self::#variant_ident #populate_variant
+            }
         }
     });
 
@@ -261,7 +305,7 @@ fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
 
             unsafe fn from_abi(abi: Self::Abi) -> Self {
                 match abi.discriminant {
-                    // #( #from_abi_match_arms, )*
+                    #( #from_abi_match_arms, )*
 
                     _ => panic!("Unknown discriminant {} for {}", abi.discriminant, stringify!(#ident)),
                 }
