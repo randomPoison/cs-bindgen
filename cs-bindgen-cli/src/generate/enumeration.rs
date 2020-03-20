@@ -58,6 +58,24 @@ fn quote_complex_enum_binding(item: &Enum, schema: &schematic::Enum) -> TokenStr
 
     let interface = format_ident!("I{}", &*item.name);
 
+    let arg_variants = schema.variants.iter().map(|variant| {
+        let binding_ty = format_ident!("{}__RawArg", variant.name());
+        let name = format_ident!("{}", variant.name());
+
+        quote! {
+            #binding_ty #name
+        }
+    });
+
+    let return_variants = schema.variants.iter().map(|variant| {
+        let binding_ty = format_ident!("{}__RawReturn", variant.name());
+        let name = format_ident!("{}", variant.name());
+
+        quote! {
+            #binding_ty #name
+        }
+    });
+
     let variant_structs = schema.variants.iter().map(|variant| {
         let ident = format_ident!("{}", variant.name());
         let arg_binding_ident = format_ident!("{}__RawArg", variant.name());
@@ -103,21 +121,27 @@ fn quote_complex_enum_binding(item: &Enum, schema: &schematic::Enum) -> TokenStr
         });
 
         quote! {
-            public struct #ident : #interface {
+            public struct #ident : #interface
+            {
                 #( #struct_fields; )*
             }
 
             [StructLayout(LayoutKind.Sequential)]
-            internal struct #arg_binding_ident {
+            internal struct #arg_binding_ident
+            {
                 #( #arg_binding_fields; )*
             }
 
             [StructLayout(LayoutKind.Sequential)]
-            internal struct #return_binding_ident {
+            internal struct #return_binding_ident
+            {
                 #( #return_binding_fields; )*
             }
         }
     });
+
+    let arg_union = format_ident!("{}__RawArg", &*item.name);
+    let return_union = format_ident!("{}__RawReturn", &*item.name);
 
     quote! {
         // Generate an interface for the enum.
@@ -125,5 +149,24 @@ fn quote_complex_enum_binding(item: &Enum, schema: &schematic::Enum) -> TokenStr
 
         // Generate the struct declarations for each variant of the enum.
         #( #variant_structs )*
+
+        // Generate the binding "unions" for args/returns.
+        [StructLayout(LayoutKind.Explicit)]
+        internal struct #arg_union
+        {
+            #(
+                [FieldOffset(0)]
+                #arg_variants;
+            )*
+        }
+
+        [StructLayout(LayoutKind.Explicit)]
+        internal struct #return_union
+        {
+            #(
+                [FieldOffset(0)]
+                #return_variants;
+            )*
+        }
     }
 }
