@@ -28,10 +28,10 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
     let class_name = format_ident!("{}", dll_name.to_camel_case());
 
     // Generate the raw bindings for all exported items.
-    let raw_bindings: Vec<_> = exports
+    let raw_bindings = exports
         .iter()
         .map(|item| quote_raw_binding(item, dll_name))
-        .collect::<Result<_, _>>()?;
+        .collect::<Vec<_>>();
 
     let mut fn_bindings = Vec::new();
     let mut binding_items = Vec::new();

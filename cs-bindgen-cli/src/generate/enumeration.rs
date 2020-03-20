@@ -1,4 +1,4 @@
-use crate::generate::quote_cs_type;
+use crate::generate::{binding, quote_cs_type};
 use cs_bindgen_shared::{schematic, schematic::Variant, BindingStyle, Enum};
 use heck::*;
 use proc_macro2::TokenStream;
@@ -59,25 +59,62 @@ fn quote_complex_enum_binding(item: &Enum, schema: &schematic::Enum) -> TokenStr
     let interface = format_ident!("I{}", &*item.name);
 
     let variant_structs = schema.variants.iter().map(|variant| {
-        let ident = format_ident!("{}", &*variant.name());
+        let ident = format_ident!("{}", variant.name());
+        let arg_binding_ident = format_ident!("{}__RawArg", variant.name());
+        let return_binding_ident = format_ident!("{}__RawReturn", variant.name());
 
-        let fields = variant.fields().enumerate().map(|(index, field)| {
-            let field_ident = field
-                .name
-                .as_ref()
-                .map(|name| format_ident!("{}", name.to_camel_case()))
-                .unwrap_or_else(|| format_ident!("Element{}", index));
+        let fields = variant
+            .fields()
+            .enumerate()
+            .map(|(index, field)| {
+                let field_ident = field
+                    .name
+                    .as_ref()
+                    .map(|name| format_ident!("{}", name.to_camel_case()))
+                    .unwrap_or_else(|| format_ident!("Element{}", index));
 
-            let ty = quote_cs_type(field.schema);
+                (field_ident, field.schema)
 
+                // (fields, binding_fields)
+            })
+            .collect::<Vec<_>>();
+
+        let struct_fields = fields.iter().map(|(field_ident, schema)| {
+            let ty = quote_cs_type(schema);
             quote! {
                 public #ty #field_ident
             }
         });
 
+        let arg_binding_fields = fields.iter().map(|(field_ident, schema)| {
+            let binding_ty = binding::quote_raw_arg(schema);
+
+            quote! {
+                internal #binding_ty #field_ident
+            }
+        });
+
+        let return_binding_fields = fields.iter().map(|(field_ident, schema)| {
+            let binding_ty = binding::quote_binding_return_type(schema);
+
+            quote! {
+                internal #binding_ty #field_ident
+            }
+        });
+
         quote! {
             public struct #ident : #interface {
-                #( #fields; )*
+                #( #struct_fields; )*
+            }
+
+            [StructLayout(LayoutKind.Sequential)]
+            internal struct #arg_binding_ident {
+                #( #arg_binding_fields; )*
+            }
+
+            [StructLayout(LayoutKind.Sequential)]
+            internal struct #return_binding_ident {
+                #( #return_binding_fields; )*
             }
         }
     });
