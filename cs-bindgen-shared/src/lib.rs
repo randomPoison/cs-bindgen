@@ -16,8 +16,7 @@ pub fn serialize_export<E: Into<Export>>(export: E) -> String {
 pub enum Export {
     Fn(Func),
     Method(Method),
-    Struct(Struct),
-    Enum(Enum),
+    Named(NamedType),
 }
 
 /// A free function exported from the Rust lib.
@@ -61,15 +60,16 @@ impl Func {
     }
 }
 
+/// A user-defined type (i.e. a struct or an enum).
+///
+/// Both structs and enums are exported as "named types", since there are a number
+/// of configuration options that are shared for all exported types. To determine
+/// the full details of the exported type, examine the include `schema`.
+///
+/// An exported name type can only be a struct or an enum, as exporting unions is
+/// not supported.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Struct {
-    pub name: Cow<'static, str>,
-    pub binding_style: BindingStyle,
-    pub schema: Schema,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Enum {
+pub struct NamedType {
     pub name: Cow<'static, str>,
     pub binding_style: BindingStyle,
     pub schema: Schema,
