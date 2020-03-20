@@ -1,4 +1,4 @@
-use crate::generate::{quote_cs_type, quote_primitive_type};
+use crate::generate::{quote_cs_type, quote_primitive_type, TypeMap};
 use cs_bindgen_shared::*;
 use heck::*;
 use proc_macro2::TokenStream;
@@ -11,13 +11,14 @@ pub fn quote_wrapper_fn<'a>(
     receiver: Option<TokenStream>,
     inputs: impl Iterator<Item = (&'a str, &'a Schema)> + Clone + 'a,
     output: &Schema,
+    type_map: &'a TypeMap,
 ) -> TokenStream {
     // Determine the name of the wrapper function. The original function name is
     // going to be in `snake_case`, so we need to convert it to `CamelCase` to keep
     // with C# naming conventions.
     let name = format_ident!("{}", name.to_camel_case());
 
-    let return_ty = quote_cs_type(&output);
+    let return_ty = quote_cs_type(&output, type_map);
 
     // Generate the declaration for the output variable and return expression. We need
     // to treat `void` returns as a special case, since C# won't let you declare values
@@ -40,7 +41,7 @@ pub fn quote_wrapper_fn<'a>(
         quote! { static }
     };
 
-    let args = quote_args(inputs.clone());
+    let args = quote_args(inputs.clone(), type_map);
     let body = quote_wrapper_body(binding, receiver, inputs, output, &ret);
 
     quote! {
@@ -236,10 +237,11 @@ pub fn fold_fixed_blocks<'a>(
 /// Attempts to use the most idiomatic C# type that corresponds to the original type.
 pub fn quote_args<'a>(
     args: impl Iterator<Item = (&'a str, &'a Schema)> + 'a,
+    type_map: &'a TypeMap<'_>,
 ) -> impl Iterator<Item = TokenStream> + 'a {
-    args.map(|(name, schema)| {
+    args.map(move |(name, schema)| {
         let ident = format_ident!("{}", name.to_mixed_case());
-        let ty = quote_cs_type(schema);
+        let ty = quote_cs_type(schema, type_map);
         quote! { #ty #ident }
     })
 }

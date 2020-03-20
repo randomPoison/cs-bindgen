@@ -1,4 +1,4 @@
-use crate::generate::func::*;
+use crate::generate::{func::*, TypeMap};
 use cs_bindgen_shared::{schematic::Struct, BindingStyle, Method, NamedType, Schema};
 use proc_macro2::TokenStream;
 use quote::*;
@@ -51,7 +51,7 @@ fn quote_handle_type(name: &Ident, drop_fn: &Ident) -> TokenStream {
     }
 }
 
-pub fn quote_method_binding(item: &Method) -> TokenStream {
+pub fn quote_method_binding(item: &Method, type_map: &TypeMap) -> TokenStream {
     // Determine the name of the generated wrapper class based on the self type.
     let class_name = match &item.self_type {
         Schema::Struct(struct_) => &struct_.name,
@@ -72,7 +72,7 @@ pub fn quote_method_binding(item: &Method) -> TokenStream {
     // * A static method.
     let wrapper_fn = if is_constructor {
         let binding = format_ident!("{}", &*item.binding);
-        let args = quote_args(item.inputs());
+        let args = quote_args(item.inputs(), type_map);
         let invoke_args = quote_invoke_args(item.inputs());
 
         let invoke = fold_fixed_blocks(
@@ -100,6 +100,7 @@ pub fn quote_method_binding(item: &Method) -> TokenStream {
             Some(quote! { this._handle }),
             item.inputs(),
             &item.output,
+            type_map,
         )
     } else {
         quote_wrapper_fn(
@@ -108,6 +109,7 @@ pub fn quote_method_binding(item: &Method) -> TokenStream {
             None,
             item.inputs(),
             &item.output,
+            type_map,
         )
     };
 

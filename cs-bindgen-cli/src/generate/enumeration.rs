@@ -1,15 +1,23 @@
-use crate::generate::{binding, quote_cs_type};
+use crate::generate::{binding, quote_cs_type, TypeMap};
 use cs_bindgen_shared::{schematic::Enum, schematic::Variant, BindingStyle, NamedType};
 use heck::*;
 use proc_macro2::TokenStream;
 use quote::*;
 
-pub fn quote_enum_binding(item: &NamedType, schema: &Enum) -> TokenStream {
+pub fn quote_enum_binding(export: &NamedType, schema: &Enum, type_map: &TypeMap) -> TokenStream {
     // Determine if we're dealing with a simple (C-like) enum or one with fields.
     if schema.has_data() {
-        quote_complex_enum_binding(item, schema)
+        quote_complex_enum_binding(export, schema, type_map)
     } else {
-        quote_simple_enum_binding(item, schema)
+        quote_simple_enum_binding(export, schema)
+    }
+}
+
+pub fn quote_type_reference(export: &NamedType, schema: &Enum) -> TokenStream {
+    if schema.has_data() {
+        format_ident!("I{}", &*export.name).into_token_stream()
+    } else {
+        format_ident!("{}", &*export.name).into_token_stream()
     }
 }
 
@@ -44,7 +52,7 @@ fn quote_simple_enum_binding(item: &NamedType, schema: &Enum) -> TokenStream {
     }
 }
 
-fn quote_complex_enum_binding(item: &NamedType, schema: &Enum) -> TokenStream {
+fn quote_complex_enum_binding(item: &NamedType, schema: &Enum, type_map: &TypeMap) -> TokenStream {
     assert_eq!(
         item.binding_style,
         BindingStyle::Value,
@@ -93,7 +101,7 @@ fn quote_complex_enum_binding(item: &NamedType, schema: &Enum) -> TokenStream {
             .collect::<Vec<_>>();
 
         let struct_fields = fields.iter().map(|(field_ident, schema)| {
-            let ty = quote_cs_type(schema);
+            let ty = quote_cs_type(schema, type_map);
             quote! {
                 public #ty #field_ident
             }
