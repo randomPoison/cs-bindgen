@@ -99,6 +99,15 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
                 Length = (UIntPtr)len;
             }
         }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal unsafe struct RawEnum<D, V>
+            where D : unmanaged
+            where V : unmanaged
+        {
+            public D Discriminant;
+            public V Value;
+        }
     };
 
     Ok(generated.to_string())
