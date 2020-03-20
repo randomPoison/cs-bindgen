@@ -1,6 +1,9 @@
 use self::{binding::*, class::*, enumeration::*, func::*};
 use crate::Opt;
-use cs_bindgen_shared::{schematic::Primitive, Export};
+use cs_bindgen_shared::{
+    schematic::{Primitive, Schema},
+    Export,
+};
 use heck::*;
 use proc_macro2::TokenStream;
 use quote::*;
@@ -123,5 +126,54 @@ fn quote_primitive_type(ty: Primitive) -> TokenStream {
         Primitive::Isize => quote! { IntPtr },
 
         Primitive::I128 | Primitive::U128 => panic!("128 bit integers not supported"),
+    }
+}
+
+/// Generates the idiomatic C# type corresponding to the given type schema.
+fn quote_cs_type(schema: &Schema) -> TokenStream {
+    match schema {
+        // NOTE: This is only valid in a return position, it's not valid to have a `void`
+        // argument. An earlier validation pass has already rejected any such cases so we
+        // don't have to differentiate between the two here.
+        Schema::Unit => quote! { void },
+
+        // TODO: Should we be generating more idiomatic return types for numeric types? Any
+        // numeric type that's not `int`, `long`, or `float`/double` is going to be awkward
+        // to use in most cases.
+        //
+        // Tracking issue: https://github.com/randomPoison/cs-bindgen/issues/4
+        Schema::I8 => quote! { sbyte },
+        Schema::I16 => quote! { short },
+        Schema::I32 => quote! { int },
+        Schema::I64 => quote! { long },
+        Schema::U8 => quote! { byte },
+        Schema::U16 => quote! { ushort },
+        Schema::U32 => quote! { uint },
+        Schema::U64 => quote! { ulong },
+        Schema::F32 => quote! { float },
+        Schema::F64 => quote! { double },
+        Schema::Bool => quote! { bool },
+        Schema::String => quote! { string },
+
+        Schema::Char => todo!("Support passing single chars"),
+
+        // TODO: When referencing generated types in function signatures, take custom
+        // namespaces into account. Custom namespaces aren't currently supported, but
+        // once they are it won't be sufficient to directly quote the name of the type.
+        Schema::Struct(schema) => format_ident!("{}", &*schema.name.name).to_token_stream(),
+        Schema::Enum(schema) => format_ident!("{}", &*schema.name.name).to_token_stream(),
+
+        // TODO: Add support for passing user-defined types out from Rust.
+        Schema::UnitStruct(_)
+        | Schema::NewtypeStruct(_)
+        | Schema::TupleStruct(_)
+        | Schema::Option(_)
+        | Schema::Seq(_)
+        | Schema::Tuple(_)
+        | Schema::Map { .. } => todo!("Generate argument binding"),
+
+        Schema::I128 | Schema::U128 => {
+            unreachable!("Invalid argument types should have already been rejected");
+        }
     }
 }
