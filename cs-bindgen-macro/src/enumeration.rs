@@ -42,7 +42,7 @@ pub fn quote_enum_item(item: ItemEnum) -> syn::Result<TokenStream> {
     result.extend(quote! {
         #[no_mangle]
         pub unsafe extern "C" fn #describe_ident() -> std::boxed::Box<cs_bindgen::abi::RawString> {
-            let export = cs_bindgen::shared::Enum {
+            let export = cs_bindgen::shared::NamedType {
                 name: #name.into(),
                 schema: cs_bindgen::shared::schematic::describe::<#ident>().expect("Failed to describe enum type"),
 

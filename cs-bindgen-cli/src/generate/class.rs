@@ -1,5 +1,5 @@
 use crate::generate::func::*;
-use cs_bindgen_shared::{BindingStyle, Method, Schema, Struct};
+use cs_bindgen_shared::{schematic::Struct, BindingStyle, Method, NamedType, Schema};
 use proc_macro2::TokenStream;
 use quote::*;
 use syn::Ident;
@@ -16,7 +16,7 @@ pub fn quote_drop_fn(name: &str, dll_name: &str) -> TokenStream {
     }
 }
 
-pub fn quote_struct(export: &Struct) -> TokenStream {
+pub fn quote_struct(export: &NamedType, _schema: &Struct) -> TokenStream {
     match export.binding_style {
         BindingStyle::Handle => {
             let ident = format_ident!("{}", &*export.name);
