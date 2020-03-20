@@ -19,7 +19,6 @@ namespace TestRunner
         [Fact]
         public void DiscriminantEnumRoundTrip()
         {
-
             foreach (var variant in Enum.GetValues(typeof(EnumWithDiscriminants)).Cast<EnumWithDiscriminants>())
             {
                 EnumWithDiscriminants result = IntegrationTests.RoundtripSimpleEnumWithDiscriminants(variant);

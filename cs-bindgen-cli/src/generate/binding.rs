@@ -10,116 +10,90 @@ use proc_macro2::TokenStream;
 use quote::*;
 use syn::{punctuated::Punctuated, token::Comma};
 
-pub fn quote_raw_binding(export: &Export, dll_name: &str) -> Result<TokenStream, failure::Error> {
+pub fn quote_raw_binding(export: &Export, dll_name: &str) -> TokenStream {
     match export {
         Export::Fn(item) => {
             let dll_import_attrib = quote_dll_import(dll_name, &item.binding);
             let binding_ident = format_ident!("{}", &*item.binding);
-            let return_ty = quote_binding_return_type(&item.output)?;
-            let args = quote_binding_args(item.inputs())?;
+            let return_ty = quote_binding_return_type(&item.output);
+            let args = quote_binding_args(item.inputs());
 
-            Ok(quote! {
+            quote! {
                 #dll_import_attrib
                 internal static extern #return_ty #binding_ident(#args);
-            })
+            }
         }
 
         Export::Method(item) => {
             let dll_import_attrib = quote_dll_import(dll_name, &item.binding);
             let binding_ident = format_ident!("{}", &*item.binding);
-            let return_ty = quote_binding_return_type(&item.output)?;
+            let return_ty = quote_binding_return_type(&item.output);
 
             // TODO: Unify input handling for raw bindings. It shouldn't be necessary to
             // manually insert the receiver. The current blocker is that schematic can't
-            // represent refrence types, so we can't generate a full list of inputs that
+            // represent reference types, so we can't generate a full list of inputs that
             // includes the receiver.
-            let mut args = quote_binding_args(item.inputs())?;
+            let mut args = quote_binding_args(item.inputs());
             if item.receiver.is_some() {
                 args.insert(0, quote! { void* self });
             }
 
-            Ok(quote! {
+            quote! {
                 #dll_import_attrib
                 internal static extern #return_ty #binding_ident(#args);
-            })
+            }
         }
 
         // TODO: Only generate a drop fn if we're binding the struct as a handle type.
-        Export::Struct(item) => Ok(class::quote_drop_fn(&item.name, dll_name)),
+        Export::Struct(item) => class::quote_drop_fn(&item.name, dll_name),
 
         // TODO: Generate a drop function if we're binding the enum as a handle type.
-        Export::Enum(_) => Ok(Default::default()),
+        Export::Enum(_) => Default::default(),
     }
 }
 
-fn quote_dll_import(dll_name: &str, entry_point: &str) -> TokenStream {
-    quote! {
-        [DllImport(
-            #dll_name,
-            EntryPoint = #entry_point,
-            CallingConvention = CallingConvention.Cdecl)]
+pub fn quote_raw_arg(schema: &Schema) -> TokenStream {
+    match schema {
+        Schema::I8 => quote! { sbyte },
+        Schema::I16 => quote! { short },
+        Schema::I32 => quote! { int },
+        Schema::I64 => quote! { long },
+        Schema::U8 => quote! { byte },
+        Schema::U16 => quote! { ushort },
+        Schema::U32 => quote! { uint },
+        Schema::U64 => quote! { ulong },
+        Schema::F32 => quote! { float },
+        Schema::F64 => quote! { double },
+        Schema::Bool => quote! { byte },
+        Schema::Char => quote! { uint },
+
+        // `String` is passed to Rust as a `RawCsString`.
+        Schema::String => quote! { RawCsString },
+
+        // TODO: Actually look up the referenced type to determine what style of binding is
+        // being used and what the repr of the discriminant is. For now we only have support
+        // for simple (C-like) enums without an explicit repr, so the raw value will always
+        // be an `isize`.
+        Schema::Enum(_) => quote! { IntPtr },
+
+        // TODO: Add support for passing user-defined types to Rust.
+        Schema::Struct(_)
+        | Schema::UnitStruct(_)
+        | Schema::NewtypeStruct(_)
+        | Schema::TupleStruct(_)
+        | Schema::Option(_)
+        | Schema::Seq(_)
+        | Schema::Tuple(_)
+        | Schema::Map { .. } => todo!("Generate argument binding"),
+
+        Schema::Unit | Schema::I128 | Schema::U128 => {
+            unreachable!("Invalid types should have already been handled")
+        }
     }
 }
 
-fn quote_binding_args<'a>(
-    inputs: impl Iterator<Item = (&'a str, &'a Schema)>,
-) -> Result<Punctuated<TokenStream, Comma>, failure::Error> {
-    let result = inputs
-        .map(|(name, schema)| {
-            let ident = format_ident!("{}", name);
-            let ty = match schema {
-                Schema::I8 => quote! { sbyte },
-                Schema::I16 => quote! { short },
-                Schema::I32 => quote! { int },
-                Schema::I64 => quote! { long },
-                Schema::U8 => quote! { byte },
-                Schema::U16 => quote! { ushort },
-                Schema::U32 => quote! { uint },
-                Schema::U64 => quote! { ulong },
-                Schema::F32 => quote! { float },
-                Schema::F64 => quote! { double },
-                Schema::Bool => quote! { byte },
-                Schema::Char => quote! { uint },
-
-                // `String` is passed to Rust as a `RawCsString`.
-                Schema::String => quote! { RawCsString },
-
-                Schema::I128 | Schema::U128 => {
-                    return Err(failure::err_msg("128 bit integers are not supported by C#"))
-                }
-
-                Schema::Unit => {
-                    return Err(failure::err_msg(
-                        "`()` cannot be passed as an argument from C#",
-                    ))
-                }
-
-                // TODO: Actually look up the referenced type to determine what style of binding is
-                // being used and what the repr of the discriminant is. For now we only have support
-                // for simple (C-like) enums without an explicit repr, so the raw value will always
-                // be an `isize`.
-                Schema::Enum(_) => quote! { IntPtr },
-
-                // TODO: Add support for passing user-defined types to Rust.
-                Schema::Struct(_)
-                | Schema::UnitStruct(_)
-                | Schema::NewtypeStruct(_)
-                | Schema::TupleStruct(_)
-                | Schema::Option(_)
-                | Schema::Seq(_)
-                | Schema::Tuple(_)
-                | Schema::Map { .. } => todo!("Generate argument binding"),
-            };
-
-            Ok(quote! { #ty #ident })
-        })
-        .collect::<Result<_, _>>()?;
-
-    Ok(result)
-}
-
-fn quote_binding_return_type(schema: &Schema) -> Result<TokenStream, failure::Error> {
-    let ty = match schema {
+pub fn quote_binding_return_type(schema: &Schema) -> TokenStream {
+    match schema {
         Schema::I8 => quote! { sbyte },
         Schema::I16 => quote! { short },
         Schema::I32 => quote! { int },
@@ -135,10 +109,6 @@ fn quote_binding_return_type(schema: &Schema) -> Result<TokenStream, failure::Er
 
         // `String` is returned from Rust as a `RustOwnedString`.
         Schema::String => quote! { RustOwnedString },
-
-        Schema::I128 | Schema::U128 => {
-            return Err(failure::err_msg("128 bit integers are not supported by C#"))
-        }
 
         Schema::Unit => quote! { void },
 
@@ -162,7 +132,31 @@ fn quote_binding_return_type(schema: &Schema) -> Result<TokenStream, failure::Er
         | Schema::Seq(_)
         | Schema::Tuple(_)
         | Schema::Map { .. } => todo!("Generate return type binding"),
-    };
 
-    Ok(ty)
+        Schema::I128 | Schema::U128 => {
+            unreachable!("Invalid types should have already been handled")
+        }
+    }
+}
+
+fn quote_dll_import(dll_name: &str, entry_point: &str) -> TokenStream {
+    quote! {
+        [DllImport(
+            #dll_name,
+            EntryPoint = #entry_point,
+            CallingConvention = CallingConvention.Cdecl)]
+    }
+}
+
+fn quote_binding_args<'a>(
+    inputs: impl Iterator<Item = (&'a str, &'a Schema)>,
+) -> Punctuated<TokenStream, Comma> {
+    inputs
+        .map(|(name, schema)| {
+            let ident = format_ident!("{}", name);
+            let ty = quote_raw_arg(schema);
+
+            quote! { #ty #ident }
+        })
+        .collect()
 }

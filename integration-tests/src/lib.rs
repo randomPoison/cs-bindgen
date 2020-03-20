@@ -129,3 +129,11 @@ pub enum DataEnum {
     Bar(String),
     Baz { name: String, value: i32 },
 }
+
+// #[cs_bindgen]
+pub fn generate_data_enum() -> DataEnum {
+    DataEnum::Baz {
+        name: "Randal".into(),
+        value: 11,
+    }
+}
