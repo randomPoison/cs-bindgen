@@ -15,6 +15,7 @@
 //!
 //! [nomicon-interop]: https://doc.rust-lang.org/nomicon/ffi.html#interoperability-with-foreign-code
 
+use core::mem::MaybeUninit;
 use std::{convert::TryInto, mem, slice, str};
 
 /// The ABI-compatible equivalent to [`String`].
@@ -38,17 +39,17 @@ pub type RawStr = RawSlice<u8>;
 ///
 /// [`AbiArgument`]: trait.AbiArgument.html
 /// [`AbiReturn`]: trait.AbiReturn.html
-pub unsafe trait AbiPrimitive {}
+pub unsafe trait AbiPrimitive: Copy {}
 
 /// A type that can be passed as an argument to an `extern "C"` function.
 ///
 /// See [the module level documentation](./index.html) for more.
-pub unsafe trait AbiArgument {}
+pub unsafe trait AbiArgument: Copy {}
 
 /// A type that can be returned from an `extern "C"` function.
 ///
 /// See [the module level documentation](./index.html) for more.
-pub unsafe trait AbiReturn {}
+pub unsafe trait AbiReturn: Copy {}
 
 unsafe impl<T: AbiPrimitive> AbiArgument for T {}
 unsafe impl<T: AbiPrimitive> AbiReturn for T {}
@@ -122,11 +123,25 @@ impl IntoAbi for () {
 }
 
 // Pointers to any ABI primitive are also valid ABI primitives.
-unsafe impl<T> AbiPrimitive for Box<T> {}
 unsafe impl<'a, T> AbiPrimitive for &'a T {}
-unsafe impl<'a, T> AbiPrimitive for &'a mut T {}
 unsafe impl<T> AbiPrimitive for *const T {}
 unsafe impl<T> AbiPrimitive for *mut T {}
+
+impl<T> FromAbi for Box<T> {
+    type Abi = *mut T;
+
+    unsafe fn from_abi(abi: Self::Abi) -> Self {
+        Box::from_raw(abi)
+    }
+}
+
+impl<T> IntoAbi for Box<T> {
+    type Abi = *mut T;
+
+    fn into_abi(self) -> Self::Abi {
+        Box::into_raw(self)
+    }
+}
 
 impl IntoAbi for char {
     type Abi = u32;
@@ -315,3 +330,42 @@ impl<'a> From<&'a str> for RawSlice<u8> {
         }
     }
 }
+
+/// Deconstructed representation of an enum, compatible with FFI.
+///
+/// The raw representation of an enum is an explicit discriminant value paired with
+/// a union of all the fields. When converting back from the raw representation, use
+/// the value of the discriminant to determine which union field is valid.
+#[repr(C)]
+#[derive(Debug, Copy)]
+pub struct RawEnum<D, V> {
+    pub discriminant: D,
+    pub value: MaybeUninit<V>,
+}
+
+impl<D: Clone, V: Copy> Clone for RawEnum<D, V> {
+    fn clone(&self) -> Self {
+        Self {
+            discriminant: self.discriminant.clone(),
+            value: self.value.clone(),
+        }
+    }
+}
+
+impl<D, V> RawEnum<D, V> {
+    pub const fn new(discriminant: D, value: V) -> Self {
+        Self {
+            discriminant,
+            value: MaybeUninit::new(value),
+        }
+    }
+
+    pub const fn unit(discriminant: D) -> Self {
+        Self {
+            discriminant,
+            value: MaybeUninit::uninit(),
+        }
+    }
+}
+
+unsafe impl<D: AbiPrimitive, V: AbiPrimitive> AbiPrimitive for RawEnum<D, V> {}

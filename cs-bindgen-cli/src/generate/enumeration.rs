@@ -9,22 +9,9 @@ pub fn quote_enum_binding(item: &Enum) -> TokenStream {
         .expect("Enum item's schema does not describe an enum");
 
     // Determine if we're dealing with a simple (C-like) enum or one with fields.
-    //
-    // TODO: Move this logic into a helper method on `schematic::Enum`.
-    let mut has_fields = false;
-    for variant in &schema.variants {
-        match variant {
-            Variant::Unit { .. } => {}
-
-            _ => {
-                has_fields = true;
-                break;
-            }
-        }
-    }
-
-    if has_fields {
-        todo!("Generate bindings for a complex enum")
+    if schema.has_data() {
+        // TODO: Generate bindings for enums with data.
+        quote! {}
     } else {
         quote_simple_enum_binding(item, schema)
     }

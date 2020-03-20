@@ -1,5 +1,5 @@
 use crate::func::*;
-use proc_macro2::TokenStream;
+use proc_macro2::{Literal, TokenStream};
 use quote::*;
 use syn::*;
 
@@ -9,6 +9,9 @@ pub fn quote_enum_item(item: ItemEnum) -> syn::Result<TokenStream> {
         "Generic enums not supported with `#[cs_bindgen]`",
     )?;
 
+    // Derive `Describe` for the enum.
+    //
+    // TODO: Move this into a dedicated derive macro for schematic.
     let mut result = quote_describe_impl(&item)?;
 
     // Check the variants to determine if we're dealing with a C-style enum or one that
@@ -32,13 +35,32 @@ pub fn quote_enum_item(item: ItemEnum) -> syn::Result<TokenStream> {
 
     result.extend(bindings);
 
+    // Export a function that describes the exported type.
+    let ident = &item.ident;
+    let describe_ident = format_describe_ident!(ident);
+    let name = ident.to_string();
+    result.extend(quote! {
+        #[no_mangle]
+        pub unsafe extern "C" fn #describe_ident() -> std::boxed::Box<cs_bindgen::abi::RawString> {
+            let export = cs_bindgen::shared::Enum {
+                name: #name.into(),
+                schema: cs_bindgen::shared::schematic::describe::<#ident>().expect("Failed to describe enum type"),
+
+                // NOTE: Currently we always pass enums by value. At some point we'll likely also
+                // want to support exporting enums as handles, at which point we'll need to update
+                // this bit of code generation.
+                binding_style: cs_bindgen::shared::BindingStyle::Value,
+            };
+
+            std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())
+        }
+    });
+
     Ok(result)
 }
 
 fn quote_simple_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
     let ident = &item.ident;
-    let name = ident.to_string();
-    let describe_ident = format_describe_ident!(ident);
 
     // TODO: Check for a `#[repr(...)]` attribute and handle alternate types for the
     // discriminant.
@@ -91,8 +113,6 @@ fn quote_simple_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
     });
 
     Ok(quote! {
-        // Implement `FromAbi` and `IntoAbi` for the enum.
-
         impl cs_bindgen::abi::IntoAbi for #ident {
             type Abi = #discriminant_ty;
 
@@ -115,40 +135,246 @@ fn quote_simple_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
                 }
             }
         }
-
-        // Export a function that describes the exported type.
-        #[no_mangle]
-        pub unsafe extern "C" fn #describe_ident() -> std::boxed::Box<cs_bindgen::abi::RawString> {
-            let export = cs_bindgen::shared::Enum {
-                name: #name.into(),
-                binding_style: cs_bindgen::shared::BindingStyle::Handle,
-                schema: cs_bindgen::shared::schematic::describe::<#ident>().expect("Failed to describe enum type"),
-            };
-
-            std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())
-        }
     })
 }
 
 fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
-    // let ident = &item.ident;
-    // let name = ident.to_string();
-    // let describe_ident = format_describe_ident!(ident);
+    let ident = &item.ident;
+    let from_abi_union_ty = format_ident!("__cs_bindgen_generated_raw_FromAbi__{}", ident);
+    let into_abi_union_ty = format_ident!("__cs_bindgen_generated_raw_IntoAbi__{}", ident);
+
+    // TODO: Check the repr of the enum to determine the actual discriminant type.
+    let discriminant_ty = quote! { isize };
+
+    // Generate binding struct for each variant of the enum.
+    let raw_variant_types = item.variants.iter().filter_map(|variant| {
+        let from_abi_ident = format_ident!("{}__{}", from_abi_union_ty, variant.ident);
+        let into_abi_ident = format_ident!("{}__{}", into_abi_union_ty, variant.ident);
+
+        // NOTE: No binding struct is generated for unit variants or struct/tuple-like
+        // variants that don't actually contain data, since only the discriminant is
+        // needed to restore it.
+        if variant.fields.is_empty() {
+            return None;
+        }
+
+        // Extract the list of fields for the binding struct. The generated struct is the
+        // same for both struct-like and tuple-like variants, though in the latter case we
+        // have to manually generate names for the fields based on the index of the element.
+        let (from_fields, into_fields) = variant.fields.iter().enumerate().fold(
+            (Vec::new(), Vec::new()),
+            |(mut from_fields, mut into_fields), (index, field)| {
+                let field_ty = &field.ty;
+                let field_ident = field
+                    .ident
+                    .as_ref()
+                    .map(Clone::clone)
+                    .unwrap_or_else(|| format_ident!("element_{}", index));
+
+                from_fields.push(quote! {
+                    #field_ident: <#field_ty as cs_bindgen::abi::FromAbi>::Abi
+                });
+
+                into_fields.push(quote! {
+                    #field_ident: <#field_ty as cs_bindgen::abi::IntoAbi>::Abi
+                });
+
+                (from_fields, into_fields)
+            },
+        );
+
+        Some(quote! {
+            #[repr(C)]
+            #[derive(Debug, Clone, Copy)]
+            #[allow(bad_style)]
+            pub struct #from_abi_ident {
+                #( #from_fields, )*
+            }
+
+            #[repr(C)]
+            #[derive(Debug, Clone, Copy)]
+            #[allow(bad_style)]
+            pub struct #into_abi_ident {
+                #( #into_fields, )*
+            }
+        })
+    });
+
+    let from_abi_union_fields = item.variants.iter().filter_map(|variant| {
+        // NOTE: No binding struct is generated for unit variants or empty variants, since only
+        // the discriminant is needed to restore it.
+        if variant.fields == Fields::Unit || variant.fields.is_empty() {
+            return None;
+        }
+
+        let field_ident = &variant.ident;
+        let field_ty = format_ident!("{}__{}", from_abi_union_ty, variant.ident);
+
+        Some(quote! {
+            #field_ident: #field_ty
+        })
+    });
+
+    let into_abi_union_fields = item.variants.iter().filter_map(|variant| {
+        // NOTE: No binding struct is generated for unit variants or empty variants, since only
+        // the discriminant is needed to restore it.
+        if variant.fields == Fields::Unit || variant.fields.is_empty() {
+            return None;
+        }
+
+        let field_ident = &variant.ident;
+        let field_ty = format_ident!("{}__{}", into_abi_union_ty, variant.ident);
+
+        Some(quote! {
+            #field_ident: #field_ty
+        })
+    });
+
+    let into_abi_match_arms = item.variants.iter().enumerate().map(|(index, variant)| {
+        let variant_ident = &variant.ident;
+        let discriminant = Literal::usize_unsuffixed(index);
+        let abi_ident = format_ident!("{}__{}", into_abi_union_ty, variant.ident);
+
+        let field_idents = variant
+            .fields
+            .iter()
+            .enumerate()
+            .map(|(index, field)| field_ident(index, field));
+
+        // Generate the destructuring expression for the fields of the variant.
+        let destructure = match &variant.fields {
+            Fields::Named { .. } => quote! { { #( #field_idents, )* } },
+            Fields::Unnamed { .. } => quote! { ( #( #field_idents, )* ) },
+            Fields::Unit => quote! {},
+        };
+
+        // For empty variants use `RawEnum::unit` to create an enum representation with just
+        // a discriminant.
+        if variant.fields.is_empty() {
+            return quote! {
+                Self::#variant_ident #destructure => cs_bindgen::abi::RawEnum::unit(#discriminant)
+            };
+        }
+
+        let convert_fields = variant.fields.iter().enumerate().map(|(index, field)| {
+            let field_ident = field_ident(index, field);
+
+            quote! {
+                #field_ident: cs_bindgen::abi::IntoAbi::into_abi(#field_ident)
+            }
+        });
+
+        quote! {
+            Self::#variant_ident #destructure => cs_bindgen::abi::RawEnum::new(
+                #discriminant,
+                #into_abi_union_ty {
+                    #variant_ident: #abi_ident {
+                        #( #convert_fields, )*
+                    },
+                },
+            )
+        }
+    });
+
+    let from_abi_match_arms = item.variants.iter().enumerate().map(|(index, variant)| {
+        let variant_ident = &variant.ident;
+        let discriminant = Literal::usize_unsuffixed(index);
+        let abi_ident = format_ident!("{}__{}", from_abi_union_ty, variant.ident);
+
+        let braces = match &variant.fields {
+            Fields::Named { .. } => quote! { {} },
+            Fields::Unnamed { .. } => quote! { () },
+            Fields::Unit => quote! {},
+        };
+
+        if variant.fields.is_empty() {
+            return quote! {
+                #discriminant => Self::#variant_ident #braces
+            };
+        }
+
+        let field_idents = variant
+            .fields
+            .iter()
+            .enumerate()
+            .map(|(index, field)| field_ident(index, field))
+            .collect::<Vec<_>>();
+
+        let populate_variant = match &variant.fields {
+            Fields::Named { .. } => quote! {
+                { #( #field_idents: cs_bindgen::abi::FromAbi::from_abi(#field_idents), )* }
+            },
+
+            Fields::Unnamed { .. } => quote! {
+                ( #( cs_bindgen::abi::FromAbi::from_abi(#field_idents), )* )
+            },
+
+            Fields::Unit => unreachable!(),
+        };
+
+        quote! {
+            #discriminant => {
+                let #abi_ident { #( #field_idents, )* } = abi.value.assume_init().#variant_ident;
+                Self::#variant_ident #populate_variant
+            }
+        }
+    });
 
     Ok(quote! {
-        // TODO: Generate the `From/IntoAbi` impls for the enum.
+        #[repr(C)]
+        #[derive(Clone, Copy)]
+        #[allow(bad_style)]
+        pub union #from_abi_union_ty {
+            #( #from_abi_union_fields, )*
+        }
 
-        // TODO: Generate the descriptor function.
+        #[repr(C)]
+        #[derive(Clone, Copy)]
+        #[allow(bad_style)]
+        pub union #into_abi_union_ty {
+            #( #into_abi_union_fields, )*
+        }
+
+        unsafe impl cs_bindgen::abi::AbiPrimitive for #from_abi_union_ty {}
+        unsafe impl cs_bindgen::abi::AbiPrimitive for #into_abi_union_ty {}
+
+        #( #raw_variant_types )*
+
+        // Generate the `From/IntoAbi` impls for the enum.
+        impl cs_bindgen::abi::FromAbi for #ident {
+            type Abi = cs_bindgen::abi::RawEnum<#discriminant_ty, #from_abi_union_ty>;
+
+            unsafe fn from_abi(abi: Self::Abi) -> Self {
+                match abi.discriminant {
+                    #( #from_abi_match_arms, )*
+
+                    _ => panic!("Unknown discriminant {} for {}", abi.discriminant, stringify!(#ident)),
+                }
+            }
+        }
+
+        impl cs_bindgen::abi::IntoAbi for #ident {
+            type Abi = cs_bindgen::abi::RawEnum<#discriminant_ty, #into_abi_union_ty>;
+
+            fn into_abi(self) -> Self::Abi {
+                match self {
+                    #( #into_abi_match_arms, )*
+                }
+            }
+        }
     })
 }
 
 fn quote_describe_impl(item: &ItemEnum) -> syn::Result<TokenStream> {
     let ident = &item.ident;
 
+    // Iterate over the enum variants and generate the describe logic for each one.
     let describe_variants = item.variants.iter().map(|variant| {
         let variant_name = variant.ident.to_string();
 
         match &variant.fields {
+            // Unit variants are described with a single call to `describe_unit_variant`. We
+            // also need to pass in the value of the discriminant, if one was specified.
             Fields::Unit => {
                 let discriminant = match &variant.discriminant {
                     Some((_, expr)) => quote! { Some((#expr).into()) },
@@ -163,8 +389,9 @@ fn quote_describe_impl(item: &ItemEnum) -> syn::Result<TokenStream> {
                     )?;
                 }
             },
-            
 
+            // For tuple variants, we generate initially call `start_tuple_variant` and then
+            // generate a call to `describe_element` for each element in the tuple.
             Fields::Unnamed(fields) => {
                 let describe_elements = fields.unnamed.iter().map(|field| {
                     let ty = &field.ty;
@@ -191,6 +418,8 @@ fn quote_describe_impl(item: &ItemEnum) -> syn::Result<TokenStream> {
                 }
             }
 
+            // For struct variants, we generate initially call `start_struct_variant` and
+            // then generate a call to `describe_field` for each field.
             Fields::Named(fields) => {
                 let describe_fields = fields.named.iter().map(|field| {
                     let name = field.ident.as_ref().unwrap().to_string();
@@ -235,4 +464,12 @@ fn quote_describe_impl(item: &ItemEnum) -> syn::Result<TokenStream> {
             }
         }
     })
+}
+
+fn field_ident(index: usize, field: &Field) -> Ident {
+    field
+        .ident
+        .as_ref()
+        .map(Clone::clone)
+        .unwrap_or_else(|| format_ident!("element_{}", index))
 }
