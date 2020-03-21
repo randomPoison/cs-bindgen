@@ -46,7 +46,7 @@ pub struct Func {
     ///
     /// Note that this is the return type of the original function, NOT the generated
     /// binding function.
-    pub output: Schema,
+    pub output: Option<Schema>,
 }
 
 impl Func {
@@ -82,7 +82,7 @@ pub struct Method {
     pub self_type: Schema,
     pub receiver: Option<ReceiverStyle>,
     pub inputs: Vec<(Cow<'static, str>, Schema)>,
-    pub output: Schema,
+    pub output: Option<Schema>,
 }
 
 impl Method {

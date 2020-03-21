@@ -40,7 +40,7 @@ pub unsafe extern "C" fn __cs_bindgen_describe__example_fn() -> Box<RawVec<u8>> 
                 describe::<String>().expect("Failed to generate schema for argument"),
             ),
         ],
-        output: describe::<String>().expect("Failed to generate schema for return type"),
+        output: Some(describe::<String>().expect("Failed to generate schema for return type")),
     };
 
     Box::new(serialize_export(export).into())

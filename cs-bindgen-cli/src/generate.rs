@@ -60,7 +60,7 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
                 &*export.binding,
                 None,
                 export.inputs(),
-                &export.output,
+                export.output.as_ref(),
                 &types,
             )),
 
