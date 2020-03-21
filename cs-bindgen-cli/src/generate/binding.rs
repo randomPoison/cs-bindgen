@@ -11,7 +11,17 @@ use cs_bindgen_shared::{
 };
 use proc_macro2::TokenStream;
 use quote::*;
-use syn::{punctuated::Punctuated, token::Comma};
+use syn::{punctuated::Punctuated, token::Comma, Ident};
+
+/// Generates the identifier for the from-raw conversion function for the specified type.
+pub fn from_raw_ident(name: &str) -> Ident {
+    format_ident!("__{}FromRaw", name)
+}
+
+/// Generates the identifier for the into-raw conversion function for the specified type.
+pub fn into_raw_ident(name: &str) -> Ident {
+    format_ident!("__{}IntoRaw", name)
+}
 
 pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> TokenStream {
     match export {
@@ -69,8 +79,8 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
             };
 
             // Generate the raw conversion functions for the type.
-            let from_raw = format_ident!("__{}FromRaw", &*export.name);
-            let into_raw = format_ident!("__{}IntoRaw", &*export.name);
+            let from_raw = from_raw_ident(&export.name);
+            let into_raw = into_raw_ident(&export.name);
 
             let raw_fns = match &export.schema {
                 // TODO: Support raw conversions for structs, too!

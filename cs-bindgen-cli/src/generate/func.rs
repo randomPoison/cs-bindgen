@@ -1,4 +1,4 @@
-use crate::generate::{enumeration, quote_cs_type, TypeMap};
+use crate::generate::{binding, enumeration, quote_cs_type, TypeMap};
 use cs_bindgen_shared::*;
 use heck::*;
 use proc_macro2::TokenStream;
@@ -180,31 +180,16 @@ pub fn quote_wrapper_body<'a>(
             // NOTE: We don't need to check the binding style when converting structs because
             // the generated struct will have an overloaded constructor for all supported
             // binding styles.
+            //
+            // TODO: Use the same `__FromRaw` conversion style as we do for enums.
             Schema::Struct(output) => {
                 let ty_ident = format_ident!("{}", &*output.name.name);
                 quote! { #ret = new #ty_ident(#invoke); }
             }
 
             Schema::Enum(output) => {
-                let export = types
-                    .get(&output.name)
-                    .expect("Couldn't find exported type for enum");
-
-                match export.binding_style {
-                    // For handle enums, we directly pass the raw output to the generated class's
-                    // constructor.
-                    //
-                    // TODO: Always use the `__FromRaw` function for this.
-                    BindingStyle::Handle => {
-                        let ty_ident = format_ident!("{}", &*output.name.name);
-                        quote! { #ret = new #ty_ident(#invoke); }
-                    }
-
-                    BindingStyle::Value => {
-                        let convert_fn = format_ident!("__{}FromRaw", &*output.name.name);
-                        quote! { #ret = __bindings.#convert_fn(#invoke); }
-                    }
-                }
+                let from_raw = binding::from_raw_ident(&output.name.name);
+                quote! { #ret = __bindings.#from_raw(#invoke); }
             }
 
             // TODO: Add support for passing user-defined types out from Rust.
