@@ -94,9 +94,9 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
         #[no_mangle]
         pub unsafe extern "C" fn #binding_ident(
             #( #binding_inputs, )*
-        ) -> <#return_type as cs_bindgen::abi::IntoAbi>::Abi {
+        ) -> <#return_type as cs_bindgen::abi::Abi>::Abi {
             #( #convert_inputs )*
-            cs_bindgen::abi::IntoAbi::into_abi(#invoke_expr)
+            cs_bindgen::abi::Abi::into_abi(#invoke_expr)
         }
     };
 
@@ -162,50 +162,38 @@ fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
             }
         }
 
-        // Implement `From/IntoAbi` conversions for the type and references to the type.
+        // Implement `Abi` for the type and references to the type.
 
-        impl cs_bindgen::abi::IntoAbi for #ident {
+        impl cs_bindgen::abi::Abi for #ident {
             type Abi = *mut Self;
 
             fn into_abi(self) -> Self::Abi {
                 std::boxed::Box::into_raw(std::boxed::Box::new(self))
             }
-        }
-
-        impl cs_bindgen::abi::FromAbi for #ident {
-            type Abi = *mut Self;
 
             unsafe fn from_abi(abi: Self::Abi) -> Self {
                 *std::boxed::Box::from_raw(abi)
             }
         }
 
-        impl<'a> cs_bindgen::abi::IntoAbi for &'a #ident {
+        impl<'a> cs_bindgen::abi::Abi for &'a #ident {
             type Abi = Self;
 
             fn into_abi(self) -> Self::Abi {
                 self
             }
-        }
-
-        impl<'a> cs_bindgen::abi::FromAbi for &'a #ident {
-            type Abi = Self;
 
             unsafe fn from_abi(abi: Self::Abi) -> Self {
                 abi
             }
         }
 
-        impl<'a> cs_bindgen::abi::IntoAbi for &'a mut #ident {
+        impl<'a> cs_bindgen::abi::Abi for &'a mut #ident {
             type Abi = *mut #ident;
 
             fn into_abi(self) -> Self::Abi {
                 self as *mut _
             }
-        }
-
-        impl<'a> cs_bindgen::abi::FromAbi for &'a mut #ident {
-            type Abi = *mut #ident;
 
             unsafe fn from_abi(abi: Self::Abi) -> Self {
                 &mut *abi
@@ -226,7 +214,7 @@ fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
 
         // Export a function that can be used for dropping an instance of the type.
         #[no_mangle]
-        pub unsafe extern "C" fn #drop_ident(_: <#ident as cs_bindgen::abi::FromAbi>::Abi) {}
+        pub unsafe extern "C" fn #drop_ident(_: <#ident as cs_bindgen::abi::Abi>::Abi) {}
     })
 }
 
@@ -364,9 +352,9 @@ fn quote_method_item(item: ImplItemMethod, self_ty: &Type) -> syn::Result<TokenS
         #[no_mangle]
         pub unsafe extern "C" fn #binding_ident(
             #( #binding_inputs, )*
-        ) -> <#return_type as cs_bindgen::abi::IntoAbi>::Abi {
+        ) -> <#return_type as cs_bindgen::abi::Abi>::Abi {
             #( #convert_inputs )*
-            cs_bindgen::abi::IntoAbi::into_abi(#self_ty::#ident(#( #arg_names, )*))
+            cs_bindgen::abi::Abi::into_abi(#self_ty::#ident(#( #arg_names, )*))
         }
     };
 

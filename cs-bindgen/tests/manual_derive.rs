@@ -48,8 +48,8 @@ pub unsafe extern "C" fn __cs_bindgen_describe__example_fn() -> Box<RawVec<u8>> 
 
 // When exporting a struct as a handle type (i.e. a class in C#) the ABI conversion
 // simply boxes the value and then returns the pointer as an opaque handle.
-// Additional `From/IntoAbi` impls are generated for references to the type in order
-// to support passing/returning by reference.
+// Additional `Abi` impls are generated for references to the type in order to
+// support passing/returning by reference.
 
 pub struct ExampleStruct {
     pub field: String,
