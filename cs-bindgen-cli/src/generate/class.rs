@@ -63,7 +63,7 @@ pub fn quote_method_binding(item: &Method, type_map: &TypeMap) -> TokenStream {
     //
     // TODO: Also support an explicit attribute to specify that a method should (or
     // should not) be treated as a constructor.
-    let is_constructor = item.receiver.is_none() && item.output == Some(item.self_type);
+    let is_constructor = item.receiver.is_none() && item.output.as_ref() == Some(&item.self_type);
 
     // Generate the right type of function for the exported method. There are three options:
     //

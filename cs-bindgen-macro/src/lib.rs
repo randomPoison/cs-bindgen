@@ -101,15 +101,20 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
     // original function, and for populating the metadata item.
     let arg_names = inputs.iter().map(|(ident, _)| ident);
 
-    // Compose the various pieces together into the final binding function.
     let invoke_expr = quote! { #ident(#( #arg_names, )*) };
+    let return_expr = match &signature.output {
+        ReturnType::Default => invoke_expr,
+        ReturnType::Type(..) => quote! { cs_bindgen::abi::Abi::into_abi(#invoke_expr) },
+    };
+
+    // Compose the various pieces together into the final binding function.
     let binding = quote! {
         #[no_mangle]
         pub unsafe extern "C" fn #binding_ident(
             #( #binding_inputs, )*
         ) #return_decl {
             #( #convert_inputs )*
-            cs_bindgen::abi::Abi::into_abi(#invoke_expr)
+            #return_expr
         }
     };
 
@@ -373,6 +378,12 @@ fn quote_method_item(item: ImplItemMethod, self_ty: &Type) -> syn::Result<TokenS
         },
     };
 
+    let invoke = quote! { #self_ty::#ident(#( #arg_names, )*) };
+    let return_expr = match &signature.output {
+        ReturnType::Default => invoke,
+        ReturnType::Type(..) => quote! { cs_bindgen::abi::Abi::into_abi(#invoke) },
+    };
+
     // Compose the various pieces together into the final binding function.
     let binding = quote! {
         #[no_mangle]
@@ -380,7 +391,7 @@ fn quote_method_item(item: ImplItemMethod, self_ty: &Type) -> syn::Result<TokenS
             #( #binding_inputs, )*
         ) #return_decl {
             #( #convert_inputs )*
-            cs_bindgen::abi::Abi::into_abi(#self_ty::#ident(#( #arg_names, )*))
+            #return_expr
         }
     };
 
