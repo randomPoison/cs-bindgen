@@ -32,5 +32,6 @@ macro_rules! export {
 
     () => {
         $crate::export!(fn __cs_bindgen_drop_string(raw: $crate::abi::RawString));
+        $crate::export!(fn __cs_bindgen_string_from_utf16(raw: $crate::abi::RawSlice<u16>) -> $crate::abi::RawString);
     };
 }

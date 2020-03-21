@@ -96,6 +96,12 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
                 CallingConvention = CallingConvention.Cdecl)]
             internal static extern void __cs_bindgen_drop_string(RustOwnedString raw);
 
+            [DllImport(
+                #dll_name,
+                EntryPoint = "__cs_bindgen_string_from_utf16",
+                CallingConvention = CallingConvention.Cdecl)]
+            internal static extern RustOwnedString __cs_bindgen_string_from_utf16(RawCsString raw);
+
             #( #raw_bindings )*
         }
 

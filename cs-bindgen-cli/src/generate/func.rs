@@ -82,7 +82,7 @@ pub fn quote_invoke_args<'a>(
             Schema::String => {
                 let fixed_ident = format_ident!("__fixed_{}", ident);
                 quote! {
-                    new RawCsString(#fixed_ident, #ident.Length)
+                    __bindings.__cs_bindgen_string_from_utf16(new RawCsString(#fixed_ident, #ident.Length))
                 }
             }
 
