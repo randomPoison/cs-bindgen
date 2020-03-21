@@ -17,11 +17,11 @@ pub fn example_fn(first: u32, second: String) -> String {
 
 #[no_mangle]
 pub unsafe extern "C" fn __cs_bindgen_generated__example_fn(
-    first: <u32 as FromAbi>::Abi,
-    second: <String as FromAbi>::Abi,
-) -> <String as IntoAbi>::Abi {
-    let first = FromAbi::from_abi(first);
-    let second = FromAbi::from_abi(second);
+    first: <u32 as Abi>::Abi,
+    second: <String as Abi>::Abi,
+) -> <String as Abi>::Abi {
+    let first = Abi::from_abi(first);
+    let second = Abi::from_abi(second);
     example_fn(first, second).into_abi()
 }
 
@@ -65,48 +65,36 @@ impl Describe for ExampleStruct {
     }
 }
 
-impl IntoAbi for ExampleStruct {
+impl Abi for ExampleStruct {
     type Abi = *mut Self;
 
     fn into_abi(self) -> Self::Abi {
         std::boxed::Box::into_raw(std::boxed::Box::new(self))
     }
-}
-
-impl FromAbi for ExampleStruct {
-    type Abi = *mut Self;
 
     unsafe fn from_abi(abi: Self::Abi) -> Self {
         *std::boxed::Box::from_raw(abi)
     }
 }
 
-impl<'a> IntoAbi for &'a ExampleStruct {
+impl<'a> Abi for &'a ExampleStruct {
     type Abi = Self;
 
     fn into_abi(self) -> Self::Abi {
         self
     }
-}
-
-impl<'a> FromAbi for &'a ExampleStruct {
-    type Abi = Self;
 
     unsafe fn from_abi(abi: Self::Abi) -> Self {
         abi
     }
 }
 
-impl<'a> IntoAbi for &'a mut ExampleStruct {
+impl<'a> Abi for &'a mut ExampleStruct {
     type Abi = *mut ExampleStruct;
 
     fn into_abi(self) -> Self::Abi {
         self as *mut _
     }
-}
-
-impl<'a> FromAbi for &'a mut ExampleStruct {
-    type Abi = *mut ExampleStruct;
 
     unsafe fn from_abi(abi: Self::Abi) -> Self {
         &mut *abi
@@ -129,7 +117,7 @@ pub enum SimpleEnum {
     Baz,
 }
 
-impl FromAbi for SimpleEnum {
+impl Abi for SimpleEnum {
     type Abi = isize;
 
     unsafe fn from_abi(abi: Self::Abi) -> Self {
@@ -141,10 +129,6 @@ impl FromAbi for SimpleEnum {
             _ => panic!("Unknown discriminant {} for `SimpleEnum`", abi),
         }
     }
-}
-
-impl IntoAbi for SimpleEnum {
-    type Abi = isize;
 
     fn into_abi(self) -> Self::Abi {
         self as _
@@ -157,8 +141,8 @@ pub enum ComplexEnum {
     Baz { first: SimpleEnum, second: String },
 }
 
-impl FromAbi for ComplexEnum {
-    type Abi = RawEnum<isize, ComplexEnum_FromAbi>;
+impl Abi for ComplexEnum {
+    type Abi = RawEnum<isize, ComplexEnum_Abi>;
 
     unsafe fn from_abi(abi: Self::Abi) -> Self {
         match abi.discriminant {
@@ -167,16 +151,16 @@ impl FromAbi for ComplexEnum {
             1 => {
                 let value = abi.value.assume_init().Bar;
                 Self::Bar(
-                    FromAbi::from_abi(value.element_0),
-                    FromAbi::from_abi(value.element_1),
+                    Abi::from_abi(value.element_0),
+                    Abi::from_abi(value.element_1),
                 )
             }
 
             2 => {
                 let value = abi.value.assume_init().Baz;
                 Self::Baz {
-                    first: FromAbi::from_abi(value.first),
-                    second: FromAbi::from_abi(value.second),
+                    first: Abi::from_abi(value.first),
+                    second: Abi::from_abi(value.second),
                 }
             }
 
@@ -186,10 +170,6 @@ impl FromAbi for ComplexEnum {
             ),
         }
     }
-}
-
-impl IntoAbi for ComplexEnum {
-    type Abi = RawEnum<isize, ComplexEnum_IntoAbi>;
 
     fn into_abi(self) -> Self::Abi {
         match self {
@@ -197,8 +177,8 @@ impl IntoAbi for ComplexEnum {
 
             Self::Bar(element_0, element_1) => RawEnum::new(
                 1,
-                ComplexEnum_IntoAbi {
-                    Bar: ComplexEnum_IntoAbi_Bar {
+                ComplexEnum_Abi {
+                    Bar: ComplexEnum_Abi_Bar {
                         element_0: element_0.into_abi(),
                         element_1: element_1.into_abi(),
                     },
@@ -207,8 +187,8 @@ impl IntoAbi for ComplexEnum {
 
             Self::Baz { first, second } => RawEnum::new(
                 2,
-                ComplexEnum_IntoAbi {
-                    Baz: ComplexEnum_IntoAbi_Baz {
+                ComplexEnum_Abi {
+                    Baz: ComplexEnum_Abi_Baz {
                         first: first.into_abi(),
                         second: second.into_abi(),
                     },
@@ -221,46 +201,23 @@ impl IntoAbi for ComplexEnum {
 #[repr(C)]
 #[derive(Clone, Copy)]
 #[allow(bad_style)]
-pub union ComplexEnum_FromAbi {
-    Bar: ComplexEnum_FromAbi_Bar,
-    Baz: ComplexEnum_FromAbi_Baz,
+pub union ComplexEnum_Abi {
+    Bar: ComplexEnum_Abi_Bar,
+    Baz: ComplexEnum_Abi_Baz,
+}
+
+unsafe impl AbiPrimitive for ComplexEnum_Abi {}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct ComplexEnum_Abi_Bar {
+    element_0: <String as Abi>::Abi,
+    element_1: <u32 as Abi>::Abi,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-#[allow(bad_style)]
-pub union ComplexEnum_IntoAbi {
-    Bar: ComplexEnum_IntoAbi_Bar,
-    Baz: ComplexEnum_IntoAbi_Baz,
-}
-
-unsafe impl AbiPrimitive for ComplexEnum_FromAbi {}
-unsafe impl AbiPrimitive for ComplexEnum_IntoAbi {}
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct ComplexEnum_FromAbi_Bar {
-    element_0: <String as FromAbi>::Abi,
-    element_1: <u32 as FromAbi>::Abi,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct ComplexEnum_FromAbi_Baz {
-    first: <SimpleEnum as FromAbi>::Abi,
-    second: <String as FromAbi>::Abi,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct ComplexEnum_IntoAbi_Bar {
-    element_0: <String as IntoAbi>::Abi,
-    element_1: <u32 as IntoAbi>::Abi,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct ComplexEnum_IntoAbi_Baz {
-    first: <SimpleEnum as IntoAbi>::Abi,
-    second: <String as IntoAbi>::Abi,
+pub struct ComplexEnum_Abi_Baz {
+    first: <SimpleEnum as Abi>::Abi,
+    second: <String as Abi>::Abi,
 }

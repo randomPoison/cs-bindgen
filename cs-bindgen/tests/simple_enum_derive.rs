@@ -11,10 +11,7 @@
 //! with each variant, i.e. pass the result of `IntoAbi::into_abi` back through
 //! `FromAbi::from_abi` and then verify that the result matches the original.
 
-use cs_bindgen::{
-    abi::{FromAbi, IntoAbi},
-    prelude::*,
-};
+use cs_bindgen::{abi::Abi, prelude::*};
 use strum::{EnumIter, IntoEnumIterator};
 
 #[test]
