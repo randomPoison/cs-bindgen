@@ -81,8 +81,21 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
         .iter()
         .map(|(ident, _)| quote_input_conversion(ident));
 
-    // Normalize the return type of the function.
-    let return_type = normalize_return_type(&signature.output);
+    // Generate the output portion of the binding function declaration.
+    let return_decl = match &signature.output {
+        ReturnType::Default => quote! {},
+        ReturnType::Type(_, return_type) => quote! {
+            -> <#return_type as cs_bindgen::abi::Abi>::Abi
+        },
+    };
+
+    // Generate the expression for describing the output of the function.
+    let describe_output = match &signature.output {
+        ReturnType::Default => quote! { None },
+        ReturnType::Type(_, return_type) => quote! {
+            Some(describe::<#return_type>().expect("Failed to generate schema for return type"))
+        },
+    };
 
     // Generate the list of argument names. Used both for forwarding arguments into the
     // original function, and for populating the metadata item.
@@ -94,7 +107,7 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
         #[no_mangle]
         pub unsafe extern "C" fn #binding_ident(
             #( #binding_inputs, )*
-        ) -> <#return_type as cs_bindgen::abi::Abi>::Abi {
+        ) #return_decl {
             #( #convert_inputs )*
             cs_bindgen::abi::Abi::into_abi(#invoke_expr)
         }
@@ -126,7 +139,7 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
                 inputs: vec![#(
                     #describe_args,
                 )*],
-                output: describe::<#return_type>().expect("Failed to generate schema for return type"),
+                output: #describe_output,
             };
 
             std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())
@@ -344,15 +357,28 @@ fn quote_method_item(item: ImplItemMethod, self_ty: &Type) -> syn::Result<TokenS
         .iter()
         .map(|(ident, _)| ident.to_token_stream());
 
-    // Normalize the return type of the function.
-    let return_type = normalize_return_type(&signature.output);
+    // Generate the output portion of the binding function declaration.
+    let return_decl = match &signature.output {
+        ReturnType::Default => quote! {},
+        ReturnType::Type(_, return_type) => quote! {
+            -> <#return_type as cs_bindgen::abi::Abi>::Abi
+        },
+    };
+
+    // Generate the expression for describing the output of the function.
+    let describe_output = match &signature.output {
+        ReturnType::Default => quote! { None },
+        ReturnType::Type(_, return_type) => quote! {
+            Some(describe::<#return_type>().expect("Failed to generate schema for return type"))
+        },
+    };
 
     // Compose the various pieces together into the final binding function.
     let binding = quote! {
         #[no_mangle]
         pub unsafe extern "C" fn #binding_ident(
             #( #binding_inputs, )*
-        ) -> <#return_type as cs_bindgen::abi::Abi>::Abi {
+        ) #return_decl {
             #( #convert_inputs )*
             cs_bindgen::abi::Abi::into_abi(#self_ty::#ident(#( #arg_names, )*))
         }
@@ -388,7 +414,7 @@ fn quote_method_item(item: ImplItemMethod, self_ty: &Type) -> syn::Result<TokenS
                 inputs: vec![#(
                     #describe_args,
                 )*],
-                output: describe::<#return_type>().expect("Failed to generate schema for return type"),
+                output: #describe_output,
             };
 
             std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())

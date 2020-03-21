@@ -18,7 +18,10 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
         Export::Fn(export) => {
             let dll_import_attrib = quote_dll_import(dll_name, &export.binding);
             let binding_ident = format_ident!("{}", &*export.binding);
-            let return_ty = quote_type_binding(&export.output, types);
+            let return_ty = match &export.output {
+                Some(output) => quote_type_binding(output, types),
+                None => quote! { void },
+            };
             let args = quote_binding_args(export.inputs(), types);
 
             quote! {
@@ -30,7 +33,10 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
         Export::Method(export) => {
             let dll_import_attrib = quote_dll_import(dll_name, &export.binding);
             let binding_ident = format_ident!("{}", &*export.binding);
-            let return_ty = quote_type_binding(&export.output, types);
+            let return_ty = match &export.output {
+                Some(output) => quote_type_binding(output, types),
+                None => quote! { void },
+            };
 
             // TODO: Unify input handling for raw bindings. It shouldn't be necessary to
             // manually insert the receiver. The current blocker is that schematic can't

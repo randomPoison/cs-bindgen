@@ -75,16 +75,16 @@ pub fn quote_input_conversion(ident: &Ident) -> TokenStream {
     }
 }
 
-/// Extracts the specified return type for the function, explicitly using `()` for
-/// the default return.
-///
-/// This simplifies the logic needed for quoting the return type of the binding
-/// function, since it removes the need to distinguish between an explicit return vs
-/// the default return (i.e. returning `()`).
-pub fn normalize_return_type(output: &ReturnType) -> TokenStream {
-    // TODO: Generate an error for `impl trait` returns.
-    match output {
-        ReturnType::Default => quote! { () },
-        ReturnType::Type(_, ty) => ty.to_token_stream(),
-    }
-}
+// /// Extracts the specified return type for the function, explicitly using `()` for
+// /// the default return.
+// ///
+// /// This simplifies the logic needed for quoting the return type of the binding
+// /// function, since it removes the need to distinguish between an explicit return vs
+// /// the default return (i.e. returning `()`).
+// pub fn normalize_return_type(output: &ReturnType) -> TokenStream {
+//     // TODO: Generate an error for `impl trait` returns.
+//     match output {
+//         ReturnType::Default => quote! { () },
+//         ReturnType::Type(_, ty) => ty.to_token_stream(),
+//     }
+// }

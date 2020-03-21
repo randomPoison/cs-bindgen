@@ -10,7 +10,7 @@ pub fn quote_wrapper_fn<'a>(
     binding: &str,
     receiver: Option<TokenStream>,
     inputs: impl Iterator<Item = (&'a str, &'a Schema)> + Clone + 'a,
-    output: &Schema,
+    output: Option<&Schema>,
     types: &'a TypeMap,
 ) -> TokenStream {
     // Determine the name of the wrapper function. The original function name is
@@ -18,19 +18,22 @@ pub fn quote_wrapper_fn<'a>(
     // with C# naming conventions.
     let name = format_ident!("{}", name.to_camel_case());
 
-    let return_ty = quote_cs_type(&output, types);
+    let return_ty = match output {
+        Some(output) => quote_cs_type(&output, types),
+        None => quote! { void },
+    };
 
     // Generate the declaration for the output variable and return expression. We need
     // to treat `void` returns as a special case, since C# won't let you declare values
     // with type `void` (*sigh*).
     let ret = format_ident!("__ret");
     let ret_decl = match output {
-        Schema::Unit => TokenStream::default(),
-        _ => quote! { #return_ty #ret; },
+        Some(_) => quote! { #return_ty #ret; },
+        None => quote! {},
     };
     let ret_expr = match output {
-        Schema::Unit => TokenStream::default(),
-        _ => quote! { return #ret; },
+        Some(_) => quote! { return #ret; },
+        None => quote! {},
     };
 
     // Determine if the function should be static or not based on whether or not it has
@@ -121,7 +124,7 @@ pub fn quote_wrapper_body<'a>(
     binding_name: &str,
     receiver: Option<TokenStream>,
     args: impl Iterator<Item = (&'a str, &'a Schema)> + Clone,
-    output: &Schema,
+    output: Option<&Schema>,
     ret: &Ident,
     types: &TypeMap,
 ) -> TokenStream {
@@ -142,85 +145,90 @@ pub fn quote_wrapper_body<'a>(
     // return value into the appropriate C# type.
     let invoke = quote! { #binding(#invoke_args) };
     let invoke = match output {
-        // NOTE: For `void` returns there's no intermediate variable for the return value
-        // (since we can't have a `void` variable).
-        Schema::Unit => quote! { #invoke; },
+        Some(output) => match output {
+            // NOTE: For `void` returns there's no intermediate variable for the return value
+            // (since we can't have a `void` variable).
+            Schema::Unit => quote! { #invoke; },
 
-        // Basic numeric types (currently) don't require any processing.
-        Schema::I8
-        | Schema::I16
-        | Schema::I32
-        | Schema::I64
-        | Schema::U8
-        | Schema::U16
-        | Schema::U32
-        | Schema::U64
-        | Schema::F32
-        | Schema::F64 => quote! { #ret = #invoke; },
+            // Basic numeric types (currently) don't require any processing.
+            Schema::I8
+            | Schema::I16
+            | Schema::I32
+            | Schema::I64
+            | Schema::U8
+            | Schema::U16
+            | Schema::U32
+            | Schema::U64
+            | Schema::F32
+            | Schema::F64 => quote! { #ret = #invoke; },
 
-        // `bool` is returned as a `u8`, so we do an explicit comparison to convert it back
-        // to a `bool` on the C# side.
-        Schema::Bool => quote! { #ret = #invoke != 0; },
+            // `bool` is returned as a `u8`, so we do an explicit comparison to convert it back
+            // to a `bool` on the C# side.
+            Schema::Bool => quote! { #ret = #invoke != 0; },
 
-        // To pass a string to Rust, we convert it into a `RawCsString` with the fixed pointer.
-        // The code for wrapping the body of the function in a `fixed` block is done below,
-        // since we need to generate the contents of the block first.
-        //
-        // Once we decode the Rust string into a C# string, we also need to drop the original
-        // Rust string.
-        Schema::String => quote! {
-            var __raw_result = #invoke;
-            #ret = Encoding.UTF8.GetString(__raw_result.Ptr, (int)__raw_result.Length);
-            __bindings.__cs_bindgen_drop_string(__raw_result);
-        },
+            // To pass a string to Rust, we convert it into a `RawCsString` with the fixed pointer.
+            // The code for wrapping the body of the function in a `fixed` block is done below,
+            // since we need to generate the contents of the block first.
+            //
+            // Once we decode the Rust string into a C# string, we also need to drop the original
+            // Rust string.
+            Schema::String => quote! {
+                var __raw_result = #invoke;
+                #ret = Encoding.UTF8.GetString(__raw_result.Ptr, (int)__raw_result.Length);
+                __bindings.__cs_bindgen_drop_string(__raw_result);
+            },
 
-        Schema::Char => todo!("Support converting a C# `char` into a Rust `char`"),
+            Schema::Char => todo!("Support converting a C# `char` into a Rust `char`"),
 
-        // NOTE: We don't need to check the binding style when converting structs because
-        // the generated struct will have an overloaded constructor for all supported
-        // binding styles.
-        Schema::Struct(output) => {
-            let ty_ident = format_ident!("{}", &*output.name.name);
-            quote! { #ret = new #ty_ident(#invoke); }
-        }
+            // NOTE: We don't need to check the binding style when converting structs because
+            // the generated struct will have an overloaded constructor for all supported
+            // binding styles.
+            Schema::Struct(output) => {
+                let ty_ident = format_ident!("{}", &*output.name.name);
+                quote! { #ret = new #ty_ident(#invoke); }
+            }
 
-        Schema::Enum(output) => {
-            let export = types
-                .get(&output.name)
-                .expect("Couldn't find exported type for enum");
+            Schema::Enum(output) => {
+                let export = types
+                    .get(&output.name)
+                    .expect("Couldn't find exported type for enum");
 
-            match export.binding_style {
-                // For handle enums, we directly pass the raw output to the generated class's
-                // constructor.
-                BindingStyle::Handle => {
-                    let ty_ident = format_ident!("{}", &*output.name.name);
-                    quote! { #ret = new #ty_ident(#invoke); }
-                }
-
-                BindingStyle::Value => {
-                    if output.has_data() {
-                        todo!("Generate raw conversion for data-carrying enums")
-                    } else {
-                        // For C-like enums, we simply cast the returned value to the generated enum type.
+                match export.binding_style {
+                    // For handle enums, we directly pass the raw output to the generated class's
+                    // constructor.
+                    BindingStyle::Handle => {
                         let ty_ident = format_ident!("{}", &*output.name.name);
-                        quote! { #ret = (#ty_ident)#invoke; }
+                        quote! { #ret = new #ty_ident(#invoke); }
+                    }
+
+                    BindingStyle::Value => {
+                        if output.has_data() {
+                            todo!("Generate raw conversion for data-carrying enums")
+                        } else {
+                            // For C-like enums, we simply cast the returned value to the generated
+                            // enum type.
+                            let ty_ident = format_ident!("{}", &*output.name.name);
+                            quote! { #ret = (#ty_ident)#invoke; }
+                        }
                     }
                 }
             }
-        }
 
-        // TODO: Add support for passing user-defined types out from Rust.
-        Schema::UnitStruct(_)
-        | Schema::NewtypeStruct(_)
-        | Schema::TupleStruct(_)
-        | Schema::Option(_)
-        | Schema::Seq(_)
-        | Schema::Tuple(_)
-        | Schema::Map { .. } => todo!("Generate return value conversion in wrapper function"),
+            // TODO: Add support for passing user-defined types out from Rust.
+            Schema::UnitStruct(_)
+            | Schema::NewtypeStruct(_)
+            | Schema::TupleStruct(_)
+            | Schema::Option(_)
+            | Schema::Seq(_)
+            | Schema::Tuple(_)
+            | Schema::Map { .. } => todo!("Generate return value conversion in wrapper function"),
 
-        Schema::I128 | Schema::U128 => {
-            unreachable!("Invalid argument types should have already been rejected");
-        }
+            Schema::I128 | Schema::U128 => {
+                unreachable!("Invalid argument types should have already been rejected");
+            }
+        },
+
+        None => quote! { #invoke },
     };
 
     fold_fixed_blocks(invoke, args)
