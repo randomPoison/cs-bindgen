@@ -1,20 +1,17 @@
 //! Tests for verifying that `#[cs_bindgen]` generates the correct bindings for
 //! simple enums (i.e. enums that don't carry extra data).
 //!
-//! These tests primarily verify that the generated `FromAbi` and `IntoAbi` impls
+//! These tests primarily verify that the generated `from_abi` and `into_abi` methods
 //! agree on the discriminant value for each variant of an enum. This is especially
 //! important for simple enums since the generated code needs to correctly handle
 //! custom discriminant values, which may be arbitrary expressions (including
 //! references to constants).
 //!
 //! In order to verify that the implementations are in sync we do a round-trip
-//! with each variant, i.e. pass the result of `IntoAbi::into_abi` back through
-//! `FromAbi::from_abi` and then verify that the result matches the original.
+//! with each variant, i.e. pass the result of `into_abi` back through
+//! `from_abi` and then verify that the result matches the original.
 
-use cs_bindgen::{
-    abi::{FromAbi, IntoAbi},
-    prelude::*,
-};
+use cs_bindgen::{abi::Abi, prelude::*};
 use strum::{EnumIter, IntoEnumIterator};
 
 #[test]

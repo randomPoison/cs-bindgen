@@ -14,9 +14,16 @@
 //!
 //! [`export`]: ../macro.export.html
 
-use crate::abi::RawString;
+use crate::abi::{RawSlice, RawString};
 
 /// Drops a `CString` that has been passed to the .NET runtime.
-pub unsafe extern "C" fn __cs_bindgen_drop_string(raw: RawString) {
+pub unsafe fn __cs_bindgen_drop_string(raw: RawString) {
     let _ = raw.into_string();
+}
+
+/// Converts a C# string (i.e. a UTF-16 slice) into a Rust string.
+pub unsafe fn __cs_bindgen_string_from_utf16(raw: RawSlice<u16>) -> RawString {
+    raw.into_string()
+        .expect("Failed to convert C# string to Rust string")
+        .into()
 }

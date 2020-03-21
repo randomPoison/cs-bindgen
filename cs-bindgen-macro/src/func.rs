@@ -61,17 +61,17 @@ pub fn extract_inputs(inputs: Punctuated<FnArg, Comma>) -> syn::Result<Vec<FnInp
 /// This function takes the ident and type of an argument in the original function
 /// and generates the `ident: type` declaration for the corresponding argument in
 /// the binding function. The ident is reused directly, and `Abi` associated type
-/// on the `FromAbi` impl for `ty` is used as the type of the generated argument.
+/// on the `Abi` impl for `ty` is used as the type of the generated argument.
 pub fn quote_binding_inputs<T: ToTokens>(ident: &Ident, ty: T) -> TokenStream {
     quote! {
-        #ident: <#ty as cs_bindgen::abi::FromAbi>::Abi
+        #ident: <#ty as cs_bindgen::abi::Abi>::Abi
     }
 }
 
-/// Generates the call to `FromAbi::from_abi` to convert the raw binding argument.
+/// Generates the call to `Abi::from_abi` to convert the raw binding argument.
 pub fn quote_input_conversion(ident: &Ident) -> TokenStream {
     quote! {
-        let #ident = cs_bindgen::abi::FromAbi::from_abi(#ident);
+        let #ident = cs_bindgen::abi::Abi::from_abi(#ident);
     }
 }
 

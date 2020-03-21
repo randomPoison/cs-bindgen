@@ -11,14 +11,14 @@ use cs_bindgen_shared::{
 };
 use proc_macro2::TokenStream;
 use quote::*;
-use syn::{punctuated::Punctuated, token::Comma, Ident};
+use syn::{punctuated::Punctuated, token::Comma};
 
 pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> TokenStream {
     match export {
         Export::Fn(export) => {
             let dll_import_attrib = quote_dll_import(dll_name, &export.binding);
             let binding_ident = format_ident!("{}", &*export.binding);
-            let return_ty = quote_binding_return_type(&export.output, types);
+            let return_ty = quote_type_binding(&export.output, types);
             let args = quote_binding_args(export.inputs(), types);
 
             quote! {
@@ -30,7 +30,7 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
         Export::Method(export) => {
             let dll_import_attrib = quote_dll_import(dll_name, &export.binding);
             let binding_ident = format_ident!("{}", &*export.binding);
-            let return_ty = quote_binding_return_type(&export.output, types);
+            let return_ty = quote_type_binding(&export.output, types);
 
             // TODO: Unify input handling for raw bindings. It shouldn't be necessary to
             // manually insert the receiver. The current blocker is that schematic can't
@@ -57,7 +57,7 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
     }
 }
 
-pub fn quote_raw_arg(schema: &Schema, types: &TypeMap) -> TokenStream {
+pub fn quote_type_binding(schema: &Schema, types: &TypeMap) -> TokenStream {
     match schema {
         Schema::I8 => quote! { sbyte },
         Schema::I16 => quote! { short },
@@ -72,13 +72,9 @@ pub fn quote_raw_arg(schema: &Schema, types: &TypeMap) -> TokenStream {
         Schema::Bool => quote! { byte },
         Schema::Char => quote! { uint },
 
-        Schema::String => quote! { RawCsString },
+        Schema::String => quote! { RustOwnedString },
 
-        Schema::Enum(schema) => quote_enum_binding(
-            schema,
-            types,
-            format_ident!("{}__RawArg", &*schema.name.name),
-        ),
+        Schema::Enum(schema) => quote_enum_binding(schema, types),
 
         Schema::Struct(schema) => quote_struct_binding(schema, types),
 
@@ -91,48 +87,7 @@ pub fn quote_raw_arg(schema: &Schema, types: &TypeMap) -> TokenStream {
         | Schema::Tuple(_)
         | Schema::Map { .. } => todo!("Generate argument binding"),
 
-        Schema::Unit | Schema::I128 | Schema::U128 => {
-            unreachable!("Invalid types should have already been handled")
-        }
-    }
-}
-
-pub fn quote_binding_return_type(schema: &Schema, types: &TypeMap) -> TokenStream {
-    match schema {
-        Schema::I8 => quote! { sbyte },
-        Schema::I16 => quote! { short },
-        Schema::I32 => quote! { int },
-        Schema::I64 => quote! { long },
-        Schema::U8 => quote! { byte },
-        Schema::U16 => quote! { ushort },
-        Schema::U32 => quote! { uint },
-        Schema::U64 => quote! { ulong },
-        Schema::F32 => quote! { float },
-        Schema::F64 => quote! { double },
-        Schema::Bool => quote! { byte },
-        Schema::Char => quote! { uint },
-
-        // `String` is returned from Rust as a `RustOwnedString`.
-        Schema::String => quote! { RustOwnedString },
-
-        Schema::Unit => quote! { void },
-
-        Schema::Struct(schema) => quote_struct_binding(schema, types),
-
-        Schema::Enum(schema) => quote_enum_binding(
-            schema,
-            types,
-            format_ident!("{}__RawReturn", &*schema.name.name),
-        ),
-
-        // TODO: Add support for passing user-defined types out from Rust.
-        Schema::UnitStruct(_)
-        | Schema::NewtypeStruct(_)
-        | Schema::TupleStruct(_)
-        | Schema::Option(_)
-        | Schema::Seq(_)
-        | Schema::Tuple(_)
-        | Schema::Map { .. } => todo!("Generate return type binding"),
+        Schema::Unit => quote! { byte },
 
         Schema::I128 | Schema::U128 => {
             unreachable!("Invalid types should have already been handled")
@@ -151,7 +106,7 @@ fn quote_struct_binding(schema: &Struct, types: &TypeMap) -> TokenStream {
     }
 }
 
-fn quote_enum_binding(schema: &Enum, types: &TypeMap, raw: Ident) -> TokenStream {
+fn quote_enum_binding(schema: &Enum, types: &TypeMap) -> TokenStream {
     let export = types
         .get(&schema.name)
         .expect("Couldn't find exported type for enum");
@@ -169,6 +124,7 @@ fn quote_enum_binding(schema: &Enum, types: &TypeMap, raw: Ident) -> TokenStream
         //   `isize`/`IntPtr`.
         BindingStyle::Value => {
             if schema.has_data() {
+                let raw = format_ident!("{}__Raw", &*export.name);
                 quote! { RawEnum<#raw> }
             } else {
                 schema
@@ -196,7 +152,7 @@ fn quote_binding_args<'a>(
     inputs
         .map(|(name, schema)| {
             let ident = format_ident!("{}", name);
-            let ty = quote_raw_arg(schema, types);
+            let ty = quote_type_binding(schema, types);
 
             quote! { #ty #ident }
         })

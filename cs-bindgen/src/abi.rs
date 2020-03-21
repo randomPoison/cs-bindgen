@@ -41,30 +41,11 @@ pub type RawStr = RawSlice<u8>;
 /// [`AbiReturn`]: trait.AbiReturn.html
 pub unsafe trait AbiPrimitive: Copy {}
 
-/// A type that can be passed as an argument to an `extern "C"` function.
-///
-/// See [the module level documentation](./index.html) for more.
-pub unsafe trait AbiArgument: Copy {}
-
-/// A type that can be returned from an `extern "C"` function.
-///
-/// See [the module level documentation](./index.html) for more.
-pub unsafe trait AbiReturn: Copy {}
-
-unsafe impl<T: AbiPrimitive> AbiArgument for T {}
-unsafe impl<T: AbiPrimitive> AbiReturn for T {}
-
 /// A value that can be returned from a Rust function when called from C#.
-pub trait IntoAbi {
-    type Abi: AbiReturn;
+pub trait Abi {
+    type Abi: AbiPrimitive;
 
     fn into_abi(self) -> Self::Abi;
-}
-
-/// A value that can be accepted as an argument to a Rust function when called from C#.
-pub trait FromAbi {
-    type Abi: AbiArgument;
-
     unsafe fn from_abi(abi: Self::Abi) -> Self;
 }
 
@@ -73,16 +54,12 @@ macro_rules! abi_primitives {
         $(
             unsafe impl AbiPrimitive for $ty {}
 
-            impl IntoAbi for $ty {
+            impl Abi for $ty {
                 type Abi = Self;
 
                 fn into_abi(self) -> Self::Abi {
                     self
                 }
-            }
-
-            impl FromAbi for $ty {
-                type Abi = Self;
 
                 unsafe fn from_abi(abi: Self::Abi) -> Self {
                     abi
@@ -108,17 +85,15 @@ abi_primitives! {
     f64,
 }
 
-// NOTE: `()` is only valid as a return type for C FFI, since this is the convention
-// that the Rust compiler understand for declaring the equivalent of a function that
-// "returns" `void`. Zero-sized types are otherwise not valid as part of a C API, so
-// it's not safe to implement `AbiArgument` for `()`.
-unsafe impl AbiReturn for () {}
-
-impl IntoAbi for () {
-    type Abi = Self;
+impl Abi for () {
+    type Abi = u8;
 
     fn into_abi(self) -> Self::Abi {
-        self
+        0
+    }
+
+    unsafe fn from_abi(_: Self::Abi) -> Self {
+        ()
     }
 }
 
@@ -127,76 +102,63 @@ unsafe impl<'a, T> AbiPrimitive for &'a T {}
 unsafe impl<T> AbiPrimitive for *const T {}
 unsafe impl<T> AbiPrimitive for *mut T {}
 
-impl<T> FromAbi for Box<T> {
+impl<T> Abi for Box<T> {
     type Abi = *mut T;
 
     unsafe fn from_abi(abi: Self::Abi) -> Self {
         Box::from_raw(abi)
     }
-}
-
-impl<T> IntoAbi for Box<T> {
-    type Abi = *mut T;
 
     fn into_abi(self) -> Self::Abi {
         Box::into_raw(self)
     }
 }
 
-impl IntoAbi for char {
+impl Abi for char {
     type Abi = u32;
 
     fn into_abi(self) -> Self::Abi {
         self.into()
     }
-}
-
-impl FromAbi for char {
-    type Abi = u32;
 
     unsafe fn from_abi(abi: Self::Abi) -> Self {
         abi.try_into().unwrap_or_default()
     }
 }
 
-impl IntoAbi for bool {
+impl Abi for bool {
     type Abi = u8;
 
     fn into_abi(self) -> Self::Abi {
         self.into()
     }
-}
-
-impl FromAbi for bool {
-    type Abi = u8;
 
     unsafe fn from_abi(abi: Self::Abi) -> Self {
         abi != 0
     }
 }
 
-impl IntoAbi for String {
+impl Abi for String {
     type Abi = RawVec<u8>;
 
     fn into_abi(self) -> Self::Abi {
         self.into()
     }
-}
-
-impl FromAbi for String {
-    type Abi = RawSlice<u16>;
 
     unsafe fn from_abi(abi: Self::Abi) -> Self {
-        // TODO: Don't panic I guess?
-        abi.into_string().expect("Failed to decode UTF-16")
+        abi.into_string()
     }
 }
 
-impl<'a> IntoAbi for &'a str {
+impl<'a> Abi for &'a str {
     type Abi = RawSlice<u8>;
 
     fn into_abi(self) -> Self::Abi {
         self.into()
+    }
+
+    unsafe fn from_abi(abi: Self::Abi) -> Self {
+        abi.as_str_unchecked()
     }
 }
 

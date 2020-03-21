@@ -87,6 +87,19 @@ namespace TestRunner
         }
 
         [Fact]
+        public void SetAgeRepeated()
+        {
+            using (PersonInfo info = new PersonInfo("David", 12))
+            {
+                for (var age = 0; age < 100_000; age += 1)
+                {
+                    info.SetAge(age);
+                    Assert.Equal(age, info.Age());
+                }
+            }
+        }
+
+        [Fact]
         public void StaticFunction()
         {
             Assert.Equal(7, PersonInfo.StaticFunction());
