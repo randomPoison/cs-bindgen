@@ -1,4 +1,4 @@
-//! Utilities for generating the raw bindings to exported Rust functions.
+//! Utilities for generating the raw bindings to exported Rust items.
 //!
 //! In C#, the raw binding to an exported Rust function is a `static extern`
 //! function, using the `[DllImport]` attribute to load the corresponding function
@@ -13,14 +13,33 @@ use proc_macro2::TokenStream;
 use quote::*;
 use syn::{punctuated::Punctuated, token::Comma, Ident};
 
+// TODO: For the below functions that generate identifiers based on a type name, we
+// should use the fully-qualified `TypeName` instead of just a `&str` name. Right
+// now, if two types with the same name in different modules are exported, the
+// generated bindings will collide. We can avoid this by taking the module name into
+// account when generating the idents. This will require some additional mangling
+// logic, since the module paths include `::` characters, which aren't valid in C#
+// identifiers.
+
 /// Generates the identifier for the from-raw conversion function for the specified type.
-pub fn from_raw_ident(name: &str) -> Ident {
+pub fn from_raw_fn_ident(name: &str) -> Ident {
     format_ident!("__{}FromRaw", name)
 }
 
 /// Generates the identifier for the into-raw conversion function for the specified type.
-pub fn into_raw_ident(name: &str) -> Ident {
+pub fn into_raw_fn_ident(name: &str) -> Ident {
     format_ident!("__{}IntoRaw", name)
+}
+
+/// Generate the identifier for the raw type corresponding to the associated type.
+///
+/// When a user-defined type is marshaled by value, we generate a type that acts as
+/// an FFI-safe "raw" representation for that type. When communicating with Rust, we
+/// convert the C# representation of the type to-and-from the raw representation.
+/// This function provides the canonical way to generate the name of the raw type
+/// corresponding to any given exported Rust type.
+pub fn raw_ident(name: &str) -> Ident {
+    format_ident!("__{}__Raw", name)
 }
 
 pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> TokenStream {
@@ -79,8 +98,8 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
             };
 
             // Generate the raw conversion functions for the type.
-            let from_raw = from_raw_ident(&export.name);
-            let into_raw = into_raw_ident(&export.name);
+            let from_raw = from_raw_fn_ident(&export.name);
+            let into_raw = into_raw_fn_ident(&export.name);
 
             let raw_fns = match &export.schema {
                 // TODO: Support raw conversions for structs, too!
@@ -185,7 +204,7 @@ fn quote_enum_binding(schema: &Enum, types: &TypeMap) -> TokenStream {
         //   `isize` (`IntPtr`).
         BindingStyle::Value => {
             if schema.has_data() {
-                let raw = format_ident!("{}__Raw", &*export.name);
+                let raw = raw_ident(&export.name);
                 quote! { RawEnum<#raw> }
             } else {
                 enumeration::quote_discriminant_type(schema)

@@ -188,7 +188,7 @@ pub fn quote_wrapper_body<'a>(
             }
 
             Schema::Enum(output) => {
-                let from_raw = binding::from_raw_ident(&output.name.name);
+                let from_raw = binding::from_raw_fn_ident(&output.name.name);
                 quote! { #ret = __bindings.#from_raw(#invoke); }
             }
 

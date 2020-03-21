@@ -34,7 +34,7 @@ pub fn quote_raw_type_reference(export: &NamedType, schema: &Enum) -> TokenStrea
     match export.binding_style {
         BindingStyle::Value => {
             if schema.has_data() {
-                let union_ty = format_ident!("{}__Raw", &*export.name);
+                let union_ty = binding::raw_ident(&export.name);
                 quote! {
                     RawEnum<#union_ty>
                 }
@@ -100,28 +100,30 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
 
     let interface = format_ident!("I{}", &*export.name);
 
-    let arg_variants = schema.variants.iter().map(|variant| {
-        let binding_ty = format_ident!("{}__RawArg", variant.name());
-        let name = format_ident!("{}", variant.name());
+    // Generate the declarations for the fields of the raw union. There's one field for
+    // each data-carrying variant of the enum, i.e. unit-like variants don't have a
+    // corresponding field in the union.
+    let union_fields = schema.variants.iter().filter_map(|variant| match variant {
+        Variant::Unit { .. } => None,
+        _ => {
+            let binding_ty = binding::raw_ident(variant.name());
+            let name = format_ident!("{}", variant.name());
 
-        quote! {
-            #binding_ty #name
+            Some(quote! {
+                #binding_ty #name
+            })
         }
     });
 
-    let return_variants = schema.variants.iter().map(|variant| {
-        let binding_ty = format_ident!("{}__RawReturn", variant.name());
-        let name = format_ident!("{}", variant.name());
-
-        quote! {
-            #binding_ty #name
-        }
-    });
-
+    // Generate the struct declarations for each variant of the enum. We generate two
+    // structs for each variant:
+    //
+    // * The public struct that acts as the C# representation of the variant.
+    // * The raw representation which is kept internal and used as a field of the raw
+    //   union for the enum.
     let variant_structs = schema.variants.iter().map(|variant| {
         let ident = format_ident!("{}", variant.name());
-        let arg_binding_ident = format_ident!("{}__RawArg", variant.name());
-        let return_binding_ident = format_ident!("{}__RawReturn", variant.name());
+        let raw_ident = binding::raw_ident(variant.name());
 
         let fields = variant
             .fields()
@@ -134,8 +136,6 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
                     .unwrap_or_else(|| format_ident!("Element{}", index));
 
                 (field_ident, field.schema)
-
-                // (fields, binding_fields)
             })
             .collect::<Vec<_>>();
 
@@ -154,36 +154,23 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
             }
         });
 
-        let return_binding_fields = fields.iter().map(|(field_ident, schema)| {
-            let binding_ty = binding::quote_type_binding(schema, types);
-
-            quote! {
-                internal #binding_ty #field_ident
-            }
-        });
-
         quote! {
+            // Generate the C# struct for the variant.
             public struct #ident : #interface
             {
                 #( #struct_fields; )*
             }
 
+            // Generate the raw struct for the variant.
             [StructLayout(LayoutKind.Sequential)]
-            internal struct #arg_binding_ident
+            internal struct #raw_ident
             {
                 #( #arg_binding_fields; )*
-            }
-
-            [StructLayout(LayoutKind.Sequential)]
-            internal struct #return_binding_ident
-            {
-                #( #return_binding_fields; )*
             }
         }
     });
 
-    let arg_union = format_ident!("{}__RawArg", &*export.name);
-    let return_union = format_ident!("{}__RawReturn", &*export.name);
+    let raw_union = binding::raw_ident(&export.name);
 
     quote! {
         // Generate an interface for the enum.
@@ -194,20 +181,11 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
 
         // Generate the binding "unions" for args/returns.
         [StructLayout(LayoutKind.Explicit)]
-        internal struct #arg_union
+        internal struct #raw_union
         {
             #(
                 [FieldOffset(0)]
-                #arg_variants;
-            )*
-        }
-
-        [StructLayout(LayoutKind.Explicit)]
-        internal struct #return_union
-        {
-            #(
-                [FieldOffset(0)]
-                #return_variants;
+                #union_fields;
             )*
         }
     }
