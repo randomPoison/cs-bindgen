@@ -228,7 +228,7 @@ pub fn quote_wrapper_body<'a>(
             }
         },
 
-        None => quote! { #invoke },
+        None => quote! { #invoke; },
     };
 
     fold_fixed_blocks(invoke, args)
