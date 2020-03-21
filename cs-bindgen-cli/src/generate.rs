@@ -31,7 +31,7 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
 
     // Gather the definitions for all user-defined types so that the full export
     // information can be retrieved when an export represents another exported type.
-    let type_map = exports
+    let types = exports
         .iter()
         .filter_map(|export| match export {
             Export::Named(export) => Some((
@@ -48,7 +48,7 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
     // Generate the raw bindings for all exported items.
     let raw_bindings = exports
         .iter()
-        .map(|item| quote_raw_binding(item, dll_name))
+        .map(|item| quote_raw_binding(item, dll_name, &types))
         .collect::<Vec<_>>();
 
     let mut fn_bindings = Vec::new();
@@ -61,13 +61,13 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
                 None,
                 export.inputs(),
                 &export.output,
-                &type_map,
+                &types,
             )),
 
             Export::Named(export) => match &export.schema {
                 Schema::Struct(schema) => binding_items.push(quote_struct(export, schema)),
                 Schema::Enum(schema) => {
-                    binding_items.push(quote_enum_binding(export, schema, &type_map))
+                    binding_items.push(quote_enum_binding(export, schema, &types))
                 }
 
                 _ => {
@@ -79,7 +79,7 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
                 }
             },
 
-            Export::Method(export) => binding_items.push(quote_method_binding(export, &type_map)),
+            Export::Method(export) => binding_items.push(quote_method_binding(export, &types)),
         }
     }
 
@@ -134,11 +134,10 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        internal unsafe struct RawEnum<D, V>
-            where D : unmanaged
+        internal unsafe struct RawEnum<V>
             where V : unmanaged
         {
-            public D Discriminant;
+            public IntPtr Discriminant;
             public V Value;
         }
     };

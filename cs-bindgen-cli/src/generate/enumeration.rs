@@ -4,10 +4,10 @@ use heck::*;
 use proc_macro2::TokenStream;
 use quote::*;
 
-pub fn quote_enum_binding(export: &NamedType, schema: &Enum, type_map: &TypeMap) -> TokenStream {
+pub fn quote_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap) -> TokenStream {
     // Determine if we're dealing with a simple (C-like) enum or one with fields.
     if schema.has_data() {
-        quote_complex_enum_binding(export, schema, type_map)
+        quote_complex_enum_binding(export, schema, types)
     } else {
         quote_simple_enum_binding(export, schema)
     }
@@ -21,8 +21,8 @@ pub fn quote_type_reference(export: &NamedType, schema: &Enum) -> TokenStream {
     }
 }
 
-fn quote_simple_enum_binding(item: &NamedType, schema: &Enum) -> TokenStream {
-    let ident = format_ident!("{}", &*item.name);
+fn quote_simple_enum_binding(export: &NamedType, schema: &Enum) -> TokenStream {
+    let ident = format_ident!("{}", &*export.name);
     let variants = schema.variants.iter().map(|variant| {
         let (name, discriminant) = match variant {
             Variant::Unit { name, discriminant } => (name, discriminant),
@@ -52,14 +52,14 @@ fn quote_simple_enum_binding(item: &NamedType, schema: &Enum) -> TokenStream {
     }
 }
 
-fn quote_complex_enum_binding(item: &NamedType, schema: &Enum, type_map: &TypeMap) -> TokenStream {
+fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap) -> TokenStream {
     assert_eq!(
-        item.binding_style,
+        export.binding_style,
         BindingStyle::Value,
         "Right now we only support exporting complex enums by value"
     );
 
-    let interface = format_ident!("I{}", &*item.name);
+    let interface = format_ident!("I{}", &*export.name);
 
     let arg_variants = schema.variants.iter().map(|variant| {
         let binding_ty = format_ident!("{}__RawArg", variant.name());
@@ -101,14 +101,14 @@ fn quote_complex_enum_binding(item: &NamedType, schema: &Enum, type_map: &TypeMa
             .collect::<Vec<_>>();
 
         let struct_fields = fields.iter().map(|(field_ident, schema)| {
-            let ty = quote_cs_type(schema, type_map);
+            let ty = quote_cs_type(schema, types);
             quote! {
                 public #ty #field_ident
             }
         });
 
         let arg_binding_fields = fields.iter().map(|(field_ident, schema)| {
-            let binding_ty = binding::quote_raw_arg(schema);
+            let binding_ty = binding::quote_raw_arg(schema, types);
 
             quote! {
                 internal #binding_ty #field_ident
@@ -143,8 +143,8 @@ fn quote_complex_enum_binding(item: &NamedType, schema: &Enum, type_map: &TypeMa
         }
     });
 
-    let arg_union = format_ident!("{}__RawArg", &*item.name);
-    let return_union = format_ident!("{}__RawReturn", &*item.name);
+    let arg_union = format_ident!("{}__RawArg", &*export.name);
+    let return_union = format_ident!("{}__RawReturn", &*export.name);
 
     quote! {
         // Generate an interface for the enum.
