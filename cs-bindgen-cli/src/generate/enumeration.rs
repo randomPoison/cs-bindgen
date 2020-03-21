@@ -1,4 +1,4 @@
-use crate::generate::{binding, quote_cs_type, TypeMap};
+use crate::generate::{binding, class, quote_cs_type, quote_primitive_type, TypeMap};
 use cs_bindgen_shared::{schematic::Enum, schematic::Variant, BindingStyle, NamedType};
 use heck::*;
 use proc_macro2::TokenStream;
@@ -14,11 +14,50 @@ pub fn quote_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap) ->
 }
 
 pub fn quote_type_reference(export: &NamedType, schema: &Enum) -> TokenStream {
-    if schema.has_data() {
+    if export.binding_style == BindingStyle::Value && schema.has_data() {
         format_ident!("I{}", &*export.name).into_token_stream()
     } else {
         format_ident!("{}", &*export.name).into_token_stream()
     }
+}
+
+/// Quotes the name of the generated C# type for the exported enum.
+///
+/// There are three possible raw representations for an enum:
+///
+/// * For C-like enums, the raw representation is the integer type used for the
+///   enum's discriminant.
+/// * For data-carrying enums that are marshaled by value, the raw representation is
+/// * For enums that are marshalled as handles, the raw representation is just the
+///   handle pointer type (`void*`).
+pub fn quote_raw_type_reference(export: &NamedType, schema: &Enum) -> TokenStream {
+    match export.binding_style {
+        BindingStyle::Value => {
+            if schema.has_data() {
+                let union_ty = format_ident!("{}__Raw", &*export.name);
+                quote! {
+                    RawEnum<#union_ty>
+                }
+            } else {
+                quote_discriminant_type(schema)
+            }
+        }
+
+        BindingStyle::Handle => class::quote_handle_ptr(),
+    }
+}
+
+/// Quotes the appropriate discriminant type for the specified enum type.
+///
+/// The generated type is the type use to represent the raw discriminant when
+/// communicating with Rust. On the C# side, C-like enums are always represented as
+/// `int` under the hood, and complex enums don't have a specific discriminant since
+/// they are represented using an interface.
+pub fn quote_discriminant_type(schema: &Enum) -> TokenStream {
+    schema
+        .repr
+        .map(quote_primitive_type)
+        .unwrap_or_else(|| quote! { IntPtr })
 }
 
 fn quote_simple_enum_binding(export: &NamedType, schema: &Enum) -> TokenStream {

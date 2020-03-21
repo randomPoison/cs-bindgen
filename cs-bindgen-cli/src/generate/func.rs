@@ -1,4 +1,4 @@
-use crate::generate::{quote_cs_type, quote_primitive_type, TypeMap};
+use crate::generate::{enumeration, quote_cs_type, TypeMap};
 use cs_bindgen_shared::*;
 use heck::*;
 use proc_macro2::TokenStream;
@@ -95,10 +95,7 @@ pub fn quote_invoke_args<'a>(
             // being used. For now we only have support for simple (C-like) enums, so we simply
             // cast the value to the appropriate integer type based on the enum repr.
             Schema::Enum(schema) => {
-                let repr = schema
-                    .repr
-                    .map(quote_primitive_type)
-                    .unwrap_or_else(|| quote! { IntPtr });
+                let repr = enumeration::quote_discriminant_type(schema);
                 quote! { (#repr)#ident }
             }
 
@@ -196,20 +193,16 @@ pub fn quote_wrapper_body<'a>(
                 match export.binding_style {
                     // For handle enums, we directly pass the raw output to the generated class's
                     // constructor.
+                    //
+                    // TODO: Always use the `__FromRaw` function for this.
                     BindingStyle::Handle => {
                         let ty_ident = format_ident!("{}", &*output.name.name);
                         quote! { #ret = new #ty_ident(#invoke); }
                     }
 
                     BindingStyle::Value => {
-                        if output.has_data() {
-                            todo!("Generate raw conversion for data-carrying enums")
-                        } else {
-                            // For C-like enums, we simply cast the returned value to the generated
-                            // enum type.
-                            let ty_ident = format_ident!("{}", &*output.name.name);
-                            quote! { #ret = (#ty_ident)#invoke; }
-                        }
+                        let convert_fn = format_ident!("__{}FromRaw", &*output.name.name);
+                        quote! { #ret = __bindings.#convert_fn(#invoke); }
                     }
                 }
             }

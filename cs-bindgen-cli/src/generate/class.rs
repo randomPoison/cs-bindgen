@@ -4,6 +4,11 @@ use proc_macro2::TokenStream;
 use quote::*;
 use syn::Ident;
 
+/// Quotes the pointer type used for handles, i.e. `void*`.
+pub fn quote_handle_ptr() -> TokenStream {
+    quote! { void* }
+}
+
 pub fn quote_drop_fn(name: &str, dll_name: &str) -> TokenStream {
     let binding_ident = format_ident!("__cs_bindgen_drop__{}", name);
     let entry_point = binding_ident.to_string();

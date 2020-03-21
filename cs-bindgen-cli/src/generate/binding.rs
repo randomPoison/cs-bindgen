@@ -4,7 +4,7 @@
 //! function, using the `[DllImport]` attribute to load the corresponding function
 //! from the Rust dylib. This module provides
 
-use crate::generate::{class, quote_primitive_type, TypeMap};
+use crate::generate::{class, enumeration, TypeMap};
 use cs_bindgen_shared::{
     schematic::{Enum, Schema, Struct},
     BindingStyle, Export,
@@ -53,11 +53,56 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
             }
         }
 
+        // For named types, we generate some additional bindings:
+        //
+        // * For handle types, the Rust module exports a drop function that we need to free
+        //   the memory for the object.
+        // * We generate from-raw and into-raw conversion functions in order to convert the
+        //   C# representation of the type to-and-from the raw representation that can be
+        //   passed to Rust.
         Export::Named(export) => {
-            if export.binding_style == BindingStyle::Handle {
+            // Generate the drop function for the type (if needed).
+            let drop_fn = if export.binding_style == BindingStyle::Handle {
                 class::quote_drop_fn(&export.name, dll_name)
             } else {
                 quote! {}
+            };
+
+            // Generate the raw conversion functions for the type.
+            let from_raw = format_ident!("__{}FromRaw", &*export.name);
+            let into_raw = format_ident!("__{}IntoRaw", &*export.name);
+
+            let raw_fns = match &export.schema {
+                // TODO: Support raw conversions for structs, too!
+                Schema::Struct(_) => quote! {},
+
+                Schema::Enum(schema) => {
+                    let raw_repr = enumeration::quote_raw_type_reference(export, schema);
+                    let cs_repr = enumeration::quote_type_reference(export, schema);
+
+                    quote! {
+                        #drop_fn
+
+                        internal static #cs_repr #from_raw(#raw_repr raw)
+                        {
+                            // TODO
+                            throw new NotImplementedException();
+                        }
+
+                        internal static #raw_repr #into_raw(#cs_repr self)
+                        {
+                            // TODO
+                            throw new NotImplementedException();
+                        }
+                    }
+                }
+
+                _ => todo!("What would we even do here???"),
+            };
+
+            quote! {
+                #drop_fn
+                #raw_fns
             }
         }
     }
@@ -127,16 +172,13 @@ fn quote_enum_binding(schema: &Enum, types: &TypeMap) -> TokenStream {
         //   union type containing the data for the variant.
         // * C-like enums are represented as a single integer value. The type used for the
         //   discriminant is either specified directly in the schema, or defaults to
-        //   `isize`/`IntPtr`.
+        //   `isize` (`IntPtr`).
         BindingStyle::Value => {
             if schema.has_data() {
                 let raw = format_ident!("{}__Raw", &*export.name);
                 quote! { RawEnum<#raw> }
             } else {
-                schema
-                    .repr
-                    .map(quote_primitive_type)
-                    .unwrap_or(quote! { IntPtr })
+                enumeration::quote_discriminant_type(schema)
             }
         }
     }

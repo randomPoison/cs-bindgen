@@ -130,7 +130,7 @@ pub enum DataEnum {
     Baz { name: String, value: i32 },
 }
 
-// #[cs_bindgen]
+#[cs_bindgen]
 pub fn generate_data_enum() -> DataEnum {
     DataEnum::Baz {
         name: "Randal".into(),
