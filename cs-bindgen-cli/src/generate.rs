@@ -1,18 +1,20 @@
 use self::{binding::*, class::*, enumeration::*, func::*};
 use crate::Opt;
 use cs_bindgen_shared::{
-    schematic::{Primitive, Schema},
-    Export,
+    schematic::{Primitive, Schema, TypeName},
+    Export, NamedType,
 };
 use heck::*;
 use proc_macro2::TokenStream;
 use quote::*;
-use std::ffi::OsStr;
+use std::{collections::HashMap, ffi::OsStr};
 
 mod binding;
 mod class;
 mod enumeration;
 mod func;
+
+type TypeMap<'a> = HashMap<&'a TypeName, &'a NamedType>;
 
 pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, failure::Error> {
     // TODO: Add a validation pass to detect any invalid types (e.g. 128 bit integers,
@@ -27,10 +29,26 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
 
     let class_name = format_ident!("{}", dll_name.to_camel_case());
 
+    // Gather the definitions for all user-defined types so that the full export
+    // information can be retrieved when an export represents another exported type.
+    let types = exports
+        .iter()
+        .filter_map(|export| match export {
+            Export::Named(export) => Some((
+                export
+                    .schema
+                    .type_name()
+                    .expect("Named type's schema did not have a type name"),
+                export,
+            )),
+            _ => None,
+        })
+        .collect::<HashMap<_, _>>();
+
     // Generate the raw bindings for all exported items.
     let raw_bindings = exports
         .iter()
-        .map(|item| quote_raw_binding(item, dll_name))
+        .map(|item| quote_raw_binding(item, dll_name, &types))
         .collect::<Vec<_>>();
 
     let mut fn_bindings = Vec::new();
@@ -43,11 +61,14 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
                 None,
                 export.inputs(),
                 &export.output,
+                &types,
             )),
 
             Export::Named(export) => match &export.schema {
                 Schema::Struct(schema) => binding_items.push(quote_struct(export, schema)),
-                Schema::Enum(schema) => binding_items.push(quote_enum_binding(export, schema)),
+                Schema::Enum(schema) => {
+                    binding_items.push(quote_enum_binding(export, schema, &types))
+                }
 
                 _ => {
                     return Err(failure::format_err!(
@@ -58,7 +79,7 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
                 }
             },
 
-            Export::Method(export) => binding_items.push(quote_method_binding(export)),
+            Export::Method(export) => binding_items.push(quote_method_binding(export, &types)),
         }
     }
 
@@ -113,11 +134,10 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        internal unsafe struct RawEnum<D, V>
-            where D : unmanaged
+        internal unsafe struct RawEnum<V>
             where V : unmanaged
         {
-            public D Discriminant;
+            public IntPtr Discriminant;
             public V Value;
         }
     };
@@ -151,7 +171,7 @@ fn quote_primitive_type(ty: Primitive) -> TokenStream {
 }
 
 /// Generates the idiomatic C# type corresponding to the given type schema.
-fn quote_cs_type(schema: &Schema) -> TokenStream {
+fn quote_cs_type(schema: &Schema, type_map: &TypeMap) -> TokenStream {
     match schema {
         // NOTE: This is only valid in a return position, it's not valid to have a `void`
         // argument. An earlier validation pass has already rejected any such cases so we
@@ -178,11 +198,22 @@ fn quote_cs_type(schema: &Schema) -> TokenStream {
 
         Schema::Char => todo!("Support passing single chars"),
 
-        // TODO: When referencing generated types in function signatures, take custom
-        // namespaces into account. Custom namespaces aren't currently supported, but
-        // once they are it won't be sufficient to directly quote the name of the type.
-        Schema::Struct(schema) => format_ident!("{}", &*schema.name.name).to_token_stream(),
-        Schema::Enum(schema) => format_ident!("{}", &*schema.name.name).to_token_stream(),
+        Schema::Struct(schema) => {
+            let export = type_map
+                .get(&schema.name)
+                .expect("Failed to look up referenced type");
+
+            // TODO: Take into account things like custom namespaces or renaming the type, once
+            // those are supported.
+            format_ident!("{}", &*export.name).into_token_stream()
+        }
+
+        Schema::Enum(schema) => {
+            let export = type_map
+                .get(&schema.name)
+                .expect("Failed to look up referenced type");
+            enumeration::quote_type_reference(&export, schema)
+        }
 
         // TODO: Add support for passing user-defined types out from Rust.
         Schema::UnitStruct(_)

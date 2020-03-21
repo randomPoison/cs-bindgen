@@ -1,4 +1,4 @@
-use crate::generate::{quote_cs_type, quote_primitive_type};
+use crate::generate::{quote_cs_type, quote_primitive_type, TypeMap};
 use cs_bindgen_shared::*;
 use heck::*;
 use proc_macro2::TokenStream;
@@ -11,13 +11,14 @@ pub fn quote_wrapper_fn<'a>(
     receiver: Option<TokenStream>,
     inputs: impl Iterator<Item = (&'a str, &'a Schema)> + Clone + 'a,
     output: &Schema,
+    types: &'a TypeMap,
 ) -> TokenStream {
     // Determine the name of the wrapper function. The original function name is
     // going to be in `snake_case`, so we need to convert it to `CamelCase` to keep
     // with C# naming conventions.
     let name = format_ident!("{}", name.to_camel_case());
 
-    let return_ty = quote_cs_type(&output);
+    let return_ty = quote_cs_type(&output, types);
 
     // Generate the declaration for the output variable and return expression. We need
     // to treat `void` returns as a special case, since C# won't let you declare values
@@ -40,8 +41,8 @@ pub fn quote_wrapper_fn<'a>(
         quote! { static }
     };
 
-    let args = quote_args(inputs.clone());
-    let body = quote_wrapper_body(binding, receiver, inputs, output, &ret);
+    let args = quote_args(inputs.clone(), types);
+    let body = quote_wrapper_body(binding, receiver, inputs, output, &ret, types);
 
     quote! {
         public #static_ #return_ty #name(#( #args ),*)
@@ -122,6 +123,7 @@ pub fn quote_wrapper_body<'a>(
     args: impl Iterator<Item = (&'a str, &'a Schema)> + Clone,
     output: &Schema,
     ret: &Ident,
+    types: &TypeMap,
 ) -> TokenStream {
     // Build the list of arguments to the wrapper function and insert the receiver at
     // the beginning of the list of arguments if necessary.
@@ -174,20 +176,37 @@ pub fn quote_wrapper_body<'a>(
 
         Schema::Char => todo!("Support converting a C# `char` into a Rust `char`"),
 
-        // TODO: Look up the referenced type and process the raw return value based on the
-        // type of binding being generated for the type. For now we only support treating
-        // named types as handles, so we always pass the handle to the type's constructor.
+        // NOTE: We don't need to check the binding style when converting structs because
+        // the generated struct will have an overloaded constructor for all supported
+        // binding styles.
         Schema::Struct(output) => {
             let ty_ident = format_ident!("{}", &*output.name.name);
             quote! { #ret = new #ty_ident(#invoke); }
         }
 
-        // TODO: Look up the referenced type and process the raw return value based on the
-        // type of binding being generated for the type. For now we only support treating
-        // named types as handles, so we always pass the handle to the type's constructor.
         Schema::Enum(output) => {
-            let ty_ident = format_ident!("{}", &*output.name.name);
-            quote! { #ret = (#ty_ident)#invoke; }
+            let export = types
+                .get(&output.name)
+                .expect("Couldn't find exported type for enum");
+
+            match export.binding_style {
+                // For handle enums, we directly pass the raw output to the generated class's
+                // constructor.
+                BindingStyle::Handle => {
+                    let ty_ident = format_ident!("{}", &*output.name.name);
+                    quote! { #ret = new #ty_ident(#invoke); }
+                }
+
+                BindingStyle::Value => {
+                    if output.has_data() {
+                        todo!("Generate raw conversion for data-carrying enums")
+                    } else {
+                        // For C-like enums, we simply cast the returned value to the generated enum type.
+                        let ty_ident = format_ident!("{}", &*output.name.name);
+                        quote! { #ret = (#ty_ident)#invoke; }
+                    }
+                }
+            }
         }
 
         // TODO: Add support for passing user-defined types out from Rust.
@@ -204,10 +223,6 @@ pub fn quote_wrapper_body<'a>(
         }
     };
 
-    // Wrap the body of the function in `fixed` blocks for any parameters that need to
-    // be passed as pointers to Rust (just strings for now). We use `Iterator::fold` to
-    // generate a series of nested `fixed` blocks. This is very smart code and won't be
-    // hard to maintain at all, I'm sure.
     fold_fixed_blocks(invoke, args)
 }
 
@@ -215,6 +230,10 @@ pub fn fold_fixed_blocks<'a>(
     base_invoke: TokenStream,
     args: impl Iterator<Item = (&'a str, &'a Schema)>,
 ) -> TokenStream {
+    // Wrap the body of the function in `fixed` blocks for any parameters that need to
+    // be passed as pointers to Rust (just strings for now). We use `Iterator::fold` to
+    // generate a series of nested `fixed` blocks. This is very smart code and won't be
+    // hard to maintain at all, I'm sure.
     args.fold(base_invoke, |body, (name, schema)| match schema {
         Schema::String => {
             let arg_ident = format_ident!("{}", name.to_mixed_case());
@@ -236,10 +255,11 @@ pub fn fold_fixed_blocks<'a>(
 /// Attempts to use the most idiomatic C# type that corresponds to the original type.
 pub fn quote_args<'a>(
     args: impl Iterator<Item = (&'a str, &'a Schema)> + 'a,
+    type_map: &'a TypeMap<'_>,
 ) -> impl Iterator<Item = TokenStream> + 'a {
-    args.map(|(name, schema)| {
+    args.map(move |(name, schema)| {
         let ident = format_ident!("{}", name.to_mixed_case());
-        let ty = quote_cs_type(schema);
+        let ty = quote_cs_type(schema, type_map);
         quote! { #ty #ident }
     })
 }

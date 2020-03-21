@@ -4,19 +4,22 @@
 //! function, using the `[DllImport]` attribute to load the corresponding function
 //! from the Rust dylib. This module provides
 
-use crate::generate::class;
-use cs_bindgen_shared::{schematic::Schema, BindingStyle, Export};
+use crate::generate::{class, quote_primitive_type, TypeMap};
+use cs_bindgen_shared::{
+    schematic::{Enum, Schema, Struct},
+    BindingStyle, Export,
+};
 use proc_macro2::TokenStream;
 use quote::*;
-use syn::{punctuated::Punctuated, token::Comma};
+use syn::{punctuated::Punctuated, token::Comma, Ident};
 
-pub fn quote_raw_binding(export: &Export, dll_name: &str) -> TokenStream {
+pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> TokenStream {
     match export {
         Export::Fn(export) => {
             let dll_import_attrib = quote_dll_import(dll_name, &export.binding);
             let binding_ident = format_ident!("{}", &*export.binding);
-            let return_ty = quote_binding_return_type(&export.output);
-            let args = quote_binding_args(export.inputs());
+            let return_ty = quote_binding_return_type(&export.output, types);
+            let args = quote_binding_args(export.inputs(), types);
 
             quote! {
                 #dll_import_attrib
@@ -27,13 +30,13 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str) -> TokenStream {
         Export::Method(export) => {
             let dll_import_attrib = quote_dll_import(dll_name, &export.binding);
             let binding_ident = format_ident!("{}", &*export.binding);
-            let return_ty = quote_binding_return_type(&export.output);
+            let return_ty = quote_binding_return_type(&export.output, types);
 
             // TODO: Unify input handling for raw bindings. It shouldn't be necessary to
             // manually insert the receiver. The current blocker is that schematic can't
             // represent reference types, so we can't generate a full list of inputs that
             // includes the receiver.
-            let mut args = quote_binding_args(export.inputs());
+            let mut args = quote_binding_args(export.inputs(), types);
             if export.receiver.is_some() {
                 args.insert(0, quote! { void* self });
             }
@@ -54,7 +57,7 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str) -> TokenStream {
     }
 }
 
-pub fn quote_raw_arg(schema: &Schema) -> TokenStream {
+pub fn quote_raw_arg(schema: &Schema, types: &TypeMap) -> TokenStream {
     match schema {
         Schema::I8 => quote! { sbyte },
         Schema::I16 => quote! { short },
@@ -69,18 +72,18 @@ pub fn quote_raw_arg(schema: &Schema) -> TokenStream {
         Schema::Bool => quote! { byte },
         Schema::Char => quote! { uint },
 
-        // `String` is passed to Rust as a `RawCsString`.
         Schema::String => quote! { RawCsString },
 
-        // TODO: Actually look up the referenced type to determine what style of binding is
-        // being used and what the repr of the discriminant is. For now we only have support
-        // for simple (C-like) enums without an explicit repr, so the raw value will always
-        // be an `isize`.
-        Schema::Enum(_) => quote! { IntPtr },
+        Schema::Enum(schema) => quote_enum_binding(
+            schema,
+            types,
+            format_ident!("{}__RawArg", &*schema.name.name),
+        ),
+
+        Schema::Struct(schema) => quote_struct_binding(schema, types),
 
         // TODO: Add support for passing user-defined types to Rust.
-        Schema::Struct(_)
-        | Schema::UnitStruct(_)
+        Schema::UnitStruct(_)
         | Schema::NewtypeStruct(_)
         | Schema::TupleStruct(_)
         | Schema::Option(_)
@@ -94,7 +97,7 @@ pub fn quote_raw_arg(schema: &Schema) -> TokenStream {
     }
 }
 
-pub fn quote_binding_return_type(schema: &Schema) -> TokenStream {
+pub fn quote_binding_return_type(schema: &Schema, types: &TypeMap) -> TokenStream {
     match schema {
         Schema::I8 => quote! { sbyte },
         Schema::I16 => quote! { short },
@@ -114,17 +117,13 @@ pub fn quote_binding_return_type(schema: &Schema) -> TokenStream {
 
         Schema::Unit => quote! { void },
 
-        // TODO: Actually look up the referenced type in the set of exported types and
-        // determine what style of binding is used for it (or if it even has valid bindings
-        // at all). For now, the only supported binding style for user-defined types is to
-        // treat them as a handle, so we hard code that case here.
-        Schema::Struct(_) => quote! { void* },
+        Schema::Struct(schema) => quote_struct_binding(schema, types),
 
-        // TODO: Actually look up the referenced type to determine what style of binding is
-        // being used and what the repr of the discriminant is. For now we only have support
-        // for simple (C-like) enums without an explicit repr, so the raw value will always
-        // be an `isize`.
-        Schema::Enum(_) => quote! { IntPtr },
+        Schema::Enum(schema) => quote_enum_binding(
+            schema,
+            types,
+            format_ident!("{}__RawReturn", &*schema.name.name),
+        ),
 
         // TODO: Add support for passing user-defined types out from Rust.
         Schema::UnitStruct(_)
@@ -141,6 +140,46 @@ pub fn quote_binding_return_type(schema: &Schema) -> TokenStream {
     }
 }
 
+fn quote_struct_binding(schema: &Struct, types: &TypeMap) -> TokenStream {
+    let export = types
+        .get(&schema.name)
+        .expect("Couldn't find exported type for struct");
+
+    match export.binding_style {
+        BindingStyle::Handle => quote! { void* },
+        BindingStyle::Value => todo!("Support passing structs by value"),
+    }
+}
+
+fn quote_enum_binding(schema: &Enum, types: &TypeMap, raw: Ident) -> TokenStream {
+    let export = types
+        .get(&schema.name)
+        .expect("Couldn't find exported type for enum");
+
+    match export.binding_style {
+        BindingStyle::Handle => quote! { void* },
+
+        // For enums that are passed by value, the raw representation depends on whether or
+        // not the enum carries additional data:
+        //
+        // * Data-carrying enums are represented as a `RawEnum<T>`, where `T` is a generated
+        //   union type containing the data for the variant.
+        // * C-like enums are represented as a single integer value. The type used for the
+        //   discriminant is either specified directly in the schema, or defaults to
+        //   `isize`/`IntPtr`.
+        BindingStyle::Value => {
+            if schema.has_data() {
+                quote! { RawEnum<#raw> }
+            } else {
+                schema
+                    .repr
+                    .map(quote_primitive_type)
+                    .unwrap_or(quote! { IntPtr })
+            }
+        }
+    }
+}
+
 fn quote_dll_import(dll_name: &str, entry_point: &str) -> TokenStream {
     quote! {
         [DllImport(
@@ -152,11 +191,12 @@ fn quote_dll_import(dll_name: &str, entry_point: &str) -> TokenStream {
 
 fn quote_binding_args<'a>(
     inputs: impl Iterator<Item = (&'a str, &'a Schema)>,
+    types: &TypeMap<'_>,
 ) -> Punctuated<TokenStream, Comma> {
     inputs
         .map(|(name, schema)| {
             let ident = format_ident!("{}", name);
-            let ty = quote_raw_arg(schema);
+            let ty = quote_raw_arg(schema, types);
 
             quote! { #ty #ident }
         })
