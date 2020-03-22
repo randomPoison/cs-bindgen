@@ -135,9 +135,24 @@ fn quote_simple_enum_binding(export: &NamedType, schema: &Enum) -> TokenStream {
         }
     });
 
+    let raw_ident = binding::raw_ident(&export.name);
+    let discriminant_ty = quote_discriminant_type(schema);
+
     quote! {
         public enum #ident {
             #( #variants ),*
+        }
+
+        [StructLayout(LayoutKind.Explicit)]
+        internal unsafe struct #raw_ident
+        {
+            [FieldOffset(0)]
+            private #discriminant_ty _inner;
+
+            public static explicit operator #ident(#raw_ident raw)
+            {
+                return (#ident)raw._inner;
+            }
         }
     }
 }
@@ -205,8 +220,8 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
             }
         });
 
-        let constructor_fields = fields.iter().map(|(field_ident, schema)| {
-            let from_raw_fn = binding::from_raw_fn_ident(schema);
+        let constructor_fields = fields.iter().map(|(field_ident, _)| {
+            let from_raw_fn = binding::from_raw_fn_ident();
             quote! {
                 this.#field_ident = __bindings.#from_raw_fn(raw.#field_ident);
             }

@@ -21,44 +21,12 @@ use syn::{punctuated::Punctuated, token::Comma, Ident};
 // logic, since the module paths include `::` characters, which aren't valid in C#
 // identifiers.
 
-/// Generates the identifier for the from-raw conversion function for the specified type.
-pub fn from_raw_fn_ident(schema: &Schema) -> Ident {
-    let type_name = match schema {
-        // For built-in types, there's an overload of `__FromRaw` that can handle the
-        // conversion.
-        Schema::I8
-        | Schema::I16
-        | Schema::I32
-        | Schema::I64
-        | Schema::I128
-        | Schema::U8
-        | Schema::U16
-        | Schema::U32
-        | Schema::U64
-        | Schema::U128
-        | Schema::F32
-        | Schema::F64
-        | Schema::Unit
-        | Schema::Bool
-        | Schema::Char
-        | Schema::String => return format_ident!("__FromRaw"),
-
-        // For user-defined types, we need to generate the name of the from-raw function
-        // based on the name of the type.
-        Schema::Enum(schema) => &schema.name,
-        Schema::Struct(schema) => &schema.name,
-
-        // TODO: Support remaining rust types.
-        Schema::UnitStruct(_)
-        | Schema::NewtypeStruct(_)
-        | Schema::TupleStruct(_)
-        | Schema::Option(_)
-        | Schema::Seq(_)
-        | Schema::Tuple(_)
-        | Schema::Map { .. } => todo!("Generate argument binding"),
-    };
-
-    format_ident!("__{}FromRaw", &*type_name.name)
+/// The identifier of the from-raw conversion method.
+///
+/// This method is overloaded for every supported primitive and exported type, so it
+/// can be used as a generic way to perform type conversion.
+pub fn from_raw_fn_ident() -> Ident {
+    format_ident!("__FromRaw")
 }
 
 /// Generates the identifier for the into-raw conversion function for the specified type.
@@ -167,7 +135,7 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
                 quote! {}
             };
 
-            let from_raw = from_raw_fn_ident(&export.schema);
+            let from_raw = from_raw_fn_ident();
             let into_raw = into_raw_fn_ident(&export.schema);
 
             let cs_repr = quote_cs_type(&export.schema, types);
@@ -245,14 +213,12 @@ pub fn quote_type_binding(schema: &Schema, types: &TypeMap) -> TokenStream {
         Schema::U64 => quote! { ulong },
         Schema::F32 => quote! { float },
         Schema::F64 => quote! { double },
-        Schema::Bool => quote! { byte },
+        Schema::Bool => quote! { RustBool },
         Schema::Char => quote! { uint },
-
         Schema::String => quote! { RustOwnedString },
 
-        Schema::Enum(schema) => quote_enum_binding(schema, types),
-
-        Schema::Struct(schema) => quote_struct_binding(schema, types),
+        Schema::Enum(schema) => raw_ident(&schema.name.name).into_token_stream(),
+        Schema::Struct(schema) => raw_ident(&schema.name.name).into_token_stream(),
 
         // TODO: Add support for passing user-defined types to Rust.
         Schema::UnitStruct(_)

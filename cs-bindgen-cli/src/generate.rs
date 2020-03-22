@@ -90,6 +90,10 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
 
         internal unsafe static class __bindings
         {
+            // Generated bindings for exported items.
+            #( #raw_bindings )*
+
+            // Bindings to built-in helper functions.
             [DllImport(
                 #dll_name,
                 EntryPoint = "__cs_bindgen_drop_string",
@@ -102,7 +106,25 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
                 CallingConvention = CallingConvention.Cdecl)]
             internal static extern RustOwnedString __cs_bindgen_string_from_utf16(RawCsString raw);
 
-            #( #raw_bindings )*
+            // Overloads of `__FromRaw` for primitives and built-in types.
+            internal static byte __FromRaw(byte raw) { return raw; }
+            internal static sbyte __FromRaw(sbyte raw) { return raw; }
+            internal static short __FromRaw(short raw) { return raw; }
+            internal static ushort __FromRaw(ushort raw) { return raw; }
+            internal static int __FromRaw(int raw) { return raw; }
+            internal static uint __FromRaw(uint raw) { return raw; }
+            internal static long __FromRaw(long raw) { return raw; }
+            internal static ulong __FromRaw(ulong raw) { return raw; }
+            internal static float __FromRaw(float raw) { return raw; }
+            internal static double __FromRaw(double raw) { return raw; }
+            internal static bool __FromRAw(RustBool raw) { return raw; }
+
+            internal static string __FromRaw(RustOwnedString raw)
+            {
+                string result = Encoding.UTF8.GetString(raw.Ptr, (int)raw.Length);
+                __bindings.__cs_bindgen_drop_string(raw);
+                return result;
+            }
         }
 
         public class #class_name
@@ -111,6 +133,26 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
         }
 
         #( #binding_items )*
+
+        [StructLayout(LayoutKind.Explicit, Size = 1)]
+        internal struct RustBool
+        {
+            [FieldOffset(0)]
+            private byte _inner;
+
+            public static implicit operator bool(RustBool b)
+            {
+                return b._inner != 0;
+            }
+
+            public static implicit operator RustBool(bool b)
+            {
+                return new RustBool()
+                {
+                    _inner = b ? (byte)1 : (byte)0,
+                };
+            }
+        }
 
         [StructLayout(LayoutKind.Sequential)]
         internal unsafe struct RustOwnedString
