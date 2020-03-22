@@ -1,7 +1,7 @@
 use crate::generate::{binding, class, quote_cs_type, quote_primitive_type, TypeMap};
 use cs_bindgen_shared::{schematic::Enum, schematic::Variant, BindingStyle, NamedType};
 use heck::*;
-use proc_macro2::TokenStream;
+use proc_macro2::{Literal, TokenStream};
 use quote::*;
 
 pub fn quote_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap) -> TokenStream {
@@ -58,6 +58,57 @@ pub fn quote_discriminant_type(schema: &Enum) -> TokenStream {
         .repr
         .map(quote_primitive_type)
         .unwrap_or_else(|| quote! { IntPtr })
+}
+
+pub fn from_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
+    // For C-like enums, the conversion is just casting the raw discriminant value to
+    // the C# enum type.
+    if !schema.has_data() {
+        let cs_repr = quote_type_reference(export, schema);
+        return quote! { return (#cs_repr)raw; };
+    }
+
+    let discriminants = schema
+        .variants
+        .iter()
+        .enumerate()
+        .map(|(index, _)| Literal::usize_unsuffixed(index));
+
+    let convert_variants = schema.variants.iter().map(|variant| {
+        let cs_repr = raw_variant_struct_name(variant.name());
+
+        if variant.is_empty() {
+            println!("Variant {:?} is empty", variant);
+            quote! {
+                return new #cs_repr();
+            }
+        } else {
+            let union_field = format_ident!("{}", variant.name());
+            quote! {
+                return new #cs_repr(raw.Value.#union_field);
+            }
+        }
+    });
+
+    quote! {
+        switch (raw.Discriminant.ToInt64())
+        {
+            #(
+                case #discriminants:
+                {
+                    #convert_variants
+                }
+            )*
+
+            default: throw new Exception("Invalid discriminant " + raw.Discriminant);
+        }
+    }
+}
+
+pub fn into_raw_impl(_export: &NamedType, _schema: &Enum) -> TokenStream {
+    quote! {
+        throw new NotImplementedException("Convert enum to raw representation");
+    }
 }
 
 fn quote_simple_enum_binding(export: &NamedType, schema: &Enum) -> TokenStream {
@@ -122,7 +173,7 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
     // * The raw representation which is kept internal and used as a field of the raw
     //   union for the enum.
     let variant_structs = schema.variants.iter().map(|variant| {
-        let ident = format_ident!("{}", variant.name());
+        let ident = raw_variant_struct_name(variant.name());
         let raw_ident = binding::raw_ident(variant.name());
 
         let fields = variant
@@ -185,8 +236,12 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
         {
             #(
                 [FieldOffset(0)]
-                #union_fields;
+                internal #union_fields;
             )*
         }
     }
+}
+
+fn raw_variant_struct_name(name: &str) -> TokenStream {
+    format_ident!("{}", name).into_token_stream()
 }

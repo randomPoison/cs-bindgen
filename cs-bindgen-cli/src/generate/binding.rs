@@ -4,7 +4,7 @@
 //! function, using the `[DllImport]` attribute to load the corresponding function
 //! from the Rust dylib. This module provides
 
-use crate::generate::{class, enumeration, TypeMap};
+use crate::generate::{class, enumeration, quote_cs_type, TypeMap};
 use cs_bindgen_shared::{
     schematic::{Enum, Schema, Struct},
     BindingStyle, Export,
@@ -97,41 +97,67 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
                 quote! {}
             };
 
-            // Generate the raw conversion functions for the type.
             let from_raw = from_raw_fn_ident(&export.name);
             let into_raw = into_raw_fn_ident(&export.name);
 
-            let raw_fns = match &export.schema {
-                // TODO: Support raw conversions for structs, too!
-                Schema::Struct(_) => quote! {},
+            let cs_repr = quote_cs_type(&export.schema, types);
 
-                Schema::Enum(schema) => {
-                    let raw_repr = enumeration::quote_raw_type_reference(export, schema);
-                    let cs_repr = enumeration::quote_type_reference(export, schema);
+            let (raw_repr, from_raw_impl, into_raw_impl) = match export.binding_style {
+                BindingStyle::Handle => {
+                    let raw_repr = class::quote_handle_ptr();
+                    let from_raw_impl = quote! {
+                        return new #cs_repr(raw);
+                    };
+                    let into_raw_impl = quote! {
+                        throw new NotImplementedException("Into-raw function isn't used for handle types");
+                    };
 
-                    quote! {
-                        #drop_fn
-
-                        internal static #cs_repr #from_raw(#raw_repr raw)
-                        {
-                            // TODO
-                            throw new NotImplementedException();
-                        }
-
-                        internal static #raw_repr #into_raw(#cs_repr self)
-                        {
-                            // TODO
-                            throw new NotImplementedException();
-                        }
-                    }
+                    (raw_repr, from_raw_impl, into_raw_impl)
                 }
 
-                _ => todo!("What would we even do here???"),
+                BindingStyle::Value => match &export.schema {
+                    Schema::Struct(_) => {
+                        let raw_repr = raw_ident(&export.name).into_token_stream();
+                        let from_raw_impl = quote! {
+                            throw new NotImplementedException("Support passing structs by value");
+                        };
+                        let into_raw_impl = quote! {
+                            throw new NotImplementedException("Support passing structs by value");
+                        };
+
+                        (raw_repr, from_raw_impl, into_raw_impl)
+                    }
+
+                    Schema::Enum(schema) => {
+                        let raw_repr = enumeration::quote_raw_type_reference(export, schema);
+                        let from_raw_impl = enumeration::from_raw_impl(export, schema);
+                        let into_raw_impl = enumeration::into_raw_impl(export, schema);
+
+                        (raw_repr, from_raw_impl, into_raw_impl)
+                    }
+
+                    Schema::UnitStruct(..)
+                    | Schema::TupleStruct(..)
+                    | Schema::NewtypeStruct(..) => {
+                        todo!("Support more kinds of user-defined types")
+                    }
+
+                    _ => unreachable!("Named type had invalid schema: {:?}", export.schema),
+                },
             };
 
             quote! {
                 #drop_fn
-                #raw_fns
+
+                internal static #cs_repr #from_raw(#raw_repr raw)
+                {
+                    #from_raw_impl
+                }
+
+                internal static #raw_repr #into_raw(#cs_repr self)
+                {
+                    #into_raw_impl
+                }
             }
         }
     }
