@@ -141,6 +141,11 @@ pub fn quote_wrapper_body<'a>(
     // Generate the expression for invoking the raw binding and then converting the raw
     // return value into the appropriate C# type.
     let invoke = quote! { #binding(#invoke_args) };
+
+    // TODO: Use the generic `__FromRaw` logic to handle type conversions in a unified
+    // way. We'll need to tweak how we handle enum discriminants slightly to make sure
+    // we can reliably overload `__FromRaw` such that different enum types with the same
+    // discriminant type have distinct overloads.
     let invoke = match output {
         Some(output) => match output {
             // NOTE: For `void` returns there's no intermediate variable for the return value
@@ -187,8 +192,8 @@ pub fn quote_wrapper_body<'a>(
                 quote! { #ret = new #ty_ident(#invoke); }
             }
 
-            Schema::Enum(output) => {
-                let from_raw = binding::from_raw_fn_ident(&output.name.name);
+            Schema::Enum(_) => {
+                let from_raw = binding::from_raw_fn_ident(output);
                 quote! { #ret = __bindings.#from_raw(#invoke); }
             }
 

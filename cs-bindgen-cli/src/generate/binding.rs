@@ -22,16 +22,86 @@ use syn::{punctuated::Punctuated, token::Comma, Ident};
 // identifiers.
 
 /// Generates the identifier for the from-raw conversion function for the specified type.
-pub fn from_raw_fn_ident(name: &str) -> Ident {
-    format_ident!("__{}FromRaw", name)
+pub fn from_raw_fn_ident(schema: &Schema) -> Ident {
+    let type_name = match schema {
+        // For built-in types, there's an overload of `__FromRaw` that can handle the
+        // conversion.
+        Schema::I8
+        | Schema::I16
+        | Schema::I32
+        | Schema::I64
+        | Schema::I128
+        | Schema::U8
+        | Schema::U16
+        | Schema::U32
+        | Schema::U64
+        | Schema::U128
+        | Schema::F32
+        | Schema::F64
+        | Schema::Unit
+        | Schema::Bool
+        | Schema::Char
+        | Schema::String => return format_ident!("__FromRaw"),
+
+        // For user-defined types, we need to generate the name of the from-raw function
+        // based on the name of the type.
+        Schema::Enum(schema) => &schema.name,
+        Schema::Struct(schema) => &schema.name,
+
+        // TODO: Support remaining rust types.
+        Schema::UnitStruct(_)
+        | Schema::NewtypeStruct(_)
+        | Schema::TupleStruct(_)
+        | Schema::Option(_)
+        | Schema::Seq(_)
+        | Schema::Tuple(_)
+        | Schema::Map { .. } => todo!("Generate argument binding"),
+    };
+
+    format_ident!("__{}FromRaw", &*type_name.name)
 }
 
 /// Generates the identifier for the into-raw conversion function for the specified type.
-pub fn into_raw_fn_ident(name: &str) -> Ident {
-    format_ident!("__{}IntoRaw", name)
+pub fn into_raw_fn_ident(schema: &Schema) -> Ident {
+    let type_name = match schema {
+        // For built-in types, there's an overload of `__IntoRaw` that can handle the
+        // conversion.
+        Schema::I8
+        | Schema::I16
+        | Schema::I32
+        | Schema::I64
+        | Schema::I128
+        | Schema::U8
+        | Schema::U16
+        | Schema::U32
+        | Schema::U64
+        | Schema::U128
+        | Schema::F32
+        | Schema::F64
+        | Schema::Unit
+        | Schema::Bool
+        | Schema::Char
+        | Schema::String => return format_ident!("__IntoRaw"),
+
+        // For user-defined types, we need to generate the name of the into-raw function
+        // based on the name of the type.
+        Schema::Enum(schema) => &schema.name,
+        Schema::Struct(schema) => &schema.name,
+
+        // TODO: Support remaining rust types.
+        Schema::UnitStruct(_)
+        | Schema::NewtypeStruct(_)
+        | Schema::TupleStruct(_)
+        | Schema::Option(_)
+        | Schema::Seq(_)
+        | Schema::Tuple(_)
+        | Schema::Map { .. } => todo!("Generate argument binding"),
+    };
+
+    format_ident!("__{}IntoRaw", &*type_name.name)
 }
 
-/// Generate the identifier for the raw type corresponding to the associated type.
+/// Generate the identifier for the raw type corresponding to the specified type.
 ///
 /// When a user-defined type is marshaled by value, we generate a type that acts as
 /// an FFI-safe "raw" representation for that type. When communicating with Rust, we
@@ -97,8 +167,8 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
                 quote! {}
             };
 
-            let from_raw = from_raw_fn_ident(&export.name);
-            let into_raw = into_raw_fn_ident(&export.name);
+            let from_raw = from_raw_fn_ident(&export.schema);
+            let into_raw = into_raw_fn_ident(&export.schema);
 
             let cs_repr = quote_cs_type(&export.schema, types);
 

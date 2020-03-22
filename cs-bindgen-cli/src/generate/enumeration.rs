@@ -193,7 +193,7 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
         let struct_fields = fields.iter().map(|(field_ident, schema)| {
             let ty = quote_cs_type(schema, types);
             quote! {
-                public #ty #field_ident
+                #ty #field_ident
             }
         });
 
@@ -201,7 +201,14 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
             let binding_ty = binding::quote_type_binding(schema, types);
 
             quote! {
-                internal #binding_ty #field_ident
+                #binding_ty #field_ident
+            }
+        });
+
+        let constructor_fields = fields.iter().map(|(field_ident, schema)| {
+            let from_raw_fn = binding::from_raw_fn_ident(schema);
+            quote! {
+                this.#field_ident = __bindings.#from_raw_fn(raw.#field_ident);
             }
         });
 
@@ -209,14 +216,28 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
             // Generate the C# struct for the variant.
             public struct #ident : #interface
             {
-                #( #struct_fields; )*
+                // Populate the fields of the variant struct.
+                #(
+                    public #struct_fields;
+                )*
+
+                // Generate an internal constructor for creating an instance of the variant struct
+                // from its raw representation.
+                internal #ident(#raw_ident raw)
+                {
+                    #(
+                        #constructor_fields
+                    )*
+                }
             }
 
             // Generate the raw struct for the variant.
             [StructLayout(LayoutKind.Sequential)]
             internal struct #raw_ident
             {
-                #( #arg_binding_fields; )*
+                #(
+                    internal #arg_binding_fields;
+                )*
             }
         }
     });
