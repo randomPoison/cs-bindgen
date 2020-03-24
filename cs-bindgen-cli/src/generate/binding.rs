@@ -5,10 +5,7 @@
 //! from the Rust dylib. This module provides
 
 use crate::generate::{class, enumeration, quote_cs_type, TypeMap};
-use cs_bindgen_shared::{
-    schematic::{Enum, Schema, Struct},
-    BindingStyle, Export,
-};
+use cs_bindgen_shared::{schematic::Schema, BindingStyle, Export};
 use proc_macro2::TokenStream;
 use quote::*;
 use syn::{punctuated::Punctuated, token::Comma, Ident};
@@ -107,22 +104,23 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
             let into_raw = into_raw_fn_ident();
 
             let cs_repr = quote_cs_type(&export.schema, types);
-            let raw_repr = raw_ident(&export.name);
 
-            let (from_raw_impl, into_raw_impl) = match export.binding_style {
+            let (raw_repr, from_raw_impl, into_raw_impl) = match export.binding_style {
                 BindingStyle::Handle => {
+                    let raw_repr = raw_ident(&export.name).into_token_stream();
                     let from_raw_impl = quote! {
                         return new #cs_repr(raw);
                     };
                     let into_raw_impl = quote! {
-                        return new #raw_repr(self._handle);
+                        return new #raw_repr(self);
                     };
 
-                    (from_raw_impl, into_raw_impl)
+                    (raw_repr, from_raw_impl, into_raw_impl)
                 }
 
                 BindingStyle::Value => match &export.schema {
                     Schema::Struct(_) => {
+                        let raw_repr = raw_ident(&export.name).into_token_stream();
                         let from_raw_impl = quote! {
                             throw new NotImplementedException("Support passing structs by value");
                         };
@@ -130,14 +128,16 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
                             throw new NotImplementedException("Support passing structs by value");
                         };
 
-                        (from_raw_impl, into_raw_impl)
+                        (raw_repr, from_raw_impl, into_raw_impl)
                     }
 
                     Schema::Enum(schema) => {
+                        let raw_union = raw_ident(&export.name);
+                        let raw_repr = quote! { RawEnum<#raw_union> };
                         let from_raw_impl = enumeration::from_raw_impl(export, schema);
                         let into_raw_impl = enumeration::into_raw_impl(export, schema);
 
-                        (from_raw_impl, into_raw_impl)
+                        (raw_repr, from_raw_impl, into_raw_impl)
                     }
 
                     Schema::UnitStruct(..)
