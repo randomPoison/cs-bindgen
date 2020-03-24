@@ -29,6 +29,10 @@ pub fn from_raw_fn_ident() -> Ident {
     format_ident!("__FromRaw")
 }
 
+pub fn int_raw_fn_ident() -> Ident {
+    format_ident!("__IntoRaw")
+}
+
 /// Generates the identifier for the into-raw conversion function for the specified type.
 pub fn into_raw_fn_ident(schema: &Schema) -> Ident {
     let type_name = match schema {
@@ -220,7 +224,7 @@ pub fn quote_type_binding(schema: &Schema, types: &TypeMap) -> TokenStream {
         Schema::Enum(schema) => raw_ident(&schema.name.name).into_token_stream(),
         Schema::Struct(schema) => raw_ident(&schema.name.name).into_token_stream(),
 
-        // TODO: Add support for passing user-defined types to Rust.
+        // TODO: Add support for more user-defined types.
         Schema::UnitStruct(_)
         | Schema::NewtypeStruct(_)
         | Schema::TupleStruct(_)
@@ -233,44 +237,6 @@ pub fn quote_type_binding(schema: &Schema, types: &TypeMap) -> TokenStream {
 
         Schema::I128 | Schema::U128 => {
             unreachable!("Invalid types should have already been handled")
-        }
-    }
-}
-
-fn quote_struct_binding(schema: &Struct, types: &TypeMap) -> TokenStream {
-    let export = types
-        .get(&schema.name)
-        .expect("Couldn't find exported type for struct");
-
-    match export.binding_style {
-        BindingStyle::Handle => quote! { void* },
-        BindingStyle::Value => todo!("Support passing structs by value"),
-    }
-}
-
-fn quote_enum_binding(schema: &Enum, types: &TypeMap) -> TokenStream {
-    let export = types
-        .get(&schema.name)
-        .expect("Couldn't find exported type for enum");
-
-    match export.binding_style {
-        BindingStyle::Handle => quote! { void* },
-
-        // For enums that are passed by value, the raw representation depends on whether or
-        // not the enum carries additional data:
-        //
-        // * Data-carrying enums are represented as a `RawEnum<T>`, where `T` is a generated
-        //   union type containing the data for the variant.
-        // * C-like enums are represented as a single integer value. The type used for the
-        //   discriminant is either specified directly in the schema, or defaults to
-        //   `isize` (`IntPtr`).
-        BindingStyle::Value => {
-            if schema.has_data() {
-                let raw = raw_ident(&export.name);
-                quote! { RawEnum<#raw> }
-            } else {
-                enumeration::quote_discriminant_type(schema)
-            }
         }
     }
 }

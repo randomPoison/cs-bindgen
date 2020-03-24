@@ -62,56 +62,10 @@ pub fn quote_wrapper_fn<'a>(
 pub fn quote_invoke_args<'a>(
     args: impl Iterator<Item = (&'a str, &'a Schema)>,
 ) -> Punctuated<TokenStream, Comma> {
-    args.map(|(name, schema)| {
+    args.map(|(name, _)| {
         let ident = format_ident!("{}", name.to_mixed_case());
-        match schema {
-            // Basic numeric types (currently) don't require any processing.
-            Schema::I8
-            | Schema::I16
-            | Schema::I32
-            | Schema::I64
-            | Schema::U8
-            | Schema::U16
-            | Schema::U32
-            | Schema::U64
-            | Schema::F32
-            | Schema::F64 => ident.to_token_stream(),
-
-            Schema::Bool => quote! { (#ident ? 1 : 0) },
-
-            // To pass a string to Rust, we convert it into a `RawCsString` with the fixed pointer.
-            // The code for wrapping the body of the function in a `fixed` block is done below,
-            // since we need to generate the contents of the block first.
-            Schema::String => {
-                let fixed_ident = format_ident!("__fixed_{}", ident);
-                quote! {
-                    __bindings.__cs_bindgen_string_from_utf16(new RawCsString(#fixed_ident, #ident.Length))
-                }
-            }
-
-            Schema::Char => todo!("Support converting a C# `char` into a Rust `char`"),
-
-            // TODO: Actually look up the referenced type to determine what style of binding is
-            // being used. For now we only have support for simple (C-like) enums, so we simply
-            // cast the value to the appropriate integer type based on the enum repr.
-            Schema::Enum(schema) => {
-                let repr = enumeration::quote_discriminant_type(schema);
-                quote! { (#repr)#ident }
-            }
-
-            // TODO: Add support for passing user-defined types out from Rust.
-            Schema::Struct(_)
-            | Schema::UnitStruct(_)
-            | Schema::NewtypeStruct(_)
-            | Schema::TupleStruct(_)
-            | Schema::Option(_)
-            | Schema::Seq(_)
-            | Schema::Tuple(_)
-            | Schema::Map { .. } => todo!("Generate argument binding"),
-
-            Schema::I128 | Schema::U128 | Schema::Unit => {
-                unreachable!("Invalid argument types should have already been rejected");
-            }
+        quote! {
+            __bindings.__IntoRaw(#ident)
         }
     })
     .collect::<Punctuated<_, Comma>>()

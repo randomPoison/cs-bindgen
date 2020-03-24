@@ -117,13 +117,34 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
             internal static ulong __FromRaw(ulong raw) { return raw; }
             internal static float __FromRaw(float raw) { return raw; }
             internal static double __FromRaw(double raw) { return raw; }
-            internal static bool __FromRAw(RustBool raw) { return raw; }
+            internal static bool __FromRaw(RustBool raw) { return raw; }
 
             internal static string __FromRaw(RustOwnedString raw)
             {
                 string result = Encoding.UTF8.GetString(raw.Ptr, (int)raw.Length);
                 __bindings.__cs_bindgen_drop_string(raw);
                 return result;
+            }
+
+            // Overloads of `__IntoRaw` for primitives and built-in types.
+            internal static byte __IntoRaw(byte raw) { return raw; }
+            internal static sbyte __IntoRaw(sbyte raw) { return raw; }
+            internal static short __IntoRaw(short raw) { return raw; }
+            internal static ushort __IntoRaw(ushort raw) { return raw; }
+            internal static int __IntoRaw(int raw) { return raw; }
+            internal static uint __IntoRaw(uint raw) { return raw; }
+            internal static long __IntoRaw(long raw) { return raw; }
+            internal static ulong __IntoRaw(ulong raw) { return raw; }
+            internal static float __IntoRaw(float raw) { return raw; }
+            internal static double __IntoRaw(double raw) { return raw; }
+            internal static RustBool __IntoRaw(bool raw) { return raw; }
+
+            internal static RustOwnedString __IntoRaw(string orig)
+            {
+                fixed (char* origPtr = orig)
+                {
+                    return __cs_bindgen_string_from_utf16(new RawCsString(origPtr, orig.Length));
+                }
             }
         }
 
