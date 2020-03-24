@@ -4,11 +4,6 @@ use proc_macro2::TokenStream;
 use quote::*;
 use syn::Ident;
 
-/// Quotes the pointer type used for handles, i.e. `void*`.
-pub fn quote_handle_ptr() -> TokenStream {
-    quote! { void* }
-}
-
 pub fn quote_drop_fn(name: &str, dll_name: &str) -> TokenStream {
     let binding_ident = format_ident!("__cs_bindgen_drop__{}", name);
     let entry_point = binding_ident.to_string();
@@ -33,11 +28,16 @@ pub fn quote_struct(export: &NamedType, _schema: &Struct) -> TokenStream {
     }
 }
 
+/// Quotes the pointer type used for handles, i.e. `void*`.
+fn quote_handle_ptr() -> TokenStream {
+    quote! { void* }
+}
+
 fn quote_handle_type(name: &Ident, drop_fn: &Ident) -> TokenStream {
     quote! {
         public unsafe partial class #name : IDisposable
         {
-            private void* _handle;
+            internal void* _handle;
 
             internal #name(void* handle)
             {

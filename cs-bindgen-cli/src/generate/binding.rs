@@ -29,48 +29,12 @@ pub fn from_raw_fn_ident() -> Ident {
     format_ident!("__FromRaw")
 }
 
-pub fn int_raw_fn_ident() -> Ident {
+/// The identifier of the into-raw conversion method.
+///
+/// This method is overloaded for every supported primitive and exported type, so it
+/// can be used as a generic way to perform type conversion.
+pub fn into_raw_fn_ident() -> Ident {
     format_ident!("__IntoRaw")
-}
-
-/// Generates the identifier for the into-raw conversion function for the specified type.
-pub fn into_raw_fn_ident(schema: &Schema) -> Ident {
-    let type_name = match schema {
-        // For built-in types, there's an overload of `__IntoRaw` that can handle the
-        // conversion.
-        Schema::I8
-        | Schema::I16
-        | Schema::I32
-        | Schema::I64
-        | Schema::I128
-        | Schema::U8
-        | Schema::U16
-        | Schema::U32
-        | Schema::U64
-        | Schema::U128
-        | Schema::F32
-        | Schema::F64
-        | Schema::Unit
-        | Schema::Bool
-        | Schema::Char
-        | Schema::String => return format_ident!("__IntoRaw"),
-
-        // For user-defined types, we need to generate the name of the into-raw function
-        // based on the name of the type.
-        Schema::Enum(schema) => &schema.name,
-        Schema::Struct(schema) => &schema.name,
-
-        // TODO: Support remaining rust types.
-        Schema::UnitStruct(_)
-        | Schema::NewtypeStruct(_)
-        | Schema::TupleStruct(_)
-        | Schema::Option(_)
-        | Schema::Seq(_)
-        | Schema::Tuple(_)
-        | Schema::Map { .. } => todo!("Generate argument binding"),
-    };
-
-    format_ident!("__{}IntoRaw", &*type_name.name)
 }
 
 /// Generate the identifier for the raw type corresponding to the specified type.
@@ -140,26 +104,25 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
             };
 
             let from_raw = from_raw_fn_ident();
-            let into_raw = into_raw_fn_ident(&export.schema);
+            let into_raw = into_raw_fn_ident();
 
             let cs_repr = quote_cs_type(&export.schema, types);
+            let raw_repr = raw_ident(&export.name);
 
-            let (raw_repr, from_raw_impl, into_raw_impl) = match export.binding_style {
+            let (from_raw_impl, into_raw_impl) = match export.binding_style {
                 BindingStyle::Handle => {
-                    let raw_repr = class::quote_handle_ptr();
                     let from_raw_impl = quote! {
                         return new #cs_repr(raw);
                     };
                     let into_raw_impl = quote! {
-                        throw new NotImplementedException("Into-raw function isn't used for handle types");
+                        return new #raw_repr(self._handle);
                     };
 
-                    (raw_repr, from_raw_impl, into_raw_impl)
+                    (from_raw_impl, into_raw_impl)
                 }
 
                 BindingStyle::Value => match &export.schema {
                     Schema::Struct(_) => {
-                        let raw_repr = raw_ident(&export.name).into_token_stream();
                         let from_raw_impl = quote! {
                             throw new NotImplementedException("Support passing structs by value");
                         };
@@ -167,15 +130,14 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
                             throw new NotImplementedException("Support passing structs by value");
                         };
 
-                        (raw_repr, from_raw_impl, into_raw_impl)
+                        (from_raw_impl, into_raw_impl)
                     }
 
                     Schema::Enum(schema) => {
-                        let raw_repr = enumeration::quote_raw_type_reference(export, schema);
                         let from_raw_impl = enumeration::from_raw_impl(export, schema);
                         let into_raw_impl = enumeration::into_raw_impl(export, schema);
 
-                        (raw_repr, from_raw_impl, into_raw_impl)
+                        (from_raw_impl, into_raw_impl)
                     }
 
                     Schema::UnitStruct(..)
@@ -205,6 +167,7 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
     }
 }
 
+/// Generates the appropriate raw type name for the given type schema.
 pub fn quote_type_binding(schema: &Schema, types: &TypeMap) -> TokenStream {
     match schema {
         Schema::I8 => quote! { sbyte },

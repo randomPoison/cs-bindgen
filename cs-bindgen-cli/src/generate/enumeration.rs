@@ -21,32 +21,6 @@ pub fn quote_type_reference(export: &NamedType, schema: &Enum) -> TokenStream {
     }
 }
 
-/// Quotes the name of the generated C# type for the exported enum.
-///
-/// There are three possible raw representations for an enum:
-///
-/// * For C-like enums, the raw representation is the integer type used for the
-///   enum's discriminant.
-/// * For data-carrying enums that are marshaled by value, the raw representation is
-/// * For enums that are marshalled as handles, the raw representation is just the
-///   handle pointer type (`void*`).
-pub fn quote_raw_type_reference(export: &NamedType, schema: &Enum) -> TokenStream {
-    match export.binding_style {
-        BindingStyle::Value => {
-            if schema.has_data() {
-                let union_ty = binding::raw_ident(&export.name);
-                quote! {
-                    RawEnum<#union_ty>
-                }
-            } else {
-                quote_discriminant_type(schema)
-            }
-        }
-
-        BindingStyle::Handle => class::quote_handle_ptr(),
-    }
-}
-
 /// Quotes the appropriate discriminant type for the specified enum type.
 ///
 /// The generated type is the type use to represent the raw discriminant when
