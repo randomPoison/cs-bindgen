@@ -187,7 +187,7 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
         });
 
         let arg_binding_fields = fields.iter().map(|(field_ident, schema)| {
-            let binding_ty = binding::quote_type_binding(schema, types);
+            let binding_ty = binding::quote_raw_type_reference(schema, types);
 
             quote! {
                 #binding_ty #field_ident

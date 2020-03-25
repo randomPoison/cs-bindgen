@@ -51,7 +51,7 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
             let dll_import_attrib = quote_dll_import(dll_name, &export.binding);
             let binding_ident = format_ident!("{}", &*export.binding);
             let return_ty = match &export.output {
-                Some(output) => quote_type_binding(output, types),
+                Some(output) => quote_raw_type_reference(output, types),
                 None => quote! { void },
             };
             let args = quote_binding_args(export.inputs(), types);
@@ -66,7 +66,7 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
             let dll_import_attrib = quote_dll_import(dll_name, &export.binding);
             let binding_ident = format_ident!("{}", &*export.binding);
             let return_ty = match &export.output {
-                Some(output) => quote_type_binding(output, types),
+                Some(output) => quote_raw_type_reference(output, types),
                 None => quote! { void },
             };
 
@@ -104,10 +104,10 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
             let into_raw = into_raw_fn_ident();
 
             let cs_repr = quote_cs_type(&export.schema, types);
+            let raw_repr = quote_raw_type_reference(&export.schema, types);
 
-            let (raw_repr, from_raw_impl, into_raw_impl) = match export.binding_style {
+            let (from_raw_impl, into_raw_impl) = match export.binding_style {
                 BindingStyle::Handle => {
-                    let raw_repr = raw_ident(&export.name).into_token_stream();
                     let from_raw_impl = quote! {
                         return new #cs_repr(raw);
                     };
@@ -115,12 +115,11 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
                         return new #raw_repr(self);
                     };
 
-                    (raw_repr, from_raw_impl, into_raw_impl)
+                    (from_raw_impl, into_raw_impl)
                 }
 
                 BindingStyle::Value => match &export.schema {
                     Schema::Struct(_) => {
-                        let raw_repr = raw_ident(&export.name).into_token_stream();
                         let from_raw_impl = quote! {
                             throw new NotImplementedException("Support passing structs by value");
                         };
@@ -128,16 +127,14 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
                             throw new NotImplementedException("Support passing structs by value");
                         };
 
-                        (raw_repr, from_raw_impl, into_raw_impl)
+                        (from_raw_impl, into_raw_impl)
                     }
 
                     Schema::Enum(schema) => {
-                        let raw_union = raw_ident(&export.name);
-                        let raw_repr = quote! { RawEnum<#raw_union> };
                         let from_raw_impl = enumeration::from_raw_impl(export, schema);
                         let into_raw_impl = enumeration::into_raw_impl(export, schema);
 
-                        (raw_repr, from_raw_impl, into_raw_impl)
+                        (from_raw_impl, into_raw_impl)
                     }
 
                     Schema::UnitStruct(..)
@@ -168,7 +165,7 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
 }
 
 /// Generates the appropriate raw type name for the given type schema.
-pub fn quote_type_binding(schema: &Schema, types: &TypeMap) -> TokenStream {
+pub fn quote_raw_type_reference(schema: &Schema, types: &TypeMap) -> TokenStream {
     match schema {
         Schema::I8 => quote! { sbyte },
         Schema::I16 => quote! { short },
@@ -184,7 +181,29 @@ pub fn quote_type_binding(schema: &Schema, types: &TypeMap) -> TokenStream {
         Schema::Char => quote! { uint },
         Schema::String => quote! { RustOwnedString },
 
-        Schema::Enum(schema) => raw_ident(&schema.name.name).into_token_stream(),
+        Schema::Enum(schema) => {
+            let export = types
+                .get(&schema.name)
+                .expect("Failed to get export for enum");
+            let raw_ident = raw_ident(&schema.name.name);
+
+            // For enums that are marshaled as handles and C-style enums, the raw type uses the
+            // normal raw type naming conventions. For data-carrying enums that are marshaled by
+            // value, the raw type is `RawSchema<>` parameterized with the raw union type for
+            // the enum.
+            //
+            // TODO: If we did away with the generic `RawEnum<>` and instead generated the raw
+            // type for each enum to have the discriminant + data pair, we could simplify this
+            // logic and avoid the need to look up the export information in order to generate
+            // the type binding.
+            if export.binding_style == BindingStyle::Handle || !schema.has_data() {
+                raw_ident.into_token_stream()
+            } else {
+                quote! {
+                    RawEnum<#raw_ident>
+                }
+            }
+        }
         Schema::Struct(schema) => raw_ident(&schema.name.name).into_token_stream(),
 
         // TODO: Add support for more user-defined types.
@@ -220,7 +239,7 @@ fn quote_binding_args<'a>(
     inputs
         .map(|(name, schema)| {
             let ident = format_ident!("{}", name);
-            let ty = quote_type_binding(schema, types);
+            let ty = quote_raw_type_reference(schema, types);
 
             quote! { #ty #ident }
         })
