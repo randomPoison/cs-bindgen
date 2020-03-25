@@ -1,4 +1,4 @@
-use crate::generate::{func::*, TypeMap};
+use crate::generate::{binding, func::*, TypeMap};
 use cs_bindgen_shared::{schematic::Struct, BindingStyle, Method, NamedType, Schema};
 use proc_macro2::TokenStream;
 use quote::*;
@@ -18,25 +18,30 @@ pub fn quote_drop_fn(name: &str, dll_name: &str) -> TokenStream {
 
 pub fn quote_struct(export: &NamedType, _schema: &Struct) -> TokenStream {
     match export.binding_style {
-        BindingStyle::Handle => {
-            let ident = format_ident!("{}", &*export.name);
-            let drop_fn = format_ident!("__cs_bindgen_drop__{}", &*export.name);
-            quote_handle_type(&ident, &drop_fn)
-        }
+        BindingStyle::Handle => quote_handle_type(export),
 
         BindingStyle::Value => unimplemented!("Pass struct by value"),
     }
 }
 
-fn quote_handle_type(name: &Ident, drop_fn: &Ident) -> TokenStream {
-    quote! {
-        public unsafe partial class #name : IDisposable
-        {
-            private void* _handle;
+/// Quotes the pointer type used for handles, i.e. `void*`.
+fn quote_handle_ptr() -> TokenStream {
+    quote! { void* }
+}
 
-            internal #name(void* handle)
+fn quote_handle_type(export: &NamedType) -> TokenStream {
+    let ident = format_ident!("{}", &*export.name);
+    let drop_fn = format_ident!("__cs_bindgen_drop__{}", &*export.name);
+    let raw_repr = binding::raw_ident(&export.name);
+
+    quote! {
+        public unsafe partial class #ident : IDisposable
+        {
+            internal void* _handle;
+
+            internal #ident(#raw_repr raw)
             {
-                _handle = handle;
+                _handle = raw.Handle;
             }
 
             public void Dispose()
@@ -46,6 +51,18 @@ fn quote_handle_type(name: &Ident, drop_fn: &Ident) -> TokenStream {
                     __bindings.#drop_fn(_handle);
                     _handle = null;
                 }
+            }
+        }
+
+        [StructLayout(LayoutKind.Explicit)]
+        internal unsafe struct #raw_repr
+        {
+            [FieldOffset(0)]
+            public void* Handle;
+
+            public #raw_repr(#ident orig)
+            {
+                this.Handle = orig._handle;
             }
         }
     }
@@ -76,7 +93,7 @@ pub fn quote_method_binding(item: &Method, type_map: &TypeMap) -> TokenStream {
         let invoke_args = quote_invoke_args(item.inputs());
 
         let invoke = fold_fixed_blocks(
-            quote! { _handle = __bindings.#binding(#invoke_args); },
+            quote! { _handle = __bindings.#binding(#invoke_args).Handle; },
             item.inputs(),
         );
 

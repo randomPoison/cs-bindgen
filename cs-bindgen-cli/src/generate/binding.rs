@@ -1,17 +1,49 @@
-//! Utilities for generating the raw bindings to exported Rust functions.
+//! Utilities for generating the raw bindings to exported Rust items.
 //!
 //! In C#, the raw binding to an exported Rust function is a `static extern`
 //! function, using the `[DllImport]` attribute to load the corresponding function
 //! from the Rust dylib. This module provides
 
-use crate::generate::{class, quote_primitive_type, TypeMap};
-use cs_bindgen_shared::{
-    schematic::{Enum, Schema, Struct},
-    BindingStyle, Export,
-};
+use crate::generate::{class, enumeration, quote_cs_type, TypeMap};
+use cs_bindgen_shared::{schematic::Schema, BindingStyle, Export};
 use proc_macro2::TokenStream;
 use quote::*;
-use syn::{punctuated::Punctuated, token::Comma};
+use syn::{punctuated::Punctuated, token::Comma, Ident};
+
+// TODO: For the below functions that generate identifiers based on a type name, we
+// should use the fully-qualified `TypeName` instead of just a `&str` name. Right
+// now, if two types with the same name in different modules are exported, the
+// generated bindings will collide. We can avoid this by taking the module name into
+// account when generating the idents. This will require some additional mangling
+// logic, since the module paths include `::` characters, which aren't valid in C#
+// identifiers.
+
+/// The identifier of the from-raw conversion method.
+///
+/// This method is overloaded for every supported primitive and exported type, so it
+/// can be used as a generic way to perform type conversion.
+pub fn from_raw_fn_ident() -> Ident {
+    format_ident!("__FromRaw")
+}
+
+/// The identifier of the into-raw conversion method.
+///
+/// This method is overloaded for every supported primitive and exported type, so it
+/// can be used as a generic way to perform type conversion.
+pub fn into_raw_fn_ident() -> Ident {
+    format_ident!("__IntoRaw")
+}
+
+/// Generate the identifier for the raw type corresponding to the specified type.
+///
+/// When a user-defined type is marshaled by value, we generate a type that acts as
+/// an FFI-safe "raw" representation for that type. When communicating with Rust, we
+/// convert the C# representation of the type to-and-from the raw representation.
+/// This function provides the canonical way to generate the name of the raw type
+/// corresponding to any given exported Rust type.
+pub fn raw_ident(name: &str) -> Ident {
+    format_ident!("__{}__Raw", name)
+}
 
 pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> TokenStream {
     match export {
@@ -19,7 +51,7 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
             let dll_import_attrib = quote_dll_import(dll_name, &export.binding);
             let binding_ident = format_ident!("{}", &*export.binding);
             let return_ty = match &export.output {
-                Some(output) => quote_type_binding(output, types),
+                Some(output) => quote_raw_type_reference(output, types),
                 None => quote! { void },
             };
             let args = quote_binding_args(export.inputs(), types);
@@ -34,7 +66,7 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
             let dll_import_attrib = quote_dll_import(dll_name, &export.binding);
             let binding_ident = format_ident!("{}", &*export.binding);
             let return_ty = match &export.output {
-                Some(output) => quote_type_binding(output, types),
+                Some(output) => quote_raw_type_reference(output, types),
                 None => quote! { void },
             };
 
@@ -53,17 +85,87 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
             }
         }
 
+        // For named types, we generate some additional bindings:
+        //
+        // * For handle types, the Rust module exports a drop function that we need to free
+        //   the memory for the object.
+        // * We generate from-raw and into-raw conversion functions in order to convert the
+        //   C# representation of the type to-and-from the raw representation that can be
+        //   passed to Rust.
         Export::Named(export) => {
-            if export.binding_style == BindingStyle::Handle {
+            // Generate the drop function for the type (if needed).
+            let drop_fn = if export.binding_style == BindingStyle::Handle {
                 class::quote_drop_fn(&export.name, dll_name)
             } else {
                 quote! {}
+            };
+
+            let from_raw = from_raw_fn_ident();
+            let into_raw = into_raw_fn_ident();
+
+            let cs_repr = quote_cs_type(&export.schema, types);
+            let raw_repr = quote_raw_type_reference(&export.schema, types);
+
+            let (from_raw_impl, into_raw_impl) = match export.binding_style {
+                BindingStyle::Handle => {
+                    let from_raw_impl = quote! {
+                        return new #cs_repr(raw);
+                    };
+                    let into_raw_impl = quote! {
+                        return new #raw_repr(self);
+                    };
+
+                    (from_raw_impl, into_raw_impl)
+                }
+
+                BindingStyle::Value => match &export.schema {
+                    Schema::Struct(_) => {
+                        let from_raw_impl = quote! {
+                            throw new NotImplementedException("Support passing structs by value");
+                        };
+                        let into_raw_impl = quote! {
+                            throw new NotImplementedException("Support passing structs by value");
+                        };
+
+                        (from_raw_impl, into_raw_impl)
+                    }
+
+                    Schema::Enum(schema) => {
+                        let from_raw_impl = enumeration::from_raw_impl(export, schema);
+                        let into_raw_impl = enumeration::into_raw_impl(export, schema);
+
+                        (from_raw_impl, into_raw_impl)
+                    }
+
+                    Schema::UnitStruct(..)
+                    | Schema::TupleStruct(..)
+                    | Schema::NewtypeStruct(..) => {
+                        todo!("Support more kinds of user-defined types")
+                    }
+
+                    _ => unreachable!("Named type had invalid schema: {:?}", export.schema),
+                },
+            };
+
+            quote! {
+                #drop_fn
+
+                internal static #cs_repr #from_raw(#raw_repr raw)
+                {
+                    #from_raw_impl
+                }
+
+                internal static #raw_repr #into_raw(#cs_repr self)
+                {
+                    #into_raw_impl
+                }
             }
         }
     }
 }
 
-pub fn quote_type_binding(schema: &Schema, types: &TypeMap) -> TokenStream {
+/// Generates the appropriate raw type name for the given type schema.
+pub fn quote_raw_type_reference(schema: &Schema, types: &TypeMap) -> TokenStream {
     match schema {
         Schema::I8 => quote! { sbyte },
         Schema::I16 => quote! { short },
@@ -75,16 +177,14 @@ pub fn quote_type_binding(schema: &Schema, types: &TypeMap) -> TokenStream {
         Schema::U64 => quote! { ulong },
         Schema::F32 => quote! { float },
         Schema::F64 => quote! { double },
-        Schema::Bool => quote! { byte },
+        Schema::Bool => quote! { RustBool },
         Schema::Char => quote! { uint },
-
         Schema::String => quote! { RustOwnedString },
 
-        Schema::Enum(schema) => quote_enum_binding(schema, types),
+        Schema::Enum(schema) => raw_ident(&schema.name.name).into_token_stream(),
+        Schema::Struct(schema) => raw_ident(&schema.name.name).into_token_stream(),
 
-        Schema::Struct(schema) => quote_struct_binding(schema, types),
-
-        // TODO: Add support for passing user-defined types to Rust.
+        // TODO: Add support for more user-defined types.
         Schema::UnitStruct(_)
         | Schema::NewtypeStruct(_)
         | Schema::TupleStruct(_)
@@ -97,47 +197,6 @@ pub fn quote_type_binding(schema: &Schema, types: &TypeMap) -> TokenStream {
 
         Schema::I128 | Schema::U128 => {
             unreachable!("Invalid types should have already been handled")
-        }
-    }
-}
-
-fn quote_struct_binding(schema: &Struct, types: &TypeMap) -> TokenStream {
-    let export = types
-        .get(&schema.name)
-        .expect("Couldn't find exported type for struct");
-
-    match export.binding_style {
-        BindingStyle::Handle => quote! { void* },
-        BindingStyle::Value => todo!("Support passing structs by value"),
-    }
-}
-
-fn quote_enum_binding(schema: &Enum, types: &TypeMap) -> TokenStream {
-    let export = types
-        .get(&schema.name)
-        .expect("Couldn't find exported type for enum");
-
-    match export.binding_style {
-        BindingStyle::Handle => quote! { void* },
-
-        // For enums that are passed by value, the raw representation depends on whether or
-        // not the enum carries additional data:
-        //
-        // * Data-carrying enums are represented as a `RawEnum<T>`, where `T` is a generated
-        //   union type containing the data for the variant.
-        // * C-like enums are represented as a single integer value. The type used for the
-        //   discriminant is either specified directly in the schema, or defaults to
-        //   `isize`/`IntPtr`.
-        BindingStyle::Value => {
-            if schema.has_data() {
-                let raw = format_ident!("{}__Raw", &*export.name);
-                quote! { RawEnum<#raw> }
-            } else {
-                schema
-                    .repr
-                    .map(quote_primitive_type)
-                    .unwrap_or(quote! { IntPtr })
-            }
         }
     }
 }
@@ -158,7 +217,7 @@ fn quote_binding_args<'a>(
     inputs
         .map(|(name, schema)| {
             let ident = format_ident!("{}", name);
-            let ty = quote_type_binding(schema, types);
+            let ty = quote_raw_type_reference(schema, types);
 
             quote! { #ty #ident }
         })

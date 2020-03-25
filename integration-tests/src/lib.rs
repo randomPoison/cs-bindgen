@@ -130,7 +130,12 @@ pub enum DataEnum {
     Baz { name: String, value: i32 },
 }
 
-// #[cs_bindgen]
+#[cs_bindgen]
+pub fn roundtrip_data_enum(val: DataEnum) -> DataEnum {
+    val
+}
+
+#[cs_bindgen]
 pub fn generate_data_enum() -> DataEnum {
     DataEnum::Baz {
         name: "Randal".into(),

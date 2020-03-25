@@ -1,4 +1,4 @@
-use crate::generate::{quote_cs_type, quote_primitive_type, TypeMap};
+use crate::generate::{binding, enumeration, quote_cs_type, TypeMap};
 use cs_bindgen_shared::*;
 use heck::*;
 use proc_macro2::TokenStream;
@@ -62,59 +62,10 @@ pub fn quote_wrapper_fn<'a>(
 pub fn quote_invoke_args<'a>(
     args: impl Iterator<Item = (&'a str, &'a Schema)>,
 ) -> Punctuated<TokenStream, Comma> {
-    args.map(|(name, schema)| {
+    args.map(|(name, _)| {
         let ident = format_ident!("{}", name.to_mixed_case());
-        match schema {
-            // Basic numeric types (currently) don't require any processing.
-            Schema::I8
-            | Schema::I16
-            | Schema::I32
-            | Schema::I64
-            | Schema::U8
-            | Schema::U16
-            | Schema::U32
-            | Schema::U64
-            | Schema::F32
-            | Schema::F64 => ident.to_token_stream(),
-
-            Schema::Bool => quote! { (#ident ? 1 : 0) },
-
-            // To pass a string to Rust, we convert it into a `RawCsString` with the fixed pointer.
-            // The code for wrapping the body of the function in a `fixed` block is done below,
-            // since we need to generate the contents of the block first.
-            Schema::String => {
-                let fixed_ident = format_ident!("__fixed_{}", ident);
-                quote! {
-                    __bindings.__cs_bindgen_string_from_utf16(new RawCsString(#fixed_ident, #ident.Length))
-                }
-            }
-
-            Schema::Char => todo!("Support converting a C# `char` into a Rust `char`"),
-
-            // TODO: Actually look up the referenced type to determine what style of binding is
-            // being used. For now we only have support for simple (C-like) enums, so we simply
-            // cast the value to the appropriate integer type based on the enum repr.
-            Schema::Enum(schema) => {
-                let repr = schema
-                    .repr
-                    .map(quote_primitive_type)
-                    .unwrap_or_else(|| quote! { IntPtr });
-                quote! { (#repr)#ident }
-            }
-
-            // TODO: Add support for passing user-defined types out from Rust.
-            Schema::Struct(_)
-            | Schema::UnitStruct(_)
-            | Schema::NewtypeStruct(_)
-            | Schema::TupleStruct(_)
-            | Schema::Option(_)
-            | Schema::Seq(_)
-            | Schema::Tuple(_)
-            | Schema::Map { .. } => todo!("Generate argument binding"),
-
-            Schema::I128 | Schema::U128 | Schema::Unit => {
-                unreachable!("Invalid argument types should have already been rejected");
-            }
+        quote! {
+            __bindings.__IntoRaw(#ident)
         }
     })
     .collect::<Punctuated<_, Comma>>()
@@ -143,91 +94,13 @@ pub fn quote_wrapper_body<'a>(
 
     // Generate the expression for invoking the raw binding and then converting the raw
     // return value into the appropriate C# type.
+    let from_raw = binding::from_raw_fn_ident();
     let invoke = quote! { #binding(#invoke_args) };
+
+    // Handle difference in how binding function needs to be invoked depending on
+    // whether or not the function returns a value.
     let invoke = match output {
-        Some(output) => match output {
-            // NOTE: For `void` returns there's no intermediate variable for the return value
-            // (since we can't have a `void` variable).
-            Schema::Unit => quote! { #invoke; },
-
-            // Basic numeric types (currently) don't require any processing.
-            Schema::I8
-            | Schema::I16
-            | Schema::I32
-            | Schema::I64
-            | Schema::U8
-            | Schema::U16
-            | Schema::U32
-            | Schema::U64
-            | Schema::F32
-            | Schema::F64 => quote! { #ret = #invoke; },
-
-            // `bool` is returned as a `u8`, so we do an explicit comparison to convert it back
-            // to a `bool` on the C# side.
-            Schema::Bool => quote! { #ret = #invoke != 0; },
-
-            // To pass a string to Rust, we convert it into a `RawCsString` with the fixed pointer.
-            // The code for wrapping the body of the function in a `fixed` block is done below,
-            // since we need to generate the contents of the block first.
-            //
-            // Once we decode the Rust string into a C# string, we also need to drop the original
-            // Rust string.
-            Schema::String => quote! {
-                var __raw_result = #invoke;
-                #ret = Encoding.UTF8.GetString(__raw_result.Ptr, (int)__raw_result.Length);
-                __bindings.__cs_bindgen_drop_string(__raw_result);
-            },
-
-            Schema::Char => todo!("Support converting a C# `char` into a Rust `char`"),
-
-            // NOTE: We don't need to check the binding style when converting structs because
-            // the generated struct will have an overloaded constructor for all supported
-            // binding styles.
-            Schema::Struct(output) => {
-                let ty_ident = format_ident!("{}", &*output.name.name);
-                quote! { #ret = new #ty_ident(#invoke); }
-            }
-
-            Schema::Enum(output) => {
-                let export = types
-                    .get(&output.name)
-                    .expect("Couldn't find exported type for enum");
-
-                match export.binding_style {
-                    // For handle enums, we directly pass the raw output to the generated class's
-                    // constructor.
-                    BindingStyle::Handle => {
-                        let ty_ident = format_ident!("{}", &*output.name.name);
-                        quote! { #ret = new #ty_ident(#invoke); }
-                    }
-
-                    BindingStyle::Value => {
-                        if output.has_data() {
-                            todo!("Generate raw conversion for data-carrying enums")
-                        } else {
-                            // For C-like enums, we simply cast the returned value to the generated
-                            // enum type.
-                            let ty_ident = format_ident!("{}", &*output.name.name);
-                            quote! { #ret = (#ty_ident)#invoke; }
-                        }
-                    }
-                }
-            }
-
-            // TODO: Add support for passing user-defined types out from Rust.
-            Schema::UnitStruct(_)
-            | Schema::NewtypeStruct(_)
-            | Schema::TupleStruct(_)
-            | Schema::Option(_)
-            | Schema::Seq(_)
-            | Schema::Tuple(_)
-            | Schema::Map { .. } => todo!("Generate return value conversion in wrapper function"),
-
-            Schema::I128 | Schema::U128 => {
-                unreachable!("Invalid argument types should have already been rejected");
-            }
-        },
-
+        Some(_) => quote! { #ret = __bindings.#from_raw(#invoke); },
         None => quote! { #invoke; },
     };
 
