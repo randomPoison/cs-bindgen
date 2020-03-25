@@ -96,6 +96,7 @@ pub fn void_return(test: i32) {
 }
 
 #[cs_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SimpleCEnum {
     Foo,
     Bar,
@@ -108,6 +109,7 @@ pub fn roundtrip_simple_enum(val: SimpleCEnum) -> SimpleCEnum {
 }
 
 #[cs_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EnumWithDiscriminants {
     Hello,
     There = 5,
@@ -124,10 +126,27 @@ pub fn roundtrip_simple_enum_with_discriminants(
 }
 
 #[cs_bindgen]
+#[derive(Debug, Clone)]
 pub enum DataEnum {
     Foo,
     Bar(String),
     Baz { name: String, value: i32 },
+    Coolness(InnerEnum),
+    NestedStruct(InnerStruct),
+}
+
+#[cs_bindgen]
+#[derive(Debug, Clone)]
+pub enum InnerEnum {
+    Cool(SimpleCEnum),
+    Cooler(SimpleCEnum),
+    Coolest(SimpleCEnum),
+}
+
+#[cs_bindgen]
+#[derive(Debug, Clone)]
+pub struct InnerStruct {
+    pub value: i32,
 }
 
 #[cs_bindgen]
@@ -141,4 +160,10 @@ pub fn generate_data_enum() -> DataEnum {
         name: "Randal".into(),
         value: 11,
     }
+}
+
+#[cs_bindgen]
+#[derive(Debug, Clone)]
+pub struct WrapperType {
+    pub value: DataEnum,
 }

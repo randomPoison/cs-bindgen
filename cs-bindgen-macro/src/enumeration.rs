@@ -175,7 +175,7 @@ fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
 
         Some(quote! {
             #[repr(C)]
-            #[derive(Debug, Clone, Copy)]
+            #[derive(Clone, Copy)]
             #[allow(bad_style)]
             pub struct #abi_ident {
                 #( #from_fields, )*
