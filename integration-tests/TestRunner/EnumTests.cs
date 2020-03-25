@@ -38,14 +38,26 @@ namespace TestRunner
         [Fact]
         public void DataEnumRoundTrip()
         {
-            var foo = new Foo();
-            Assert.Equal(foo, IntegrationTests.RoundtripDataEnum(foo));
+            {
+                var orig = new Foo();
+                var result = (Foo)IntegrationTests.RoundtripDataEnum(orig);
+                Assert.Equal(orig, result);
+            }
 
-            var bar = new Bar() { Element0 = "What a cool enum!" };
-            Assert.Equal(bar, IntegrationTests.RoundtripDataEnum(bar));
+            {
+                var orig = new Bar() { Element0 = "What a cool enum!" };
+                var result = (Bar)IntegrationTests.RoundtripDataEnum(orig);
+                Assert.Equal(orig, result);
+                Assert.Equal(orig.Element0, result.Element0);
+            }
 
-            var baz = new Baz { Name = "Cool Guy McGee", Value = 69 };
-            Assert.Equal(baz, IntegrationTests.RoundtripDataEnum(baz));
+            {
+                var orig = new Baz { Name = "Cool Guy McGee", Value = 69 };
+                var result = (Baz)IntegrationTests.RoundtripDataEnum(orig);
+                Assert.Equal(orig, result);
+                Assert.Equal(orig.Name, result.Name);
+                Assert.Equal(orig.Value, result.Value);
+            }
         }
     }
 }
