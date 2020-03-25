@@ -3,6 +3,7 @@ use cs_bindgen_shared::{schematic::Enum, schematic::Variant, BindingStyle, Named
 use heck::*;
 use proc_macro2::{Literal, TokenStream};
 use quote::*;
+use syn::Ident;
 
 pub fn quote_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap) -> TokenStream {
     // Determine if we're dealing with a simple (C-like) enum or one with fields.
@@ -88,7 +89,8 @@ pub fn into_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
         };
     }
 
-    let union_ty = binding::raw_ident(&export.name);
+    let raw_struct_ty = binding::raw_ident(&export.name);
+    let union_ty = union_struct_name(&export.name);
 
     let variant_name = schema
         .variants
@@ -126,7 +128,7 @@ pub fn into_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
             #(
                 case #variant_type #variant_name:
                 {
-                    return new RawEnum<#union_ty>(
+                    return new #raw_struct_ty(
                         #discriminant,
                         new #union_ty() { #convert_union_field });
                 }
@@ -300,7 +302,8 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
         }
     });
 
-    let raw_union = binding::raw_ident(&export.name);
+    let raw_struct = binding::raw_ident(&export.name);
+    let union_struct = union_struct_name(&export.name);
 
     quote! {
         // Generate an interface for the enum.
@@ -309,9 +312,34 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
         // Generate the struct declarations for each variant of the enum.
         #( #variant_structs )*
 
+        [StructLayout(LayoutKind.Sequential)]
+        internal unsafe struct #raw_struct
+        {
+            public IntPtr Discriminant;
+            public #union_struct Value;
+
+            public #raw_struct(int discriminant, #union_struct value)
+            {
+                this.Discriminant = new IntPtr(discriminant);
+                this.Value = value;
+            }
+
+            public #raw_struct(long discriminant, #union_struct value)
+            {
+                this.Discriminant = new IntPtr(discriminant);
+                this.Value = value;
+            }
+
+            public #raw_struct(IntPtr discriminant, #union_struct value)
+            {
+                this.Discriminant = discriminant;
+                this.Value = value;
+            }
+        }
+
         // Generate the binding "unions" for args/returns.
         [StructLayout(LayoutKind.Explicit)]
-        internal struct #raw_union
+        internal struct #union_struct
         {
             #(
                 [FieldOffset(0)]
@@ -319,6 +347,10 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
             )*
         }
     }
+}
+
+fn union_struct_name(name: &str) -> Ident {
+    format_ident!("{}_Data_Raw", name)
 }
 
 // TODO: Generate more robust type names, specifically taking into account the name

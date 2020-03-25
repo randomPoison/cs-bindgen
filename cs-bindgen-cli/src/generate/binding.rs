@@ -181,29 +181,7 @@ pub fn quote_raw_type_reference(schema: &Schema, types: &TypeMap) -> TokenStream
         Schema::Char => quote! { uint },
         Schema::String => quote! { RustOwnedString },
 
-        Schema::Enum(schema) => {
-            let export = types
-                .get(&schema.name)
-                .expect("Failed to get export for enum");
-            let raw_ident = raw_ident(&schema.name.name);
-
-            // For enums that are marshaled as handles and C-style enums, the raw type uses the
-            // normal raw type naming conventions. For data-carrying enums that are marshaled by
-            // value, the raw type is `RawSchema<>` parameterized with the raw union type for
-            // the enum.
-            //
-            // TODO: If we did away with the generic `RawEnum<>` and instead generated the raw
-            // type for each enum to have the discriminant + data pair, we could simplify this
-            // logic and avoid the need to look up the export information in order to generate
-            // the type binding.
-            if export.binding_style == BindingStyle::Handle || !schema.has_data() {
-                raw_ident.into_token_stream()
-            } else {
-                quote! {
-                    RawEnum<#raw_ident>
-                }
-            }
-        }
+        Schema::Enum(schema) => raw_ident(&schema.name.name).into_token_stream(),
         Schema::Struct(schema) => raw_ident(&schema.name.name).into_token_stream(),
 
         // TODO: Add support for more user-defined types.
