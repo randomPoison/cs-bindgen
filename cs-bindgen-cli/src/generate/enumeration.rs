@@ -49,7 +49,7 @@ pub fn from_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
         .map(|(index, _)| Literal::usize_unsuffixed(index));
 
     let convert_variants = schema.variants.iter().map(|variant| {
-        let cs_repr = raw_variant_struct_name(variant.name());
+        let cs_repr = variant_struct_name(variant.name());
 
         if variant.is_empty() {
             println!("Variant {:?} is empty", variant);
@@ -98,7 +98,7 @@ pub fn into_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
     let variant_type = schema
         .variants
         .iter()
-        .map(|variant| raw_variant_struct_name(&variant.name()));
+        .map(|variant| variant_struct_name(&variant.name()));
 
     let discriminant = schema
         .variants
@@ -106,13 +106,29 @@ pub fn into_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
         .enumerate()
         .map(|(index, _)| Literal::usize_unsuffixed(index));
 
+    let convert_union_field = schema.variants.iter().map(|variant| {
+        // Empty variants aren't represented in the union, so leave the constructor body
+        // empty.
+        if variant.is_empty() {
+            quote! {}
+        } else {
+            let variant_name = format_ident!("{}", variant.name());
+            let raw_variant_type = binding::raw_ident(variant.name());
+            quote! {
+                #variant_name = new #raw_variant_type(#variant_name)
+            }
+        }
+    });
+
     quote! {
         switch (self)
         {
             #(
                 case #variant_type #variant_name:
                 {
-                    return new RawEnum<#union_ty>(#discriminant, new #union_ty(#variant_name));
+                    return new RawEnum<#union_ty>(
+                        #discriminant,
+                        new #union_ty() { #convert_union_field });
                 }
             )*
 
@@ -204,7 +220,7 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
     // * The raw representation which is kept internal and used as a field of the raw
     //   union for the enum.
     let variant_structs = schema.variants.iter().map(|variant| {
-        let ident = raw_variant_struct_name(variant.name());
+        let ident = variant_struct_name(variant.name());
         let raw_ident = binding::raw_ident(variant.name());
 
         let fields = variant
@@ -243,6 +259,8 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
             }
         });
 
+        let field_name = fields.iter().map(|(name, _)| name);
+
         quote! {
             // Generate the C# struct for the variant.
             public struct #ident : #interface
@@ -269,6 +287,15 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
                 #(
                     internal #arg_binding_fields;
                 )*
+
+                // Generate a constructor that converts the C# representation of the variant into
+                // its raw representation.
+                public #raw_ident(#ident self)
+                {
+                    #(
+                        this.#field_name = __bindings.__IntoRaw(self.#field_name);
+                    )*
+                }
             }
         }
     });
@@ -294,6 +321,9 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
     }
 }
 
-fn raw_variant_struct_name(name: &str) -> TokenStream {
+// TODO: Generate more robust type names, specifically taking into account the name
+// of the enum itself. Currently if an enum variant has the same name as another
+// struct it'll result in a name collision.
+fn variant_struct_name(name: &str) -> TokenStream {
     format_ident!("{}", name).into_token_stream()
 }
