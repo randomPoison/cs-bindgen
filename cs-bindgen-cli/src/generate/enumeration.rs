@@ -1,4 +1,4 @@
-use crate::generate::{binding, class, quote_cs_type, quote_primitive_type, TypeMap};
+use crate::generate::{binding, quote_cs_type, quote_primitive_type, TypeMap};
 use cs_bindgen_shared::{schematic::Enum, schematic::Variant, BindingStyle, NamedType};
 use heck::*;
 use proc_macro2::{Literal, TokenStream};
@@ -79,9 +79,46 @@ pub fn from_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
     }
 }
 
-pub fn into_raw_impl(_export: &NamedType, _schema: &Enum) -> TokenStream {
+pub fn into_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
+    // For C-like enums, the conversion is just invoking the constructor of the raw struct.
+    if !schema.has_data() {
+        let raw_ident = binding::raw_ident(&export.name);
+        return quote! {
+            return new #raw_ident(self);
+        };
+    }
+
+    let union_ty = binding::raw_ident(&export.name);
+
+    let variant_name = schema
+        .variants
+        .iter()
+        .map(|variant| format_ident!("{}", &variant.name()));
+
+    let variant_type = schema
+        .variants
+        .iter()
+        .map(|variant| raw_variant_struct_name(&variant.name()));
+
+    let discriminant = schema
+        .variants
+        .iter()
+        .enumerate()
+        .map(|(index, _)| Literal::usize_unsuffixed(index));
+
     quote! {
-        throw new NotImplementedException("Convert enum to raw representation");
+        switch (self)
+        {
+            #(
+                case #variant_type #variant_name:
+                {
+                    return new RawEnum<#union_ty>(#discriminant, new #union_ty(#variant_name));
+                }
+            )*
+
+            default:
+                throw new Exception("Unrecognized enum variant: " + self);
+        }
     }
 }
 
@@ -121,11 +158,16 @@ fn quote_simple_enum_binding(export: &NamedType, schema: &Enum) -> TokenStream {
         internal unsafe struct #raw_ident
         {
             [FieldOffset(0)]
-            private #discriminant_ty _inner;
+            public #discriminant_ty Inner;
+
+            public #raw_ident(#ident self)
+            {
+                this.Inner = (#discriminant_ty)self;
+            }
 
             public static explicit operator #ident(#raw_ident raw)
             {
-                return (#ident)raw._inner;
+                return (#ident)raw.Inner;
             }
         }
     }

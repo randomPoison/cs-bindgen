@@ -208,6 +208,24 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
         {
             public IntPtr Discriminant;
             public V Value;
+
+            public RawEnum(int discriminant, V value)
+            {
+                this.Discriminant = new IntPtr(discriminant);
+                this.Value = value;
+            }
+
+            public RawEnum(long discriminant, V value)
+            {
+                this.Discriminant = new IntPtr(discriminant);
+                this.Value = value;
+            }
+
+            public RawEnum(IntPtr discriminant, V value)
+            {
+                this.Discriminant = discriminant;
+                this.Value = value;
+            }
         }
     };
 
