@@ -264,16 +264,24 @@ fn quote_cs_type(schema: &Schema, type_map: &TypeMap) -> TokenStream {
                 .get(&schema.name)
                 .expect("Failed to look up referenced type");
 
+            let ident = format_ident!("{}", &*export.name).into_token_stream();
+
             // TODO: Take into account things like custom namespaces or renaming the type, once
-            // those are supported.
-            format_ident!("{}", &*export.name).into_token_stream()
+            // those are supported. For now, we manually prefix references to user-defined types
+            // with `global::` in order to avoid name collisions. Once we support custom
+            // namespaces, we'll want to use the correct namespace name instead.
+            quote! { global::#ident }
         }
 
         Schema::Enum(schema) => {
             let export = type_map
                 .get(&schema.name)
                 .expect("Failed to look up referenced type");
-            enumeration::quote_type_reference(&export, schema)
+            let ident = enumeration::quote_type_reference(&export, schema);
+
+            // TODO: Once custom namespaces are supported, use the appropriate namespace instead
+            // of `global::`.
+            quote! { global::#ident }
         }
 
         // TODO: Add support for passing user-defined types out from Rust.
