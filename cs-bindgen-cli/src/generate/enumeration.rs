@@ -198,6 +198,7 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
         "Right now we only support exporting complex enums by value"
     );
 
+    let wrapper_class = format_ident!("{}", &*export.name);
     let interface = format_ident!("I{}", &*export.name);
 
     // Generate the declarations for the fields of the raw union. There's one field for
@@ -307,11 +308,17 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
 
     quote! {
         // Generate an interface for the enum.
-        public interface #interface {}
+        public interface #interface { }
 
-        // Generate the struct declarations for each variant of the enum.
-        #( #variant_structs )*
+        // Generate wrapper class in order to namespace the variants.
+        public static class #wrapper_class
+        {
+            // Generate the struct declarations for each variant of the enum.
+            #( #variant_structs )*
+        }
 
+        // Generate the raw struct, which contains the discriminant and a union of all the
+        // possible variants. This needs to match the `RawEnum<D, V>` type on the Rust side.
         [StructLayout(LayoutKind.Sequential)]
         internal unsafe struct #raw_struct
         {
@@ -337,7 +344,7 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
             }
         }
 
-        // Generate the binding "unions" for args/returns.
+        // Generate a struct that acts as a union of all the data-carrying variants.
         [StructLayout(LayoutKind.Explicit)]
         internal struct #union_struct
         {
