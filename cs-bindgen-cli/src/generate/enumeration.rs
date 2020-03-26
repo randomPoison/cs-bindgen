@@ -1,4 +1,4 @@
-use crate::generate::{binding, quote_cs_type, quote_primitive_type, TypeMap};
+use crate::generate::{self, binding, quote_primitive_type, TypeMap};
 use cs_bindgen_shared::{schematic::Enum, schematic::Variant, BindingStyle, NamedType};
 use heck::*;
 use proc_macro2::{Literal, TokenStream};
@@ -240,7 +240,7 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
             .collect::<Vec<_>>();
 
         let struct_fields = fields.iter().map(|(field_ident, schema)| {
-            let ty = quote_cs_type(schema, types);
+            let ty = generate::quote_cs_type(schema, types);
             quote! {
                 #ty #field_ident
             }
@@ -381,7 +381,7 @@ fn variant_struct_type_ref(export: &NamedType, variant: &Variant) -> TokenStream
     }
 }
 
-fn raw_variant_struct_type_ref(export: &NamedType, variant: &Variant) -> TokenStream {
+pub fn raw_variant_struct_type_ref(export: &NamedType, variant: &Variant) -> TokenStream {
     let wrapper_class = wrapper_class_name(export);
     let raw_variant_struct_name = binding::raw_ident(variant.name());
     quote! {
