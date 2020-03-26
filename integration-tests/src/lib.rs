@@ -1,4 +1,9 @@
+use crate::data_enum::DataEnum;
 use cs_bindgen::prelude::*;
+
+pub mod data_enum;
+pub mod name_collision;
+pub mod simple_enum;
 
 // Re-export core cs_bindgen functionality. Required in order for the generated Wasm module.
 cs_bindgen::export!();
@@ -93,73 +98,6 @@ impl Address {
 #[cs_bindgen]
 pub fn void_return(test: i32) {
     println!("{}", test);
-}
-
-#[cs_bindgen]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum SimpleCEnum {
-    Foo,
-    Bar,
-    Baz,
-}
-
-#[cs_bindgen]
-pub fn roundtrip_simple_enum(val: SimpleCEnum) -> SimpleCEnum {
-    val
-}
-
-#[cs_bindgen]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum EnumWithDiscriminants {
-    Hello,
-    There = 5,
-    How,
-    Are,
-    You = -12,
-}
-
-#[cs_bindgen]
-pub fn roundtrip_simple_enum_with_discriminants(
-    val: EnumWithDiscriminants,
-) -> EnumWithDiscriminants {
-    val
-}
-
-#[cs_bindgen]
-#[derive(Debug, Clone)]
-pub enum DataEnum {
-    Foo,
-    Bar(String),
-    Baz { name: String, value: i32 },
-    Coolness(InnerEnum),
-    NestedStruct(InnerStruct),
-}
-
-#[cs_bindgen]
-#[derive(Debug, Clone)]
-pub enum InnerEnum {
-    Cool(SimpleCEnum),
-    Cooler(SimpleCEnum),
-    Coolest(SimpleCEnum),
-}
-
-#[cs_bindgen]
-#[derive(Debug, Clone)]
-pub struct InnerStruct {
-    pub value: i32,
-}
-
-#[cs_bindgen]
-pub fn roundtrip_data_enum(val: DataEnum) -> DataEnum {
-    val
-}
-
-#[cs_bindgen]
-pub fn generate_data_enum() -> DataEnum {
-    DataEnum::Baz {
-        name: "Randal".into(),
-        value: 11,
-    }
 }
 
 #[cs_bindgen]

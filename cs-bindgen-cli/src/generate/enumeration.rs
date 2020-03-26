@@ -1,4 +1,4 @@
-use crate::generate::{binding, quote_cs_type, quote_primitive_type, TypeMap};
+use crate::generate::{self, binding, quote_primitive_type, TypeMap};
 use cs_bindgen_shared::{schematic::Enum, schematic::Variant, BindingStyle, NamedType};
 use heck::*;
 use proc_macro2::{Literal, TokenStream};
@@ -50,10 +50,9 @@ pub fn from_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
         .map(|(index, _)| Literal::usize_unsuffixed(index));
 
     let convert_variants = schema.variants.iter().map(|variant| {
-        let cs_repr = variant_struct_name(variant.name());
+        let cs_repr = variant_struct_type_ref(export, variant);
 
         if variant.is_empty() {
-            println!("Variant {:?} is empty", variant);
             quote! {
                 return new #cs_repr();
             }
@@ -100,7 +99,7 @@ pub fn into_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
     let variant_type = schema
         .variants
         .iter()
-        .map(|variant| variant_struct_name(&variant.name()));
+        .map(|variant| variant_struct_type_ref(export, variant));
 
     let discriminant = schema
         .variants
@@ -115,7 +114,7 @@ pub fn into_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
             quote! {}
         } else {
             let variant_name = format_ident!("{}", variant.name());
-            let raw_variant_type = binding::raw_ident(variant.name());
+            let raw_variant_type = raw_variant_struct_type_ref(export, variant);
             quote! {
                 #variant_name = new #raw_variant_type(#variant_name)
             }
@@ -198,6 +197,7 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
         "Right now we only support exporting complex enums by value"
     );
 
+    let wrapper_class = format_ident!("{}", &*export.name);
     let interface = format_ident!("I{}", &*export.name);
 
     // Generate the declarations for the fields of the raw union. There's one field for
@@ -210,7 +210,7 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
             let name = format_ident!("{}", variant.name());
 
             Some(quote! {
-                #binding_ty #name
+                #wrapper_class.#binding_ty #name
             })
         }
     });
@@ -222,7 +222,7 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
     // * The raw representation which is kept internal and used as a field of the raw
     //   union for the enum.
     let variant_structs = schema.variants.iter().map(|variant| {
-        let ident = variant_struct_name(variant.name());
+        let ident = variant_struct_name(variant);
         let raw_ident = binding::raw_ident(variant.name());
 
         let fields = variant
@@ -240,7 +240,7 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
             .collect::<Vec<_>>();
 
         let struct_fields = fields.iter().map(|(field_ident, schema)| {
-            let ty = quote_cs_type(schema, types);
+            let ty = generate::quote_cs_type(schema, types);
             quote! {
                 #ty #field_ident
             }
@@ -307,11 +307,17 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
 
     quote! {
         // Generate an interface for the enum.
-        public interface #interface {}
+        public interface #interface { }
 
-        // Generate the struct declarations for each variant of the enum.
-        #( #variant_structs )*
+        // Generate wrapper class in order to namespace the variants.
+        public static class #wrapper_class
+        {
+            // Generate the struct declarations for each variant of the enum.
+            #( #variant_structs )*
+        }
 
+        // Generate the raw struct, which contains the discriminant and a union of all the
+        // possible variants. This needs to match the `RawEnum<D, V>` type on the Rust side.
         [StructLayout(LayoutKind.Sequential)]
         internal unsafe struct #raw_struct
         {
@@ -337,7 +343,7 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
             }
         }
 
-        // Generate the binding "unions" for args/returns.
+        // Generate a struct that acts as a union of all the data-carrying variants.
         [StructLayout(LayoutKind.Explicit)]
         internal struct #union_struct
         {
@@ -349,13 +355,40 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
     }
 }
 
-fn union_struct_name(name: &str) -> Ident {
-    format_ident!("{}_Data_Raw", name)
+/// Returns the name of the wrapper class generated for for the specified exported type.
+fn wrapper_class_name(export: &NamedType) -> Ident {
+    format_ident!("{}", &*export.name)
 }
 
-// TODO: Generate more robust type names, specifically taking into account the name
-// of the enum itself. Currently if an enum variant has the same name as another
-// struct it'll result in a name collision.
-fn variant_struct_name(name: &str) -> TokenStream {
-    format_ident!("{}", name).into_token_stream()
+/// Returns the name for the C# struct representing the specified variant.
+///
+/// Note that this only returns the name of the variant, not the fully-qualified
+/// path to the type. If you need a fully-qualified type-reference (e.g. because
+/// you're generating code that needs to interact with a value of the variant), use
+/// [`variant_struct_type_ref`] instead.
+///
+/// [`variant_struct_type_ref`]: fn.variant_struct_type_ref.html
+fn variant_struct_name(variant: &Variant) -> Ident {
+    format_ident!("{}", variant.name())
+}
+
+/// Generates a type reference to the C# type for the specified enum variant.
+fn variant_struct_type_ref(export: &NamedType, variant: &Variant) -> TokenStream {
+    let wrapper_class = wrapper_class_name(export);
+    let variant_struct_name = variant_struct_name(variant);
+    quote! {
+        global::#wrapper_class.#variant_struct_name
+    }
+}
+
+pub fn raw_variant_struct_type_ref(export: &NamedType, variant: &Variant) -> TokenStream {
+    let wrapper_class = wrapper_class_name(export);
+    let raw_variant_struct_name = binding::raw_ident(variant.name());
+    quote! {
+        global::#wrapper_class.#raw_variant_struct_name
+    }
+}
+
+fn union_struct_name(name: &str) -> Ident {
+    format_ident!("{}_Data_Raw", name)
 }

@@ -181,8 +181,19 @@ pub fn quote_raw_type_reference(schema: &Schema, types: &TypeMap) -> TokenStream
         Schema::Char => quote! { uint },
         Schema::String => quote! { RustOwnedString },
 
-        Schema::Enum(schema) => raw_ident(&schema.name.name).into_token_stream(),
-        Schema::Struct(schema) => raw_ident(&schema.name.name).into_token_stream(),
+        Schema::Enum(schema) => {
+            let ident = raw_ident(&schema.name.name);
+            quote! {
+                global::#ident
+            }
+        }
+
+        Schema::Struct(schema) => {
+            let ident = raw_ident(&schema.name.name);
+            quote! {
+                global::#ident
+            }
+        }
 
         // TODO: Add support for more user-defined types.
         Schema::UnitStruct(_)
