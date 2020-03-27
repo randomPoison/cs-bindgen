@@ -2,27 +2,9 @@
 
 use proc_macro2::TokenStream;
 use quote::*;
-use std::fmt::Display;
 use syn::{punctuated::Punctuated, token::Comma, *};
 
 type FnInput = (Ident, Box<Type>);
-
-/// Generates an error if any generic parameters are present.
-///
-/// In general we can't support `#[cs_bindgen]` on generic items, any item that
-/// supports generic parameters needs to generate an error during parsing. This
-/// helper method can be used to check the `Generics` AST node that syn generates
-/// and will return an error if the node contains any generic parameters.
-pub fn reject_generics<M: Display>(generics: &Generics, message: M) -> syn::Result<()> {
-    let has_generics = generics.type_params().next().is_some()
-        || generics.lifetimes().next().is_some()
-        || generics.const_params().next().is_some();
-    if has_generics {
-        Err(Error::new_spanned(generics, message))
-    } else {
-        Ok(())
-    }
-}
 
 /// Processes the raw list of arguments into a format suitable for use in code
 /// generation.
