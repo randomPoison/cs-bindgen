@@ -1,4 +1,4 @@
-use crate::{reject_generics, value};
+use crate::{describe_named_type, reject_generics, value, BindingStyle};
 use proc_macro2::{Literal, TokenStream};
 use quote::*;
 use syn::*;
@@ -16,16 +16,10 @@ pub fn quote_enum_item(item: ItemEnum) -> syn::Result<TokenStream> {
 
     // Check the variants to determine if we're dealing with a C-style enum or one that
     // carries additional data.
-    let mut has_fields = false;
-    for variant in &item.variants {
-        match variant.fields {
-            Fields::Unit => {}
-            _ => {
-                has_fields = true;
-                break;
-            }
-        }
-    }
+    let has_fields = item
+        .variants
+        .iter()
+        .any(|variant| !variant.fields.is_empty());
 
     let bindings = if has_fields {
         quote_complex_enum(&item)?
@@ -37,24 +31,7 @@ pub fn quote_enum_item(item: ItemEnum) -> syn::Result<TokenStream> {
 
     // Export a function that describes the exported type.
     let ident = &item.ident;
-    let describe_ident = format_describe_ident!(ident);
-    let name = ident.to_string();
-    result.extend(quote! {
-        #[no_mangle]
-        pub unsafe extern "C" fn #describe_ident() -> std::boxed::Box<cs_bindgen::abi::RawString> {
-            let export = cs_bindgen::shared::NamedType {
-                name: #name.into(),
-                schema: cs_bindgen::shared::schematic::describe::<#ident>().expect("Failed to describe enum type"),
-
-                // NOTE: Currently we always pass enums by value. At some point we'll likely also
-                // want to support exporting enums as handles, at which point we'll need to update
-                // this bit of code generation.
-                binding_style: cs_bindgen::shared::BindingStyle::Value,
-            };
-
-            std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())
-        }
-    });
+    result.extend(describe_named_type(&ident, BindingStyle::Value));
 
     Ok(result)
 }
@@ -136,7 +113,7 @@ fn quote_simple_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
 
 fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
     let ident = &item.ident;
-    let abi_union_ty = format_ident!("__cs_bindgen_generated_raw_Abi__{}", ident);
+    let abi_union_ty = format_binding_ident!(ident);
 
     // TODO: Check the repr of the enum to determine the actual discriminant type.
     let discriminant_ty = quote! { isize };

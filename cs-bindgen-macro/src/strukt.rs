@@ -1,4 +1,4 @@
-use crate::{handle, has_derive_copy, reject_generics, value};
+use crate::{describe_named_type, handle, has_derive_copy, reject_generics, value, BindingStyle};
 use proc_macro2::TokenStream;
 use quote::*;
 use syn::*;
@@ -16,8 +16,9 @@ pub fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
     if has_derive_copy(&item.attrs)? {
         handle::quote_type_as_handle(&ident)
     } else {
+        let abi_struct_ident = format_binding_ident!(ident);
         let abi_struct = value::quote_abi_struct(&abi_struct_ident, &item.fields);
-        let describe_fn = describe_named_type(&item.ident, BindingStyle::Value);
+        let describe_fn = describe_named_type(&ident, BindingStyle::Value);
 
         Ok(quote! {
             #abi_struct

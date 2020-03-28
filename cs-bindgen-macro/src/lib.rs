@@ -60,6 +60,12 @@ pub fn cs_bindgen(
     result.into()
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum BindingStyle {
+    Handle,
+    Value,
+}
+
 fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
     // Extract the signature, which contains the bulk of the information we care about.
     let signature = item.sig;
@@ -412,5 +418,28 @@ fn reject_generics<M: Display>(generics: &Generics, message: M) -> syn::Result<(
         Err(Error::new_spanned(generics, message))
     } else {
         Ok(())
+    }
+}
+
+fn describe_named_type(ident: &Ident, style: BindingStyle) -> TokenStream {
+    let describe_ident = format_describe_ident!(ident);
+    let name = ident.to_string();
+
+    let style = match style {
+        BindingStyle::Handle => quote! { Handle },
+        BindingStyle::Value => quote! { Value },
+    };
+
+    quote! {
+        #[no_mangle]
+        pub unsafe extern "C" fn #describe_ident() -> std::boxed::Box<cs_bindgen::abi::RawString> {
+            let export = cs_bindgen::shared::NamedType {
+                name: #name.into(),
+                schema: cs_bindgen::shared::schematic::describe::<#ident>().expect("Failed to describe enum type"),
+                binding_style: cs_bindgen::shared::BindingStyle::#style,
+            };
+
+            std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())
+        }
     }
 }

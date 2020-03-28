@@ -1,13 +1,13 @@
 //! Utilities for generating the bindings for types that should be marshaled as a handle.
 
+use crate::{describe_named_type, BindingStyle};
 use proc_macro2::TokenStream;
 use quote::*;
 use syn::*;
 
 pub fn quote_type_as_handle(ident: &Ident) -> syn::Result<TokenStream> {
-    let name = ident.to_string();
-    let describe_ident = format_describe_ident!(ident);
     let drop_ident = format_drop_ident!(ident);
+    let describe_fn = describe_named_type(ident, BindingStyle::Handle);
 
     Ok(quote! {
         // Implement `Describe` for the exported type.
@@ -60,16 +60,7 @@ pub fn quote_type_as_handle(ident: &Ident) -> syn::Result<TokenStream> {
         }
 
         // Export a function that describes the exported type.
-        #[no_mangle]
-        pub unsafe extern "C" fn #describe_ident() -> std::boxed::Box<cs_bindgen::abi::RawString> {
-            let export = cs_bindgen::shared::NamedType {
-                name: #name.into(),
-                binding_style: cs_bindgen::shared::BindingStyle::Handle,
-                schema: cs_bindgen::shared::schematic::describe::<#ident>().expect("Failed to describe struct type"),
-            };
-
-            std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())
-        }
+        #describe_fn
 
         // Export a function that can be used for dropping an instance of the type.
         #[no_mangle]
