@@ -1,6 +1,5 @@
-use crate::generate::{self, binding, quote_primitive_type, TypeMap};
+use crate::generate::{self, binding, quote_primitive_type, strukt, TypeMap};
 use cs_bindgen_shared::{schematic::Enum, schematic::Variant, BindingStyle, NamedType};
-use heck::*;
 use proc_macro2::{Literal, TokenStream};
 use quote::*;
 use syn::Ident;
@@ -228,29 +227,13 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
         let fields = variant
             .fields()
             .enumerate()
-            .map(|(index, field)| {
-                let field_ident = field
-                    .name
-                    .as_ref()
-                    .map(|name| format_ident!("{}", name.to_camel_case()))
-                    .unwrap_or_else(|| format_ident!("Element{}", index));
-
-                (field_ident, field.schema)
-            })
+            .map(|(index, field)| (strukt::field_ident(field.name, index), field.schema))
             .collect::<Vec<_>>();
 
         let struct_fields = fields.iter().map(|(field_ident, schema)| {
             let ty = generate::quote_cs_type(schema, types);
             quote! {
                 #ty #field_ident
-            }
-        });
-
-        let arg_binding_fields = fields.iter().map(|(field_ident, schema)| {
-            let binding_ty = binding::quote_raw_type_reference(schema, types);
-
-            quote! {
-                #binding_ty #field_ident
             }
         });
 
@@ -262,6 +245,7 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
         });
 
         let field_name = fields.iter().map(|(name, _)| name);
+        let raw_fields = binding::raw_struct_fields(&fields, types);
 
         quote! {
             // Generate the C# struct for the variant.
@@ -286,9 +270,7 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
             [StructLayout(LayoutKind.Sequential)]
             internal struct #raw_ident
             {
-                #(
-                    internal #arg_binding_fields;
-                )*
+                #raw_fields
 
                 // Generate a constructor that converts the C# representation of the variant into
                 // its raw representation.

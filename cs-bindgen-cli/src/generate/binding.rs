@@ -166,7 +166,10 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
 }
 
 /// Generates the appropriate raw type name for the given type schema.
-pub fn quote_raw_type_reference(schema: &Schema, types: &TypeMap) -> TokenStream {
+// NOTE: We're not currently using the type map parameter, but we'll eventually need
+// it once we support custom namespaces, since we'll need to look up the export
+// information to determine the fully-qualified name for the type.
+pub fn quote_raw_type_reference(schema: &Schema, _types: &TypeMap) -> TokenStream {
     match schema {
         Schema::I8 => quote! { sbyte },
         Schema::I16 => quote! { short },
@@ -210,6 +213,21 @@ pub fn quote_raw_type_reference(schema: &Schema, types: &TypeMap) -> TokenStream
         Schema::I128 | Schema::U128 => {
             unreachable!("Invalid types should have already been handled")
         }
+    }
+}
+
+/// Generates the field definitions for the raw struct representation of an exported
+/// Rust type.
+pub fn raw_struct_fields(fields: &[(Ident, &Schema)], types: &TypeMap) -> TokenStream {
+    let field_name = fields.iter().map(|(name, _)| name);
+    let field_ty = fields
+        .iter()
+        .map(|(_, schema)| quote_raw_type_reference(schema, types));
+
+    quote! {
+        #(
+            internal #field_ty #field_name;
+        )*
     }
 }
 

@@ -13,6 +13,7 @@ mod binding;
 mod class;
 mod enumeration;
 mod func;
+mod strukt;
 
 type TypeMap<'a> = HashMap<&'a TypeName, &'a NamedType>;
 
@@ -65,7 +66,10 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
             )),
 
             Export::Named(export) => match &export.schema {
-                Schema::Struct(schema) => binding_items.push(quote_struct(export, schema)),
+                Schema::Struct(schema) => {
+                    binding_items.push(strukt::quote_struct(export, schema, &types))
+                }
+
                 Schema::Enum(schema) => {
                     binding_items.push(quote_enum_binding(export, schema, &types))
                 }
