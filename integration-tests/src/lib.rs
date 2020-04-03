@@ -1,6 +1,7 @@
 use crate::data_enum::DataEnum;
 use cs_bindgen::prelude::*;
 
+pub mod copy_types;
 pub mod data_enum;
 pub mod name_collision;
 pub mod simple_enum;

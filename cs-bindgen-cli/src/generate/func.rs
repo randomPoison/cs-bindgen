@@ -1,4 +1,4 @@
-use crate::generate::{binding, enumeration, quote_cs_type, TypeMap};
+use crate::generate::{binding, quote_cs_type, TypeMap};
 use cs_bindgen_shared::*;
 use heck::*;
 use proc_macro2::TokenStream;
@@ -45,7 +45,7 @@ pub fn quote_wrapper_fn<'a>(
     };
 
     let args = quote_args(inputs.clone(), types);
-    let body = quote_wrapper_body(binding, receiver, inputs, output, &ret, types);
+    let body = quote_wrapper_body(binding, receiver, inputs, output, &ret);
 
     quote! {
         public #static_ #return_ty #name(#( #args ),*)
@@ -77,7 +77,6 @@ pub fn quote_wrapper_body<'a>(
     args: impl Iterator<Item = (&'a str, &'a Schema)> + Clone,
     output: Option<&Schema>,
     ret: &Ident,
-    types: &TypeMap,
 ) -> TokenStream {
     // Build the list of arguments to the wrapper function and insert the receiver at
     // the beginning of the list of arguments if necessary.

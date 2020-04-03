@@ -1,8 +1,7 @@
-extern crate proc_macro;
-
-use crate::{enumeration::*, func::*};
+use crate::{enumeration::*, func::*, strukt::*};
 use proc_macro2::TokenStream;
 use quote::*;
+use std::fmt::Display;
 use syn::*;
 
 macro_rules! format_binding_ident {
@@ -25,6 +24,9 @@ macro_rules! format_drop_ident {
 
 mod enumeration;
 mod func;
+mod handle;
+mod strukt;
+mod value;
 
 #[proc_macro_attribute]
 pub fn cs_bindgen(
@@ -56,6 +58,12 @@ pub fn cs_bindgen(
     result.extend(generated);
 
     result.into()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum BindingStyle {
+    Handle,
+    Value,
 }
 
 fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
@@ -154,85 +162,6 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
     Ok(quote! {
         #binding
         #describe
-    })
-}
-
-fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
-    reject_generics(
-        &item.generics,
-        "Generic structs are not supported with `#[cs_bindgen]`",
-    )?;
-
-    let ident = item.ident;
-    let name = ident.to_string();
-    let describe_ident = format_describe_ident!(ident);
-    let drop_ident = format_drop_ident!(ident);
-
-    Ok(quote! {
-        // Implement `Describe` for the exported type.
-        impl cs_bindgen::shared::schematic::Describe for #ident {
-            fn describe<E>(describer: E) -> Result<E::Ok, E::Error>
-            where
-                E: cs_bindgen::shared::schematic::Describer,
-            {
-                let describer = describer.describe_struct(cs_bindgen::shared::schematic::type_name!(#ident))?;
-                cs_bindgen::shared::schematic::DescribeStruct::end(describer)
-            }
-        }
-
-        // Implement `Abi` for the type and references to the type.
-
-        impl cs_bindgen::abi::Abi for #ident {
-            type Abi = *mut Self;
-
-            fn into_abi(self) -> Self::Abi {
-                std::boxed::Box::into_raw(std::boxed::Box::new(self))
-            }
-
-            unsafe fn from_abi(abi: Self::Abi) -> Self {
-                *std::boxed::Box::from_raw(abi)
-            }
-        }
-
-        impl<'a> cs_bindgen::abi::Abi for &'a #ident {
-            type Abi = Self;
-
-            fn into_abi(self) -> Self::Abi {
-                self
-            }
-
-            unsafe fn from_abi(abi: Self::Abi) -> Self {
-                abi
-            }
-        }
-
-        impl<'a> cs_bindgen::abi::Abi for &'a mut #ident {
-            type Abi = *mut #ident;
-
-            fn into_abi(self) -> Self::Abi {
-                self as *mut _
-            }
-
-            unsafe fn from_abi(abi: Self::Abi) -> Self {
-                &mut *abi
-            }
-        }
-
-        // Export a function that describes the exported type.
-        #[no_mangle]
-        pub unsafe extern "C" fn #describe_ident() -> std::boxed::Box<cs_bindgen::abi::RawString> {
-            let export = cs_bindgen::shared::NamedType {
-                name: #name.into(),
-                binding_style: cs_bindgen::shared::BindingStyle::Handle,
-                schema: cs_bindgen::shared::schematic::describe::<#ident>().expect("Failed to describe struct type"),
-            };
-
-            std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())
-        }
-
-        // Export a function that can be used for dropping an instance of the type.
-        #[no_mangle]
-        pub unsafe extern "C" fn #drop_ident(_: <#ident as cs_bindgen::abi::Abi>::Abi) {}
     })
 }
 
@@ -436,4 +365,81 @@ fn quote_method_item(item: ImplItemMethod, self_ty: &Type) -> syn::Result<TokenS
         #binding
         #describe
     })
+}
+
+/// Returns `true` if any of the specified attributes are a `derive()` containing `Copy`.
+fn has_derive_copy(attributes: &[Attribute]) -> syn::Result<bool> {
+    // Get the `#[derive(..)]` attribute, or return `false` if none is present.
+    let attr = match attributes.iter().find(|attr| {
+        attr.path
+            .get_ident()
+            .map(|ident| ident == "derive")
+            .unwrap_or(false)
+    }) {
+        Some(attr) => attr.parse_meta()?,
+        None => return Ok(false),
+    };
+
+    let list = match attr {
+        Meta::List(list) => list,
+        _ => return Ok(false),
+    };
+
+    Ok(list.nested.into_iter().any(|nested| {
+        let nested = match nested {
+            NestedMeta::Meta(meta) => meta,
+            _ => return false,
+        };
+
+        let path = match nested {
+            Meta::Path(path) => path,
+            _ => return false,
+        };
+
+        // TODO: Handle the case where the user specified the full path for the trait, i.e.
+        // `std::marker::Copy`.
+        path.get_ident()
+            .map(|ident| ident == "Copy")
+            .unwrap_or(false)
+    }))
+}
+
+/// Generates an error if any generic parameters are present.
+///
+/// In general we can't support `#[cs_bindgen]` on generic items, any item that
+/// supports generic parameters needs to generate an error during parsing. This
+/// helper method can be used to check the `Generics` AST node that syn generates
+/// and will return an error if the node contains any generic parameters.
+fn reject_generics<M: Display>(generics: &Generics, message: M) -> syn::Result<()> {
+    let has_generics = generics.type_params().next().is_some()
+        || generics.lifetimes().next().is_some()
+        || generics.const_params().next().is_some();
+    if has_generics {
+        Err(Error::new_spanned(generics, message))
+    } else {
+        Ok(())
+    }
+}
+
+fn describe_named_type(ident: &Ident, style: BindingStyle) -> TokenStream {
+    let describe_ident = format_describe_ident!(ident);
+    let name = ident.to_string();
+
+    let style = match style {
+        BindingStyle::Handle => quote! { Handle },
+        BindingStyle::Value => quote! { Value },
+    };
+
+    quote! {
+        #[no_mangle]
+        pub unsafe extern "C" fn #describe_ident() -> std::boxed::Box<cs_bindgen::abi::RawString> {
+            let export = cs_bindgen::shared::NamedType {
+                name: #name.into(),
+                schema: cs_bindgen::shared::schematic::describe::<#ident>().expect("Failed to describe enum type"),
+                binding_style: cs_bindgen::shared::BindingStyle::#style,
+            };
+
+            std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())
+        }
+    }
 }

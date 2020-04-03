@@ -1,6 +1,5 @@
-use crate::generate::{self, binding, quote_primitive_type, TypeMap};
+use crate::generate::{binding, quote_primitive_type, strukt, TypeMap};
 use cs_bindgen_shared::{schematic::Enum, schematic::Variant, BindingStyle, NamedType};
-use heck::*;
 use proc_macro2::{Literal, TokenStream};
 use quote::*;
 use syn::Ident;
@@ -225,59 +224,44 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
         let ident = variant_struct_name(variant);
         let raw_ident = binding::raw_ident(variant.name());
 
-        let fields = variant
-            .fields()
-            .enumerate()
-            .map(|(index, field)| {
-                let field_ident = field
-                    .name
-                    .as_ref()
-                    .map(|name| format_ident!("{}", name.to_camel_case()))
-                    .unwrap_or_else(|| format_ident!("Element{}", index));
+        let fields = variant.fields().collect::<Vec<_>>();
 
-                (field_ident, field.schema)
-            })
+        let struct_fields = strukt::struct_fields(&fields, types);
+
+        // Generate a basic constructor for the user-facing struct, but only if the
+        // struct has fields since we're not allowed to generate an explicit parameter-
+        // less constructor for structs in C#.
+        let struct_constructor = if !variant.is_empty() {
+            strukt::struct_constructor(&ident, &fields, types)
+        } else {
+            quote! {}
+        };
+
+        let field_ident = fields
+            .iter()
+            .enumerate()
+            .map(|(index, field)| strukt::field_ident(field.name, index))
             .collect::<Vec<_>>();
 
-        let struct_fields = fields.iter().map(|(field_ident, schema)| {
-            let ty = generate::quote_cs_type(schema, types);
-            quote! {
-                #ty #field_ident
-            }
-        });
+        let bindings = binding::bindings_class_ident();
+        let from_raw_fn = binding::from_raw_fn_ident();
+        let into_raw_fn = binding::into_raw_fn_ident();
 
-        let arg_binding_fields = fields.iter().map(|(field_ident, schema)| {
-            let binding_ty = binding::quote_raw_type_reference(schema, types);
-
-            quote! {
-                #binding_ty #field_ident
-            }
-        });
-
-        let constructor_fields = fields.iter().map(|(field_ident, _)| {
-            let from_raw_fn = binding::from_raw_fn_ident();
-            quote! {
-                this.#field_ident = __bindings.#from_raw_fn(raw.#field_ident);
-            }
-        });
-
-        let field_name = fields.iter().map(|(name, _)| name);
+        let raw_fields = binding::raw_struct_fields(&fields, types);
 
         quote! {
             // Generate the C# struct for the variant.
             public struct #ident : #interface
             {
-                // Populate the fields of the variant struct.
-                #(
-                    public #struct_fields;
-                )*
+                #struct_fields
+                #struct_constructor
 
                 // Generate an internal constructor for creating an instance of the variant struct
                 // from its raw representation.
                 internal #ident(#raw_ident raw)
                 {
                     #(
-                        #constructor_fields
+                        this.#field_ident = #bindings.#from_raw_fn(raw.#field_ident);
                     )*
                 }
             }
@@ -286,16 +270,14 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
             [StructLayout(LayoutKind.Sequential)]
             internal struct #raw_ident
             {
-                #(
-                    internal #arg_binding_fields;
-                )*
+                #raw_fields
 
                 // Generate a constructor that converts the C# representation of the variant into
                 // its raw representation.
                 public #raw_ident(#ident self)
                 {
                     #(
-                        this.#field_name = __bindings.__IntoRaw(self.#field_name);
+                        this.#field_ident = #bindings.#into_raw_fn(self.#field_ident);
                     )*
                 }
             }

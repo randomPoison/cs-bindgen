@@ -4,8 +4,11 @@
 //! function, using the `[DllImport]` attribute to load the corresponding function
 //! from the Rust dylib. This module provides
 
-use crate::generate::{class, enumeration, quote_cs_type, TypeMap};
-use cs_bindgen_shared::{schematic::Schema, BindingStyle, Export};
+use crate::generate::{class, enumeration, quote_cs_type, strukt, TypeMap};
+use cs_bindgen_shared::{
+    schematic::{Field, Schema},
+    BindingStyle, Export,
+};
 use proc_macro2::TokenStream;
 use quote::*;
 use syn::{punctuated::Punctuated, token::Comma, Ident};
@@ -17,6 +20,11 @@ use syn::{punctuated::Punctuated, token::Comma, Ident};
 // account when generating the idents. This will require some additional mangling
 // logic, since the module paths include `::` characters, which aren't valid in C#
 // identifiers.
+
+/// Returns the identifier of the generating bindings class.
+pub fn bindings_class_ident() -> Ident {
+    format_ident!("__bindings")
+}
 
 /// The identifier of the from-raw conversion method.
 ///
@@ -76,7 +84,8 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
             // includes the receiver.
             let mut args = quote_binding_args(export.inputs(), types);
             if export.receiver.is_some() {
-                args.insert(0, quote! { void* self });
+                let handle_type = class::quote_handle_ptr();
+                args.insert(0, quote! { #handle_type self });
             }
 
             quote! {
@@ -120,12 +129,8 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
 
                 BindingStyle::Value => match &export.schema {
                     Schema::Struct(_) => {
-                        let from_raw_impl = quote! {
-                            throw new NotImplementedException("Support passing structs by value");
-                        };
-                        let into_raw_impl = quote! {
-                            throw new NotImplementedException("Support passing structs by value");
-                        };
+                        let from_raw_impl = quote! { return new #cs_repr(raw); };
+                        let into_raw_impl = quote! { return new #raw_repr(self); };
 
                         (from_raw_impl, into_raw_impl)
                     }
@@ -165,7 +170,10 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
 }
 
 /// Generates the appropriate raw type name for the given type schema.
-pub fn quote_raw_type_reference(schema: &Schema, types: &TypeMap) -> TokenStream {
+// NOTE: We're not currently using the type map parameter, but we'll eventually need
+// it once we support custom namespaces, since we'll need to look up the export
+// information to determine the fully-qualified name for the type.
+pub fn quote_raw_type_reference(schema: &Schema, _types: &TypeMap) -> TokenStream {
     match schema {
         Schema::I8 => quote! { sbyte },
         Schema::I16 => quote! { short },
@@ -209,6 +217,25 @@ pub fn quote_raw_type_reference(schema: &Schema, types: &TypeMap) -> TokenStream
         Schema::I128 | Schema::U128 => {
             unreachable!("Invalid types should have already been handled")
         }
+    }
+}
+
+/// Generates the field definitions for the raw struct representation of an exported
+/// Rust type.
+pub fn raw_struct_fields(fields: &[Field<'_>], types: &TypeMap) -> TokenStream {
+    let field_name = fields
+        .iter()
+        .enumerate()
+        .map(|(index, field)| strukt::field_ident(field.name, index));
+
+    let field_ty = fields
+        .iter()
+        .map(|field| quote_raw_type_reference(&field.schema, types));
+
+    quote! {
+        #(
+            internal #field_ty #field_name;
+        )*
     }
 }
 
