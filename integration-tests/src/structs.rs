@@ -78,3 +78,12 @@ impl Address {
 pub struct WrapperType {
     pub value: DataEnum,
 }
+
+// Test tuple-like structs, including newtype structs (tuple-like structs with a single element).
+#[cs_bindgen]
+#[derive(Debug, Clone, Copy)]
+pub struct NewtypeStruct(u32);
+
+#[cs_bindgen]
+#[derive(Debug, Clone)]
+pub struct TupleStruct(String, String);

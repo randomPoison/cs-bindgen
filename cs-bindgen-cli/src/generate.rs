@@ -237,6 +237,28 @@ fn quote_primitive_type(ty: Primitive) -> TokenStream {
 
 /// Generates the idiomatic C# type corresponding to the given type schema.
 fn quote_cs_type(schema: &Schema, types: &TypeMap) -> TokenStream {
+    // Create a helper closure for generating references to named types in a uniform way.
+    let named_type_reference = |type_name, types: &TypeMap| {
+        let export = types
+            .get(type_name)
+            .unwrap_or_else(|| panic!("Could not resolve type reference: {:?}", type_name));
+
+        // NOTE: Enums are a special case since the user-facing type for a data-carrying
+        // enum is an interface, and therefore has a different naming convention from
+        // Rust structs.
+        let ident = if let Schema::Enum(schema) = &schema {
+            enumeration::quote_type_reference(export, schema)
+        } else {
+            format_ident!("{}", &*export.name).into_token_stream()
+        };
+
+        // TODO: Take into account things like custom namespaces or renaming the type, once
+        // those are supported. For now, we manually prefix references to user-defined types
+        // with `global::` in order to avoid name collisions. Once we support custom
+        // namespaces, we'll want to use the correct namespace name instead.
+        quote! { global::#ident }
+    };
+
     match schema {
         // NOTE: This is only valid in a return position, it's not valid to have a `void`
         // argument. An earlier validation pass has already rejected any such cases so we
@@ -263,39 +285,19 @@ fn quote_cs_type(schema: &Schema, types: &TypeMap) -> TokenStream {
 
         Schema::Char => todo!("Support passing single chars"),
 
-        Schema::Struct(schema) => {
-            let export = types
-                .get(&schema.name)
-                .expect("Failed to look up referenced type");
-
-            let ident = format_ident!("{}", &*export.name).into_token_stream();
-
-            // TODO: Take into account things like custom namespaces or renaming the type, once
-            // those are supported. For now, we manually prefix references to user-defined types
-            // with `global::` in order to avoid name collisions. Once we support custom
-            // namespaces, we'll want to use the correct namespace name instead.
-            quote! { global::#ident }
-        }
-
-        Schema::Enum(schema) => {
-            let export = types
-                .get(&schema.name)
-                .expect("Failed to look up referenced type");
-            let ident = enumeration::quote_type_reference(&export, schema);
-
-            // TODO: Once custom namespaces are supported, use the appropriate namespace instead
-            // of `global::`.
-            quote! { global::#ident }
-        }
+        // NOTE: The unwrap here is valid because all of the struct-like variants are
+        // guaranteed to have a type name. If this panic, that indicates a bug in the
+        // schematic crate.
+        Schema::Enum(_)
+        | Schema::Struct(_)
+        | Schema::TupleStruct(_)
+        | Schema::UnitStruct(_)
+        | Schema::NewtypeStruct(_) => named_type_reference(schema.type_name().unwrap(), types),
 
         // TODO: Add support for passing user-defined types out from Rust.
-        Schema::UnitStruct(_)
-        | Schema::NewtypeStruct(_)
-        | Schema::TupleStruct(_)
-        | Schema::Option(_)
-        | Schema::Seq(_)
-        | Schema::Tuple(_)
-        | Schema::Map { .. } => todo!("Generate argument binding"),
+        Schema::Option(_) | Schema::Seq(_) | Schema::Tuple(_) | Schema::Map { .. } => {
+            todo!("Generate argument binding")
+        }
 
         Schema::I128 | Schema::U128 => {
             unreachable!("Invalid argument types should have already been rejected");
