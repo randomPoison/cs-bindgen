@@ -294,7 +294,7 @@ fn quote_cs_type(schema: &Schema, types: &TypeMap) -> TokenStream {
         | Schema::UnitStruct(_)
         | Schema::NewtypeStruct(_) => named_type_reference(schema.type_name().unwrap(), types),
 
-        // TODO: Add support for passing user-defined types out from Rust.
+        // TODO: Add support for collection types.
         Schema::Option(_) | Schema::Seq(_) | Schema::Tuple(_) | Schema::Map { .. } => {
             todo!("Generate argument binding")
         }
