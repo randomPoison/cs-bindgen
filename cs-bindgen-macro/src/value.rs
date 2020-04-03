@@ -1,4 +1,4 @@
-use proc_macro2::TokenStream;
+use proc_macro2::{Literal, TokenStream};
 use quote::*;
 use syn::*;
 
@@ -11,7 +11,7 @@ pub fn quote_abi_struct(ident: &Ident, fields: &Fields) -> TokenStream {
         .enumerate()
         .map(|(index, field)| {
             let field_ty = &field.ty;
-            let field_ident = field_ident(index, field);
+            let field_ident = raw_field_ident(index, field);
 
             quote! {
                 #field_ident: <#field_ty as cs_bindgen::abi::Abi>::Abi
@@ -56,7 +56,7 @@ pub fn into_abi_fields(fields: &Fields, input: Option<TokenStream>) -> TokenStre
     let abi_field = fields
         .iter()
         .enumerate()
-        .map(|(index, field)| field_ident(index, field));
+        .map(|(index, field)| raw_field_ident(index, field));
 
     let field_prefix = match input {
         Some(input) => quote! { #input. },
@@ -64,7 +64,7 @@ pub fn into_abi_fields(fields: &Fields, input: Option<TokenStream>) -> TokenStre
     };
 
     let conversion = fields.iter().enumerate().map(|(index, field)| {
-        let input_field = field_ident(index, field);
+        let input_field = field_accessor(index, field);
         quote! {
             cs_bindgen::abi::Abi::into_abi(#field_prefix #input_field)
         }
@@ -84,7 +84,7 @@ pub fn from_abi_fields(fields: &Fields, input: &TokenStream) -> TokenStream {
     });
 
     let conversion = fields.iter().enumerate().map(|(index, field)| {
-        let field_ident = field_ident(index, field);
+        let field_ident = raw_field_ident(index, field);
         quote! { cs_bindgen::abi::Abi::from_abi(#input.#field_ident) }
     });
 
@@ -95,11 +95,25 @@ pub fn from_abi_fields(fields: &Fields, input: &TokenStream) -> TokenStream {
     }
 }
 
-/// Returns the ident for a field, or generates one if the field is unnamed.
+/// Returns the appropriate accessor expression for the specified field.
 ///
-/// This ensures a consistent naming convention when generating struct
+/// For named fields, this will return the field name, e.g. `foo`. For unnamed
+/// fields, this will return the field index, e.g. `0`.
+pub fn field_accessor(index: usize, field: &Field) -> TokenStream {
+    field
+        .ident
+        .as_ref()
+        .map(|ident| ident.into_token_stream())
+        .unwrap_or_else(|| Literal::usize_unsuffixed(index).into_token_stream())
+}
+
+/// Returns the ident of the field in a raw binding struct corresponding to the
+/// specified field
+///
+/// Automatically generates a valid identifier if the field does not already have
+/// one. This ensures a consistent naming convention when generating struct
 /// representations of enums. Unnamed fields will be named `element_{index}`.
-pub fn field_ident(index: usize, field: &Field) -> Ident {
+pub fn raw_field_ident(index: usize, field: &Field) -> Ident {
     field
         .ident
         .as_ref()

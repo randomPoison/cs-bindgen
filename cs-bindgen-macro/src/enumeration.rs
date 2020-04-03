@@ -156,7 +156,7 @@ fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
             .fields
             .iter()
             .enumerate()
-            .map(|(index, field)| value::field_ident(index, field));
+            .map(|(index, field)| value::raw_field_ident(index, field));
 
         // Generate the destructuring expression for the fields of the variant.
         let destructure = match &variant.fields {

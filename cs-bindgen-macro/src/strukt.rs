@@ -16,10 +16,18 @@ pub fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
     if has_derive_copy(&item.attrs)? {
         let abi_struct_ident = format_binding_ident!(item.ident);
         let abi_struct = value::quote_abi_struct(&abi_struct_ident, &item.fields);
-        let from_abi_fields = value::from_abi_fields(&item.fields, &quote! { abi });
         let into_abi_fields = value::into_abi_fields(&item.fields, Some(quote! { self }));
         let describe_fn = describe_named_type(&item.ident, BindingStyle::Value);
         let ident = item.ident;
+
+        // Generate the `from_abi` conversions for the fields, then wrap that code in the
+        // appropriate kind of braces based on the style of the struct.
+        let from_abi_fields = value::from_abi_fields(&item.fields, &quote! { abi });
+        let from_abi_braces = match &item.fields {
+            Fields::Named(_) => quote! { { #from_abi_fields } },
+            Fields::Unnamed(_) => quote! { ( #from_abi_fields ) },
+            Fields::Unit => quote! {},
+        };
 
         Ok(quote! {
             #abi_struct
@@ -28,9 +36,7 @@ pub fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
                 type Abi = #abi_struct_ident;
 
                 unsafe fn from_abi(abi: Self::Abi) -> Self {
-                    Self {
-                        #from_abi_fields
-                    }
+                    Self #from_abi_braces
                 }
 
                 fn into_abi(self) -> Self::Abi {
