@@ -17,7 +17,7 @@ pub fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
         let abi_struct_ident = format_binding_ident!(item.ident);
         let abi_struct = value::quote_abi_struct(&abi_struct_ident, &item.fields);
         let from_abi_fields = value::from_abi_fields(&item.fields, &quote! { abi });
-        let into_abi_fields = value::into_abi_fields(&item.fields, &quote! { self });
+        let into_abi_fields = value::into_abi_fields(&item.fields, Some(quote! { self }));
         let describe_fn = describe_named_type(&item.ident, BindingStyle::Value);
         let ident = item.ident;
 

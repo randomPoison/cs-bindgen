@@ -156,7 +156,7 @@ fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
             .fields
             .iter()
             .enumerate()
-            .map(|(index, field)| field_ident(index, field));
+            .map(|(index, field)| value::field_ident(index, field));
 
         // Generate the destructuring expression for the fields of the variant.
         let destructure = match &variant.fields {
@@ -173,7 +173,7 @@ fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
             };
         }
 
-        let convert_fields = value::into_abi_fields(&variant.fields, &quote! {});
+        let convert_fields = value::into_abi_fields(&variant.fields, None);
 
         quote! {
             Self::#variant_ident #destructure => cs_bindgen::abi::RawEnum::new(
@@ -341,12 +341,4 @@ fn quote_describe_impl(item: &ItemEnum) -> syn::Result<TokenStream> {
             }
         }
     })
-}
-
-fn field_ident(index: usize, field: &Field) -> Ident {
-    field
-        .ident
-        .as_ref()
-        .map(Clone::clone)
-        .unwrap_or_else(|| format_ident!("element_{}", index))
 }
