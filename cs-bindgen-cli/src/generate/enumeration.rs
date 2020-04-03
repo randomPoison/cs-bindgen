@@ -224,22 +224,19 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
         let ident = variant_struct_name(variant);
         let raw_ident = binding::raw_ident(variant.name());
 
-        let fields = variant
-            .fields()
-            .enumerate()
-            .map(|(index, field)| (strukt::field_ident(field.name, index), field.schema))
-            .collect::<Vec<_>>();
+        let fields = variant.fields().collect::<Vec<_>>();
 
         let struct_fields = strukt::struct_fields(&fields, types);
+        let field_ident = fields
+            .iter()
+            .enumerate()
+            .map(|(index, field)| strukt::field_ident(field.name, index))
+            .collect::<Vec<_>>();
 
-        let constructor_fields = fields.iter().map(|(field_ident, _)| {
-            let from_raw_fn = binding::from_raw_fn_ident();
-            quote! {
-                this.#field_ident = __bindings.#from_raw_fn(raw.#field_ident);
-            }
-        });
+        let bindings = binding::bindings_class_ident();
+        let from_raw_fn = binding::from_raw_fn_ident();
+        let into_raw_fn = binding::into_raw_fn_ident();
 
-        let field_name = fields.iter().map(|(name, _)| name);
         let raw_fields = binding::raw_struct_fields(&fields, types);
 
         quote! {
@@ -254,7 +251,7 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
                 internal #ident(#raw_ident raw)
                 {
                     #(
-                        #constructor_fields
+                        this.#field_ident = #bindings.#from_raw_fn(raw.#field_ident);
                     )*
                 }
             }
@@ -270,7 +267,7 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
                 public #raw_ident(#ident self)
                 {
                     #(
-                        this.#field_name = __bindings.__IntoRaw(self.#field_name);
+                        this.#field_ident = #bindings.#into_raw_fn(self.#field_ident);
                     )*
                 }
             }

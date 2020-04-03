@@ -4,8 +4,11 @@
 //! function, using the `[DllImport]` attribute to load the corresponding function
 //! from the Rust dylib. This module provides
 
-use crate::generate::{class, enumeration, quote_cs_type, TypeMap};
-use cs_bindgen_shared::{schematic::Schema, BindingStyle, Export};
+use crate::generate::{class, enumeration, quote_cs_type, strukt, TypeMap};
+use cs_bindgen_shared::{
+    schematic::{Field, Schema},
+    BindingStyle, Export,
+};
 use proc_macro2::TokenStream;
 use quote::*;
 use syn::{punctuated::Punctuated, token::Comma, Ident};
@@ -17,6 +20,11 @@ use syn::{punctuated::Punctuated, token::Comma, Ident};
 // account when generating the idents. This will require some additional mangling
 // logic, since the module paths include `::` characters, which aren't valid in C#
 // identifiers.
+
+/// Returns the identifier of the generating bindings class.
+pub fn bindings_class_ident() -> Ident {
+    format_ident!("__bindings")
+}
 
 /// The identifier of the from-raw conversion method.
 ///
@@ -218,11 +226,15 @@ pub fn quote_raw_type_reference(schema: &Schema, _types: &TypeMap) -> TokenStrea
 
 /// Generates the field definitions for the raw struct representation of an exported
 /// Rust type.
-pub fn raw_struct_fields(fields: &[(Ident, &Schema)], types: &TypeMap) -> TokenStream {
-    let field_name = fields.iter().map(|(name, _)| name);
+pub fn raw_struct_fields(fields: &[Field<'_>], types: &TypeMap) -> TokenStream {
+    let field_name = fields
+        .iter()
+        .enumerate()
+        .map(|(index, field)| strukt::field_ident(field.name, index));
+
     let field_ty = fields
         .iter()
-        .map(|(_, schema)| quote_raw_type_reference(schema, types));
+        .map(|field| quote_raw_type_reference(&field.schema, types));
 
     quote! {
         #(

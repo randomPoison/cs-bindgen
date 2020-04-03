@@ -1,6 +1,6 @@
 use crate::generate::{self, binding, class, TypeMap};
 use cs_bindgen_shared::{
-    schematic::{Schema, Struct},
+    schematic::{Field, Struct},
     BindingStyle, NamedType,
 };
 use heck::CamelCase;
@@ -16,12 +16,7 @@ pub fn quote_struct(export: &NamedType, schema: &Struct, types: &TypeMap) -> Tok
     let ident = format_ident!("{}", &*export.name);
     let raw_ident = binding::raw_ident(&export.name);
 
-    let fields = schema
-        .fields
-        .iter()
-        .enumerate()
-        .map(|(index, field)| (field_ident(Some(&field.0), index), &field.1))
-        .collect::<Vec<_>>();
+    let fields = schema.fields().collect::<Vec<_>>();
 
     let struct_fields = struct_fields(&fields, types);
     let raw_fields = binding::raw_struct_fields(&fields, types);
@@ -41,11 +36,15 @@ pub fn quote_struct(export: &NamedType, schema: &Struct, types: &TypeMap) -> Tok
 
 /// Quotes the field declarations for the generated C# struct corresponding to an
 /// exported Rust type.
-pub fn struct_fields(fields: &[(Ident, &Schema)], types: &TypeMap) -> TokenStream {
-    let field_ident = fields.iter().map(|(ident, _)| ident);
+pub fn struct_fields(fields: &[Field<'_>], types: &TypeMap) -> TokenStream {
+    let field_ident = fields
+        .iter()
+        .enumerate()
+        .map(|(index, field)| field_ident(field.name, index));
+
     let field_ty = fields
         .iter()
-        .map(|(_, schema)| generate::quote_cs_type(schema, types));
+        .map(|field| generate::quote_cs_type(&field.schema, types));
 
     quote! {
         #(
