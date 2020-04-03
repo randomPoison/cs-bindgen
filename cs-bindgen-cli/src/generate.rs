@@ -236,7 +236,7 @@ fn quote_primitive_type(ty: Primitive) -> TokenStream {
 }
 
 /// Generates the idiomatic C# type corresponding to the given type schema.
-fn quote_cs_type(schema: &Schema, type_map: &TypeMap) -> TokenStream {
+fn quote_cs_type(schema: &Schema, types: &TypeMap) -> TokenStream {
     match schema {
         // NOTE: This is only valid in a return position, it's not valid to have a `void`
         // argument. An earlier validation pass has already rejected any such cases so we
@@ -264,7 +264,7 @@ fn quote_cs_type(schema: &Schema, type_map: &TypeMap) -> TokenStream {
         Schema::Char => todo!("Support passing single chars"),
 
         Schema::Struct(schema) => {
-            let export = type_map
+            let export = types
                 .get(&schema.name)
                 .expect("Failed to look up referenced type");
 
@@ -278,7 +278,7 @@ fn quote_cs_type(schema: &Schema, type_map: &TypeMap) -> TokenStream {
         }
 
         Schema::Enum(schema) => {
-            let export = type_map
+            let export = types
                 .get(&schema.name)
                 .expect("Failed to look up referenced type");
             let ident = enumeration::quote_type_reference(&export, schema);

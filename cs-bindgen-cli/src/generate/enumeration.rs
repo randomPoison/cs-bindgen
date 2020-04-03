@@ -227,6 +227,16 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
         let fields = variant.fields().collect::<Vec<_>>();
 
         let struct_fields = strukt::struct_fields(&fields, types);
+
+        // Generate a basic constructor for the user-facing struct, but only if the
+        // struct has fields since we're not allowed to generate an explicit parameter-
+        // less constructor for structs in C#.
+        let struct_constructor = if !variant.is_empty() {
+            strukt::struct_constructor(&ident, &fields, types)
+        } else {
+            quote! {}
+        };
+
         let field_ident = fields
             .iter()
             .enumerate()
@@ -243,8 +253,8 @@ fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap
             // Generate the C# struct for the variant.
             public struct #ident : #interface
             {
-                // Populate the fields of the variant struct.
                 #struct_fields
+                #struct_constructor
 
                 // Generate an internal constructor for creating an instance of the variant struct
                 // from its raw representation.
