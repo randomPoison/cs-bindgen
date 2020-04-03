@@ -1,4 +1,4 @@
-use crate::generate::{binding, enumeration, quote_cs_type, TypeMap};
+use crate::generate::{binding, quote_cs_type, TypeMap};
 use cs_bindgen_shared::*;
 use heck::*;
 use proc_macro2::TokenStream;

@@ -1,5 +1,3 @@
-using System;
-using System.Linq;
 using Xunit;
 
 namespace TestRunner
@@ -9,6 +7,7 @@ namespace TestRunner
         [Fact]
         public void MahjongTile()
         {
+            // TODO: Generate a constructor for structs.
             // var tile = new SimpleTile(Suit.Bamboo, 1);
             var tile = new SimpleTile
             {
