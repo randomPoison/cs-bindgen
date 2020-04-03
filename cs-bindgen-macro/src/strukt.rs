@@ -10,19 +10,116 @@ pub fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
         "Generic structs are not supported with `#[cs_bindgen]`",
     )?;
 
-    let ident = item.ident;
+    let describe_impl = describe_struct(&item);
 
     // Determine whether we should marshal the type as a handle or by value.
     if has_derive_copy(&item.attrs)? {
-        handle::quote_type_as_handle(&ident)
-    } else {
-        let abi_struct_ident = format_binding_ident!(ident);
+        let abi_struct_ident = format_binding_ident!(item.ident);
         let abi_struct = value::quote_abi_struct(&abi_struct_ident, &item.fields);
-        let describe_fn = describe_named_type(&ident, BindingStyle::Value);
+        let from_abi_fields = value::from_abi_fields(&item.fields, &quote! { abi });
+        let into_abi_fields = value::into_abi_fields(&item.fields, &quote! { self });
+        let describe_fn = describe_named_type(&item.ident, BindingStyle::Value);
+        let ident = item.ident;
 
         Ok(quote! {
             #abi_struct
+
+            impl cs_bindgen::abi::Abi for #ident {
+                type Abi = #abi_struct_ident;
+
+                unsafe fn from_abi(abi: Self::Abi) -> Self {
+                    Self {
+                        #from_abi_fields
+                    }
+                }
+
+                fn into_abi(self) -> Self::Abi {
+                    Self::Abi {
+                        #into_abi_fields
+                    }
+                }
+            }
+
+            #describe_impl
             #describe_fn
         })
+    } else {
+        let binding = handle::quote_type_as_handle(&item.ident)?;
+        Ok(quote! {
+            #binding
+            #describe_impl
+        })
+    }
+}
+
+fn describe_struct(item: &ItemStruct) -> TokenStream {
+    let ident = &item.ident;
+
+    let body = if item.fields.is_empty() {
+        quote! {
+            cs_bindgen::shared::schematic::Describer::describe_unit_struct(type_name)
+        }
+    } else {
+        match &item.fields {
+            // For tuple-like structs we have two cases to consider:
+            //
+            // * If the struct only has one element, then it's considered a newtype struct in
+            //   the schematic data model.
+            // * For any other number of elements, it is considered a tuple struct.
+            //
+            // An empty tuple-like struct is treated like a unit-struct in the data model,
+            // though that case is already handled above when we check `item.fields.is_empty()`.
+            Fields::Unnamed(fields) => {
+                if fields.unnamed.len() == 1 {
+                    let inner = &fields.unnamed[0].ty;
+                    quote! {
+                        describer.describe_newtype_struct::<#inner>(type_name)
+                    }
+                } else {
+                    let element_ty = fields.unnamed.iter().map(|field| &field.ty);
+                    quote! {
+                        let mut describer = describer.describe_tuple_struct(type_name)?;
+                        #(
+                            describer.describe_element::<#element_ty>()?;
+                        )*
+                        describer.end()
+                    }
+                }
+            }
+
+            // Normal structs (i.e. with named fields) are always considered structs in the data
+            // model. The only exception being one with no fields, though that case is already
+            // handled above when we check `item.fields.is_empty()`.
+            Fields::Named(fields) => {
+                let field_name = fields
+                    .named
+                    .iter()
+                    .map(|field| field.ident.as_ref().unwrap().to_string());
+                let field_ty = fields.named.iter().map(|field| &field.ty);
+                quote! {
+                    let mut describer = describer.describe_struct(type_name)?;
+                    #(
+                        describer.describe_field::<#field_ty>(#field_name)?;
+                    )*
+                    describer.end()
+                }
+            }
+
+            Fields::Unit => unreachable!("Empty struct bodies have already been handled"),
+        }
+    };
+
+    quote! {
+        impl cs_bindgen::shared::schematic::Describe for #ident {
+            fn describe<D>(describer: D) -> Result<D::Ok, D::Error>
+            where
+                D: cs_bindgen::shared::schematic::Describer,
+            {
+                use cs_bindgen::shared::schematic::{Describer, DescribeStruct, DescribeTupleStruct};
+
+                let type_name = cs_bindgen::shared::schematic::type_name!(#ident);
+                #body
+            }
+        }
     }
 }

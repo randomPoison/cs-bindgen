@@ -10,17 +10,6 @@ pub fn quote_type_as_handle(ident: &Ident) -> syn::Result<TokenStream> {
     let describe_fn = describe_named_type(ident, BindingStyle::Handle);
 
     Ok(quote! {
-        // Implement `Describe` for the exported type.
-        impl cs_bindgen::shared::schematic::Describe for #ident {
-            fn describe<E>(describer: E) -> Result<E::Ok, E::Error>
-            where
-                E: cs_bindgen::shared::schematic::Describer,
-            {
-                let describer = describer.describe_struct(cs_bindgen::shared::schematic::type_name!(#ident))?;
-                cs_bindgen::shared::schematic::DescribeStruct::end(describer)
-            }
-        }
-
         // Implement `Abi` for the type and references to the type.
 
         impl cs_bindgen::abi::Abi for #ident {
