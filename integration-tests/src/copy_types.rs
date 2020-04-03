@@ -16,3 +16,8 @@ pub enum Suit {
     Circles,
     Man,
 }
+
+#[cs_bindgen]
+pub fn roundtrip_simple_tile(tile: SimpleTile) -> SimpleTile {
+    tile
+}

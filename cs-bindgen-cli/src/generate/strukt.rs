@@ -18,20 +18,45 @@ pub fn quote_struct(export: &NamedType, schema: &Struct, types: &TypeMap) -> Tok
 
     let fields = schema.fields().collect::<Vec<_>>();
 
+    let field_ident = fields
+        .iter()
+        .enumerate()
+        .map(|(index, field)| field_ident(field.name, index))
+        .collect::<Vec<_>>();
+
     let struct_fields = struct_fields(&fields, types);
-    let constructor = struct_constructor(&ident, &fields, types);
+    let basic_constructor = struct_constructor(&ident, &fields, types);
     let raw_fields = binding::raw_struct_fields(&fields, types);
+
+    let bindings = binding::bindings_class_ident();
+    let from_raw_fn = binding::from_raw_fn_ident();
+    let into_raw_fn = binding::into_raw_fn_ident();
 
     quote! {
         public struct #ident
         {
             #struct_fields
-            #constructor
+            #basic_constructor
+
+            // Generate a constructor that can initialize the struct from its raw version.
+            internal #ident(#raw_ident raw)
+            {
+                #(
+                    this.#field_ident = #bindings.#from_raw_fn(raw.#field_ident);
+                )*
+            }
         }
 
         internal struct #raw_ident
         {
             #raw_fields
+
+            internal #raw_ident(#ident self)
+            {
+                #(
+                    this.#field_ident = #bindings.#into_raw_fn(self.#field_ident);
+                )*
+            }
         }
     }
 }

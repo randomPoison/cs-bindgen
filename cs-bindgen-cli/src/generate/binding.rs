@@ -129,12 +129,8 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
 
                 BindingStyle::Value => match &export.schema {
                     Schema::Struct(_) => {
-                        let from_raw_impl = quote! {
-                            throw new NotImplementedException("Support passing structs by value");
-                        };
-                        let into_raw_impl = quote! {
-                            throw new NotImplementedException("Support passing structs by value");
-                        };
+                        let from_raw_impl = quote! { return new #cs_repr(raw); };
+                        let into_raw_impl = quote! { return new #raw_repr(self); };
 
                         (from_raw_impl, into_raw_impl)
                     }
