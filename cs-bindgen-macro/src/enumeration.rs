@@ -173,7 +173,9 @@ fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
             };
         }
 
-        let convert_fields = value::into_abi_fields(&variant.fields, None);
+        let convert_fields = value::into_abi_fields(&variant.fields, |index, field| {
+            value::raw_field_ident(index, field).into_token_stream()
+        });
 
         quote! {
             Self::#variant_ident #destructure => cs_bindgen::abi::RawEnum::new(
