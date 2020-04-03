@@ -173,20 +173,14 @@ fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
             };
         }
 
-        let convert_fields = variant.fields.iter().enumerate().map(|(index, field)| {
-            let field_ident = field_ident(index, field);
-
-            quote! {
-                #field_ident: cs_bindgen::abi::Abi::into_abi(#field_ident)
-            }
-        });
+        let convert_fields = value::into_abi_fields(&variant.fields, &quote! {});
 
         quote! {
             Self::#variant_ident #destructure => cs_bindgen::abi::RawEnum::new(
                 #discriminant,
                 #abi_union_ty {
                     #variant_ident: #abi_ident {
-                        #( #convert_fields, )*
+                        #convert_fields
                     },
                 },
             )
@@ -196,43 +190,21 @@ fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
     let from_abi_match_arms = item.variants.iter().enumerate().map(|(index, variant)| {
         let variant_ident = &variant.ident;
         let discriminant = Literal::usize_unsuffixed(index);
-        let abi_ident = format_ident!("{}__{}", abi_union_ty, variant.ident);
 
+        // Generate the logic for converting each field in the variant, then wrap it in the
+        // appropriate type of braces based on the variant style.
+        let populate_variant =
+            value::from_abi_fields(&variant.fields, &quote! { abi.#variant_ident });
         let braces = match &variant.fields {
-            Fields::Named { .. } => quote! { {} },
-            Fields::Unnamed { .. } => quote! { () },
+            Fields::Named { .. } => quote! { { #populate_variant } },
+            Fields::Unnamed { .. } => quote! { ( # populate_variant ) },
             Fields::Unit => quote! {},
-        };
-
-        if variant.fields.is_empty() {
-            return quote! {
-                #discriminant => Self::#variant_ident #braces
-            };
-        }
-
-        let field_idents = variant
-            .fields
-            .iter()
-            .enumerate()
-            .map(|(index, field)| field_ident(index, field))
-            .collect::<Vec<_>>();
-
-        let populate_variant = match &variant.fields {
-            Fields::Named { .. } => quote! {
-                { #( #field_idents: cs_bindgen::abi::Abi::from_abi(#field_idents), )* }
-            },
-
-            Fields::Unnamed { .. } => quote! {
-                ( #( cs_bindgen::abi::Abi::from_abi(#field_idents), )* )
-            },
-
-            Fields::Unit => unreachable!(),
         };
 
         quote! {
             #discriminant => {
-                let #abi_ident { #( #field_idents, )* } = abi.value.assume_init().#variant_ident;
-                Self::#variant_ident #populate_variant
+                let abi = abi.value.assume_init();
+                Self::#variant_ident #braces
             }
         }
     });

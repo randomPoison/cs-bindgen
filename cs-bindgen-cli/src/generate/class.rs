@@ -2,7 +2,6 @@ use crate::generate::{binding, func::*, TypeMap};
 use cs_bindgen_shared::{schematic::Struct, BindingStyle, Method, NamedType, Schema};
 use proc_macro2::TokenStream;
 use quote::*;
-use syn::Ident;
 
 pub fn quote_drop_fn(name: &str, dll_name: &str) -> TokenStream {
     let binding_ident = format_ident!("__cs_bindgen_drop__{}", name);
@@ -25,7 +24,7 @@ pub fn quote_struct(export: &NamedType, _schema: &Struct) -> TokenStream {
 }
 
 /// Quotes the pointer type used for handles, i.e. `void*`.
-fn quote_handle_ptr() -> TokenStream {
+pub fn quote_handle_ptr() -> TokenStream {
     quote! { void* }
 }
 

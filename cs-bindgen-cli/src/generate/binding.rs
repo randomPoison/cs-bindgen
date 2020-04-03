@@ -76,7 +76,8 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
             // includes the receiver.
             let mut args = quote_binding_args(export.inputs(), types);
             if export.receiver.is_some() {
-                args.insert(0, quote! { void* self });
+                let handle_type = class::quote_handle_ptr();
+                args.insert(0, quote! { #handle_type self });
             }
 
             quote! {
