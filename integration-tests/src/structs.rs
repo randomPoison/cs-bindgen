@@ -101,6 +101,15 @@ pub struct TupleStruct(String, String);
 pub struct CopyTupleStruct(i32, i32);
 
 #[cs_bindgen]
-pub fn copy_tuple_struct_round_trip(value: CopyTupleStruct) -> CopyTupleStruct {
+pub fn round_trip_copy_tuple_struct(value: CopyTupleStruct) -> CopyTupleStruct {
+    value
+}
+
+#[cs_bindgen]
+#[derive(Debug, Clone, Copy)]
+pub struct CopyNewtypeStruct(i32);
+
+#[cs_bindgen]
+pub fn round_trip_copy_newtype_struct(value: CopyNewtypeStruct) -> CopyNewtypeStruct {
     value
 }
