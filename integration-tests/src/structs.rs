@@ -87,3 +87,20 @@ pub struct NewtypeStruct(u32);
 #[cs_bindgen]
 #[derive(Debug, Clone)]
 pub struct TupleStruct(String, String);
+
+// TODO: Support methods on tuple structs.
+// #[cs_bindgen]
+// impl TupleStruct {
+//     pub fn new(first: String, second: String) -> TupleStruct {
+//         Self(first, second)
+//     }
+// }
+
+#[cs_bindgen]
+#[derive(Debug, Clone, Copy)]
+pub struct CopyTupleStruct(i32, i32);
+
+#[cs_bindgen]
+pub fn copy_tuple_struct_round_trip(value: CopyTupleStruct) -> CopyTupleStruct {
+    value
+}

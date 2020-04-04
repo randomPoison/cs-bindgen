@@ -84,6 +84,7 @@ pub fn quote_method_binding(item: &Method, type_map: &TypeMap) -> TokenStream {
         Schema::Struct(struct_) => &struct_.name,
         _ => todo!("Support methods for other named types"),
     };
+
     let class_ident = format_ident!("{}", &*class_name.name);
 
     // Use a heuristic to determine if the method should be treated as a constructor.
