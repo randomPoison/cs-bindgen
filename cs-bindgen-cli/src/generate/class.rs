@@ -3,8 +3,8 @@ use cs_bindgen_shared::{Method, NamedType, Schema};
 use proc_macro2::TokenStream;
 use quote::*;
 
-pub fn quote_drop_fn(name: &str, dll_name: &str) -> TokenStream {
-    let binding_ident = format_ident!("__cs_bindgen_drop__{}", name);
+pub fn quote_drop_fn(export: &NamedType, dll_name: &str) -> TokenStream {
+    let binding_ident = format_ident!("__cs_bindgen_drop__{}", &*export.name);
     let entry_point = binding_ident.to_string();
     quote! {
         [DllImport(

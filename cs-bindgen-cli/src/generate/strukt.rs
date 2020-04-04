@@ -1,6 +1,6 @@
 use crate::generate::{self, binding, class, TypeMap};
 use cs_bindgen_shared::{
-    schematic::{Field, Struct},
+    schematic::{Field, StructLike},
     BindingStyle, NamedType,
 };
 use heck::CamelCase;
@@ -8,7 +8,7 @@ use proc_macro2::TokenStream;
 use quote::*;
 use syn::Ident;
 
-pub fn quote_struct(export: &NamedType, schema: &Struct, types: &TypeMap) -> TokenStream {
+pub fn quote_struct(export: &NamedType, schema: StructLike<'_>, types: &TypeMap) -> TokenStream {
     if export.binding_style == BindingStyle::Handle {
         return class::quote_handle_type(export);
     }
@@ -16,21 +16,32 @@ pub fn quote_struct(export: &NamedType, schema: &Struct, types: &TypeMap) -> Tok
     let ident = format_ident!("{}", &*export.name);
     let raw_ident = binding::raw_ident(&export.name);
 
-    let fields = schema.fields().collect::<Vec<_>>();
-
-    let field_ident = fields
+    let field_ident = schema
+        .fields
         .iter()
         .enumerate()
         .map(|(index, field)| field_ident(field.name, index))
         .collect::<Vec<_>>();
 
-    let struct_fields = struct_fields(&fields, types);
-    let basic_constructor = struct_constructor(&ident, &fields, types);
-    let raw_fields = binding::raw_struct_fields(&fields, types);
+    let struct_fields = struct_fields(&schema.fields, types);
+    let basic_constructor = struct_constructor(&ident, &schema.fields, types);
+    let raw_fields = binding::raw_struct_fields(&schema.fields, types);
 
     let bindings = binding::bindings_class_ident();
-    let from_raw_fn = binding::from_raw_fn_ident();
-    let into_raw_fn = binding::into_raw_fn_ident();
+    let from_raw = binding::from_raw_fn_ident();
+    let into_raw = binding::into_raw_fn_ident();
+
+    let raw_conversions = binding::wrap_bindings(quote! {
+        internal static #ident #from_raw(#raw_ident raw)
+        {
+            return new #ident(raw);
+        }
+
+        internal static #raw_ident #into_raw(#ident self)
+        {
+            return new #raw_ident(self);
+        }
+    });
 
     quote! {
         public struct #ident
@@ -42,7 +53,7 @@ pub fn quote_struct(export: &NamedType, schema: &Struct, types: &TypeMap) -> Tok
             internal #ident(#raw_ident raw)
             {
                 #(
-                    this.#field_ident = #bindings.#from_raw_fn(raw.#field_ident);
+                    this.#field_ident = #bindings.#from_raw(raw.#field_ident);
                 )*
             }
         }
@@ -54,10 +65,12 @@ pub fn quote_struct(export: &NamedType, schema: &Struct, types: &TypeMap) -> Tok
             internal #raw_ident(#ident self)
             {
                 #(
-                    this.#field_ident = #bindings.#into_raw_fn(self.#field_ident);
+                    this.#field_ident = #bindings.#into_raw(self.#field_ident);
                 )*
             }
         }
+
+        #raw_conversions
     }
 }
 

@@ -4,7 +4,7 @@
 //! function, using the `[DllImport]` attribute to load the corresponding function
 //! from the Rust dylib. This module provides
 
-use crate::generate::{class, enumeration, quote_cs_type, strukt, TypeMap};
+use crate::generate::{class, strukt, TypeMap};
 use cs_bindgen_shared::{
     schematic::{Field, Schema, TypeName},
     BindingStyle, Export,
@@ -53,6 +53,15 @@ pub fn raw_ident(name: &str) -> Ident {
     format_ident!("__{}__Raw", name)
 }
 
+pub fn wrap_bindings(tokens: TokenStream) -> TokenStream {
+    quote! {
+        internal unsafe static partial class __bindings
+        {
+            #tokens
+        }
+    }
+}
+
 pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> TokenStream {
     match export {
         Export::Fn(export) => {
@@ -94,76 +103,13 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
             }
         }
 
-        // For named types, we generate some additional bindings:
-        //
-        // * For handle types, the Rust module exports a drop function that we need to free
-        //   the memory for the object.
-        // * We generate from-raw and into-raw conversion functions in order to convert the
-        //   C# representation of the type to-and-from the raw representation that can be
-        //   passed to Rust.
+        // Generate the binding for the destructor for any named types that are marshaled
+        // as handles.
         Export::Named(export) => {
-            // Generate the drop function for the type (if needed).
-            let drop_fn = if export.binding_style == BindingStyle::Handle {
-                class::quote_drop_fn(&export.name, dll_name)
+            if export.binding_style == BindingStyle::Handle {
+                class::quote_drop_fn(&export, dll_name)
             } else {
                 quote! {}
-            };
-
-            let from_raw = from_raw_fn_ident();
-            let into_raw = into_raw_fn_ident();
-
-            let cs_repr = quote_cs_type(&export.schema, types);
-            let raw_repr = quote_raw_type_reference(&export.schema, types);
-
-            let (from_raw_impl, into_raw_impl) = match export.binding_style {
-                BindingStyle::Handle => {
-                    let from_raw_impl = quote! {
-                        return new #cs_repr(raw);
-                    };
-                    let into_raw_impl = quote! {
-                        return new #raw_repr(self);
-                    };
-
-                    (from_raw_impl, into_raw_impl)
-                }
-
-                BindingStyle::Value => match &export.schema {
-                    Schema::Struct(_) => {
-                        let from_raw_impl = quote! { return new #cs_repr(raw); };
-                        let into_raw_impl = quote! { return new #raw_repr(self); };
-
-                        (from_raw_impl, into_raw_impl)
-                    }
-
-                    Schema::Enum(schema) => {
-                        let from_raw_impl = enumeration::from_raw_impl(export, schema);
-                        let into_raw_impl = enumeration::into_raw_impl(export, schema);
-
-                        (from_raw_impl, into_raw_impl)
-                    }
-
-                    Schema::UnitStruct(..)
-                    | Schema::TupleStruct(..)
-                    | Schema::NewtypeStruct(..) => {
-                        todo!("Support more kinds of user-defined types")
-                    }
-
-                    _ => unreachable!("Named type had invalid schema: {:?}", export.schema),
-                },
-            };
-
-            quote! {
-                #drop_fn
-
-                internal static #cs_repr #from_raw(#raw_repr raw)
-                {
-                    #from_raw_impl
-                }
-
-                internal static #raw_repr #into_raw(#cs_repr self)
-                {
-                    #into_raw_impl
-                }
             }
         }
     }
