@@ -25,6 +25,21 @@ pub fn quote_handle_type(export: &NamedType) -> TokenStream {
     let drop_fn = format_ident!("__cs_bindgen_drop__{}", &*export.name);
     let raw_repr = binding::raw_ident(&export.name);
 
+    let from_raw = binding::from_raw_fn_ident();
+    let into_raw = binding::into_raw_fn_ident();
+
+    let raw_conversions = binding::wrap_bindings(quote! {
+        internal static #ident #from_raw(#raw_repr raw)
+        {
+            return new #ident(raw);
+        }
+
+        internal static #raw_repr #into_raw(#ident self)
+        {
+            return new #raw_repr(self);
+        }
+    });
+
     quote! {
         public unsafe partial class #ident : IDisposable
         {
@@ -56,6 +71,8 @@ pub fn quote_handle_type(export: &NamedType) -> TokenStream {
                 this.Handle = orig._handle;
             }
         }
+
+        #raw_conversions
     }
 }
 
