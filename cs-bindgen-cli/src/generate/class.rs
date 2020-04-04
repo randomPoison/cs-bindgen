@@ -1,3 +1,5 @@
+//! Code generation for exported named types that are marshaled as handles.
+
 use crate::generate::{binding, func::*, TypeMap};
 use cs_bindgen_shared::{Method, NamedType, Schema};
 use proc_macro2::TokenStream;

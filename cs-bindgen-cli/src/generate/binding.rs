@@ -1,8 +1,14 @@
 //! Utilities for generating the raw bindings to exported Rust items.
 //!
+//! This module provides the code generation for the C# declarations that bind to
+//! Rust functions that are exported from the built dylib. Note that this
+//! specifically refers to the *generated* functions, not the user defined
+//! functions. This module also provides utilities for referencing the raw function
+//! bindings in other parts of the code generation.
+//!
 //! In C#, the raw binding to an exported Rust function is a `static extern`
 //! function, using the `[DllImport]` attribute to load the corresponding function
-//! from the Rust dylib. This module provides
+//! from the Rust dylib.
 
 use crate::generate::{class, strukt, TypeMap};
 use cs_bindgen_shared::{

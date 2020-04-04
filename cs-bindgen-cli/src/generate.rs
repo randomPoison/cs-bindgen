@@ -79,7 +79,7 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
                 )),
 
                 Schema::Enum(schema) => {
-                    binding_items.push(quote_enum_binding(export, schema, &types))
+                    binding_items.push(quote_enum(export, schema, &types))
                 }
 
                 _ => {

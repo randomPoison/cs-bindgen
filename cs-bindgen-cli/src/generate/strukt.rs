@@ -1,3 +1,5 @@
+//! Code generation for exported struct types.
+
 use crate::generate::{self, binding, class, TypeMap};
 use cs_bindgen_shared::{
     schematic::{Field, StructLike},
