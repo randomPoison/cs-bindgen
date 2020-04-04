@@ -1,5 +1,5 @@
 use crate::{describe_named_type, handle, has_derive_copy, reject_generics, value, BindingStyle};
-use proc_macro2::TokenStream;
+use proc_macro2::{Literal, TokenStream};
 use quote::*;
 use syn::*;
 
@@ -16,10 +16,25 @@ pub fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
     if has_derive_copy(&item.attrs)? {
         let abi_struct_ident = format_binding_ident!(item.ident);
         let abi_struct = value::quote_abi_struct(&abi_struct_ident, &item.fields);
-        let from_abi_fields = value::from_abi_fields(&item.fields, &quote! { abi });
-        let into_abi_fields = value::into_abi_fields(&item.fields, Some(quote! { self }));
+        let into_abi_fields = value::into_abi_fields(&item.fields, |index, field| {
+            let accessor = field
+                .ident
+                .as_ref()
+                .map(|ident| ident.into_token_stream())
+                .unwrap_or_else(|| Literal::usize_unsuffixed(index).into_token_stream());
+            quote! { self.#accessor }
+        });
         let describe_fn = describe_named_type(&item.ident, BindingStyle::Value);
         let ident = item.ident;
+
+        // Generate the `from_abi` conversions for the fields, then wrap that code in the
+        // appropriate kind of braces based on the style of the struct.
+        let from_abi_fields = value::from_abi_fields(&item.fields, &quote! { abi });
+        let from_abi_braces = match &item.fields {
+            Fields::Named(_) => quote! { { #from_abi_fields } },
+            Fields::Unnamed(_) => quote! { ( #from_abi_fields ) },
+            Fields::Unit => quote! {},
+        };
 
         Ok(quote! {
             #abi_struct
@@ -28,9 +43,7 @@ pub fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
                 type Abi = #abi_struct_ident;
 
                 unsafe fn from_abi(abi: Self::Abi) -> Self {
-                    Self {
-                        #from_abi_fields
-                    }
+                    Self #from_abi_braces
                 }
 
                 fn into_abi(self) -> Self::Abi {

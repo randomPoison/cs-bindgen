@@ -1,15 +1,41 @@
+//! Code generation for exported enum types.
+
 use crate::generate::{binding, quote_primitive_type, strukt, TypeMap};
 use cs_bindgen_shared::{schematic::Enum, schematic::Variant, BindingStyle, NamedType};
 use proc_macro2::{Literal, TokenStream};
 use quote::*;
 use syn::Ident;
 
-pub fn quote_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap) -> TokenStream {
+pub fn quote_enum(export: &NamedType, schema: &Enum, types: &TypeMap) -> TokenStream {
     // Determine if we're dealing with a simple (C-like) enum or one with fields.
-    if schema.has_data() {
-        quote_complex_enum_binding(export, schema, types)
+    let generated = if schema.has_data() {
+        quote_complex_enum(export, schema, types)
     } else {
-        quote_simple_enum_binding(export, schema)
+        quote_simple_enum(export, schema)
+    };
+
+    let repr = quote_type_reference(export, schema);
+    let raw_repr = binding::quote_raw_type_reference(&export.schema, types);
+    let from_raw = binding::from_raw_fn_ident();
+    let into_raw = binding::into_raw_fn_ident();
+
+    let from_raw_impl = from_raw_impl(export, schema);
+    let into_raw_impl = into_raw_impl(export, schema);
+    let raw_conversions = binding::wrap_bindings(quote! {
+        internal static #repr #from_raw(#raw_repr raw)
+        {
+            #from_raw_impl
+        }
+
+        internal static #raw_repr #into_raw(#repr self)
+        {
+            #into_raw_impl
+        }
+    });
+
+    quote! {
+        #generated
+        #raw_conversions
     }
 }
 
@@ -27,14 +53,14 @@ pub fn quote_type_reference(export: &NamedType, schema: &Enum) -> TokenStream {
 /// communicating with Rust. On the C# side, C-like enums are always represented as
 /// `int` under the hood, and complex enums don't have a specific discriminant since
 /// they are represented using an interface.
-pub fn quote_discriminant_type(schema: &Enum) -> TokenStream {
+fn quote_discriminant_type(schema: &Enum) -> TokenStream {
     schema
         .repr
         .map(quote_primitive_type)
         .unwrap_or_else(|| quote! { IntPtr })
 }
 
-pub fn from_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
+fn from_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
     // For C-like enums, the conversion is just casting the raw discriminant value to
     // the C# enum type.
     if !schema.has_data() {
@@ -78,7 +104,7 @@ pub fn from_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
     }
 }
 
-pub fn into_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
+fn into_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
     // For C-like enums, the conversion is just invoking the constructor of the raw struct.
     if !schema.has_data() {
         let raw_ident = binding::raw_ident(&export.name);
@@ -138,7 +164,7 @@ pub fn into_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
     }
 }
 
-fn quote_simple_enum_binding(export: &NamedType, schema: &Enum) -> TokenStream {
+fn quote_simple_enum(export: &NamedType, schema: &Enum) -> TokenStream {
     let ident = format_ident!("{}", &*export.name);
     let variants = schema.variants.iter().map(|variant| {
         let (name, discriminant) = match variant {
@@ -189,7 +215,7 @@ fn quote_simple_enum_binding(export: &NamedType, schema: &Enum) -> TokenStream {
     }
 }
 
-fn quote_complex_enum_binding(export: &NamedType, schema: &Enum, types: &TypeMap) -> TokenStream {
+fn quote_complex_enum(export: &NamedType, schema: &Enum, types: &TypeMap) -> TokenStream {
     assert_eq!(
         export.binding_style,
         BindingStyle::Value,
@@ -363,7 +389,7 @@ fn variant_struct_type_ref(export: &NamedType, variant: &Variant) -> TokenStream
     }
 }
 
-pub fn raw_variant_struct_type_ref(export: &NamedType, variant: &Variant) -> TokenStream {
+fn raw_variant_struct_type_ref(export: &NamedType, variant: &Variant) -> TokenStream {
     let wrapper_class = wrapper_class_name(export);
     let raw_variant_struct_name = binding::raw_ident(variant.name());
     quote! {

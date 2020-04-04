@@ -11,7 +11,7 @@ pub fn quote_abi_struct(ident: &Ident, fields: &Fields) -> TokenStream {
         .enumerate()
         .map(|(index, field)| {
             let field_ty = &field.ty;
-            let field_ident = field_ident(index, field);
+            let field_ident = raw_field_ident(index, field);
 
             quote! {
                 #field_ident: <#field_ty as cs_bindgen::abi::Abi>::Abi
@@ -48,25 +48,25 @@ pub fn quote_abi_struct(ident: &Ident, fields: &Fields) -> TokenStream {
 ///
 /// Returns an empty token stream if `fields` is empty.
 ///
-/// `input` is the expression for the value being converted. For example, if
-/// `foo.field_name` would be the correct expression to access the field, then
-/// `input` should be `foo`. If `input` is `Some`, then a `.` token will be inserted
-/// before the name of the field, otherwise the `.` will be omitted.
-pub fn into_abi_fields(fields: &Fields, input: Option<TokenStream>) -> TokenStream {
+/// # Field Accessors
+///
+/// `field_accessor` is a closure that should generate the appropriate expression
+/// for accessing the field in the current context. The returned value will be
+/// treated as the expression that is passed into `Abi::into_abi` in the generated
+/// code.
+pub fn into_abi_fields(
+    fields: &Fields,
+    field_accessor: impl Fn(usize, &Field) -> TokenStream,
+) -> TokenStream {
     let abi_field = fields
         .iter()
         .enumerate()
-        .map(|(index, field)| field_ident(index, field));
-
-    let field_prefix = match input {
-        Some(input) => quote! { #input. },
-        None => quote! {},
-    };
+        .map(|(index, field)| raw_field_ident(index, field));
 
     let conversion = fields.iter().enumerate().map(|(index, field)| {
-        let input_field = field_ident(index, field);
+        let input_field = field_accessor(index, field);
         quote! {
-            cs_bindgen::abi::Abi::into_abi(#field_prefix #input_field)
+            cs_bindgen::abi::Abi::into_abi(#input_field)
         }
     });
 
@@ -84,7 +84,7 @@ pub fn from_abi_fields(fields: &Fields, input: &TokenStream) -> TokenStream {
     });
 
     let conversion = fields.iter().enumerate().map(|(index, field)| {
-        let field_ident = field_ident(index, field);
+        let field_ident = raw_field_ident(index, field);
         quote! { cs_bindgen::abi::Abi::from_abi(#input.#field_ident) }
     });
 
@@ -95,11 +95,13 @@ pub fn from_abi_fields(fields: &Fields, input: &TokenStream) -> TokenStream {
     }
 }
 
-/// Returns the ident for a field, or generates one if the field is unnamed.
+/// Returns the ident of the field in a raw binding struct corresponding to the
+/// specified field
 ///
-/// This ensures a consistent naming convention when generating struct
+/// Automatically generates a valid identifier if the field does not already have
+/// one. This ensures a consistent naming convention when generating struct
 /// representations of enums. Unnamed fields will be named `element_{index}`.
-pub fn field_ident(index: usize, field: &Field) -> Ident {
+pub fn raw_field_ident(index: usize, field: &Field) -> Ident {
     field
         .ident
         .as_ref()

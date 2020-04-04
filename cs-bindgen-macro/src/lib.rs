@@ -269,7 +269,9 @@ fn quote_method_item(item: ImplItemMethod, self_ty: &Type) -> syn::Result<TokenS
 
     // Determine the name of the generated function.
     let ident = signature.ident;
-    let binding_ident = format_binding_ident!(ident);
+    let self_ident = extract_type_ident(self_ty)?;
+    let mangled_name = format!("{}__{}", ident, self_ident);
+    let binding_ident = format_binding_ident!(mangled_name);
 
     // Process the arguments to the function.
     let inputs = extract_inputs(signature.inputs)?;
@@ -328,7 +330,7 @@ fn quote_method_item(item: ImplItemMethod, self_ty: &Type) -> syn::Result<TokenS
     // ===============================
 
     // Generate the name of the describe function.
-    let describe_ident = format_describe_ident!(ident);
+    let describe_ident = format_describe_ident!(mangled_name);
 
     // Generate string versions of the two function idents.
     let name = ident.to_string();
@@ -442,4 +444,25 @@ fn describe_named_type(ident: &Ident, style: BindingStyle) -> TokenStream {
             std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())
         }
     }
+}
+
+/// Generates a valid identifier from the given type.
+///
+/// Returns an error if the type is not a `Type::Path`. Otherwise, the segments of
+/// the path are concatenated with `__` to create an identifier from the type
+/// reference.
+fn extract_type_ident(ty: &Type) -> syn::Result<Ident> {
+    let path = match ty {
+        Type::Path(path) => path,
+        _ => return Err(Error::new_spanned(ty, "Unsupported type expression, only type paths are supported with `#[cs_bindgen]`, e.g. `Foo` or `foo::bar::Baz`")),
+    };
+
+    let ident_string = path
+        .path
+        .segments
+        .iter()
+        .map(|seg| seg.ident.to_string())
+        .collect::<Vec<_>>()
+        .join("__");
+    Ok(format_ident!("{}", ident_string))
 }

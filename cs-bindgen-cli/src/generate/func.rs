@@ -1,3 +1,5 @@
+//! Code generation for exported functions and methods.
+
 use crate::generate::{binding, quote_cs_type, TypeMap};
 use cs_bindgen_shared::*;
 use heck::*;

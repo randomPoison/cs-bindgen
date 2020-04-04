@@ -1,10 +1,12 @@
+//! Code generation for exported named types that are marshaled as handles.
+
 use crate::generate::{binding, func::*, TypeMap};
 use cs_bindgen_shared::{Method, NamedType, Schema};
 use proc_macro2::TokenStream;
 use quote::*;
 
-pub fn quote_drop_fn(name: &str, dll_name: &str) -> TokenStream {
-    let binding_ident = format_ident!("__cs_bindgen_drop__{}", name);
+pub fn quote_drop_fn(export: &NamedType, dll_name: &str) -> TokenStream {
+    let binding_ident = format_ident!("__cs_bindgen_drop__{}", &*export.name);
     let entry_point = binding_ident.to_string();
     quote! {
         [DllImport(
@@ -24,6 +26,21 @@ pub fn quote_handle_type(export: &NamedType) -> TokenStream {
     let ident = format_ident!("{}", &*export.name);
     let drop_fn = format_ident!("__cs_bindgen_drop__{}", &*export.name);
     let raw_repr = binding::raw_ident(&export.name);
+
+    let from_raw = binding::from_raw_fn_ident();
+    let into_raw = binding::into_raw_fn_ident();
+
+    let raw_conversions = binding::wrap_bindings(quote! {
+        internal static #ident #from_raw(#raw_repr raw)
+        {
+            return new #ident(raw);
+        }
+
+        internal static #raw_repr #into_raw(#ident self)
+        {
+            return new #raw_repr(self);
+        }
+    });
 
     quote! {
         public unsafe partial class #ident : IDisposable
@@ -56,6 +73,8 @@ pub fn quote_handle_type(export: &NamedType) -> TokenStream {
                 this.Handle = orig._handle;
             }
         }
+
+        #raw_conversions
     }
 }
 
@@ -65,6 +84,7 @@ pub fn quote_method_binding(item: &Method, type_map: &TypeMap) -> TokenStream {
         Schema::Struct(struct_) => &struct_.name,
         _ => todo!("Support methods for other named types"),
     };
+
     let class_ident = format_ident!("{}", &*class_name.name);
 
     // Use a heuristic to determine if the method should be treated as a constructor.
