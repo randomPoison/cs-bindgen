@@ -338,6 +338,11 @@ impl<'a> From<&'a str> for RawSlice<u8> {
     }
 }
 
+/// Generates the `Abi` implementation for arrays of different lengths.
+///
+/// For an array of type `T`, it's ABI-compatible representation is an array of the
+/// same length of type `T::Abi`. Conversion is performed directly for each element.
+/// This macro helps cut down on the boilerplate needed for the implementations.
 macro_rules! array_abi {
     ( $len:expr; $($elem:ident),* ) => {
         unsafe impl<T: AbiPrimitive> AbiPrimitive for [T; $len] {}
