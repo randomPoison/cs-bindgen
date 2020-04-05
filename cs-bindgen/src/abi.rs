@@ -138,6 +138,21 @@ impl Abi for bool {
     }
 }
 
+impl<T> Abi for Vec<T>
+where
+    T: Abi,
+{
+    type Abi = RawVec<T>;
+
+    fn into_abi(self) -> Self::Abi {
+        self.into()
+    }
+
+    unsafe fn from_abi(abi: Self::Abi) -> Self {
+        abi.into_vec()
+    }
+}
+
 impl Abi for String {
     type Abi = RawVec<u8>;
 
@@ -162,10 +177,16 @@ impl<'a> Abi for &'a str {
     }
 }
 
-/// Raw representation of a [`String`] compatible with FFI.
+/// Raw representation of a [`Vec`] compatible with FFI.
+///
+/// When converting a `Vec<T>` into a `RawVec<T>`, no conversion is performed for
+/// the elements of the vec. Instead, the generated C# code is expected to determine
+/// if conversion is needed or not, and either memcopy the entire array or to
+/// individually convert each element. The `[cs_bindgen]` proc macro generates a
+/// conversion function for each type that the C# code uses to perform this
+/// conversion.
 ///
 /// [`String`]: https://doc.rust-lang.org/std/string/struct.String.html
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(C)]
 pub struct RawVec<T> {
     pub ptr: *mut T,
@@ -179,6 +200,17 @@ impl<T> RawVec<T> {
     }
 }
 
+impl<T> Clone for RawVec<T> {
+    fn clone(&self) -> Self {
+        Self {
+            ptr: self.ptr,
+            len: self.len,
+            capacity: self.capacity,
+        }
+    }
+}
+impl<T> Copy for RawVec<T> {}
+
 impl RawVec<u8> {
     /// Reconstructs the original string from its raw parts.
     ///
@@ -191,7 +223,7 @@ impl RawVec<u8> {
     }
 }
 
-unsafe impl<T> AbiPrimitive for RawVec<T> where T: AbiPrimitive {}
+unsafe impl<T> AbiPrimitive for RawVec<T> {}
 
 impl<T> From<Vec<T>> for RawVec<T> {
     fn from(mut from: Vec<T>) -> Self {
@@ -225,13 +257,15 @@ impl From<String> for RawVec<u8> {
     }
 }
 
-/// Raw representation of a `string` passed from C#.
+/// Raw representation of a `&[T]`.
 ///
-/// C# strings are encoded as utf-16, so they're effectively passed to rust as a
-/// `u16` slice. This struct contains the raw pieces necessary to reconstruct the
-/// slice, and provides a helper method `into_string` to copy the data into a
-/// `String`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// When converting a `&[T]` into a `RawSlice<T>`, no conversion is performed for
+/// the elements of the slice. Instead, the generated C# code is expected to
+/// determine if conversion is needed or not, and either memcopy the entire array or
+/// individually convert each element. The `[cs_bindgen]` proc macro generates a
+/// conversion function for each type that the C# code uses to perform this
+/// conversion.
+#[derive(Debug, PartialEq, Eq, Hash)]
 #[repr(C)]
 pub struct RawSlice<T> {
     pub ptr: *const T,
@@ -270,7 +304,18 @@ impl RawSlice<u16> {
     }
 }
 
-unsafe impl<T> AbiPrimitive for RawSlice<T> where T: AbiPrimitive {}
+impl<T> Clone for RawSlice<T> {
+    fn clone(&self) -> Self {
+        Self {
+            ptr: self.ptr,
+            len: self.len,
+        }
+    }
+}
+
+impl<T> Copy for RawSlice<T> {}
+
+unsafe impl<T> AbiPrimitive for RawSlice<T> {}
 
 impl<'a, T> From<&'a [T]> for RawSlice<T>
 where
@@ -292,6 +337,73 @@ impl<'a> From<&'a str> for RawSlice<u8> {
         }
     }
 }
+
+macro_rules! array_abi {
+    ( $len:expr; $($elem:ident),* ) => {
+        unsafe impl<T: AbiPrimitive> AbiPrimitive for [T; $len] {}
+
+        impl<T: Abi> Abi for [T; $len] {
+            type Abi = [T::Abi; $len];
+
+            fn into_abi(self) -> Self::Abi {
+                let [
+                    $( $elem, )*
+                ] = self;
+
+                [
+                    $(
+                        $crate::abi::Abi::into_abi($elem),
+                    )*
+                ]
+            }
+
+            unsafe fn from_abi(abi: Self::Abi) -> Self {
+                let [
+                    $( $elem, )*
+                ] = abi;
+
+                [
+                    $(
+                        $crate::abi::Abi::from_abi($elem),
+                    )*
+                ]
+            }
+        }
+    };
+}
+
+array_abi!(1; a);
+array_abi!(2; a, b);
+array_abi!(3; a, b, c);
+array_abi!(4; a, b, c, d);
+array_abi!(5; a, b, c, d, e);
+array_abi!(6; a, b, c, d, e, f);
+array_abi!(7; a, b, c, d, e, f, g);
+array_abi!(8; a, b, c, d, e, f, g, h);
+array_abi!(9; a, b, c, d, e, f, g, h, i);
+array_abi!(10; a, b, c, d, e, f, g, h, i, j);
+array_abi!(11; a, b, c, d, e, f, g, h, i, j, k);
+array_abi!(12; a, b, c, d, e, f, g, h, i, j, k, l);
+array_abi!(13; a, b, c, d, e, f, g, h, i, j, k, l, m);
+array_abi!(14; a, b, c, d, e, f, g, h, i, j, k, l, m, n);
+array_abi!(15; a, b, c, d, e, f, g, h, i, j, k, l, m, n, o);
+array_abi!(16; a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p);
+array_abi!(17; a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q);
+array_abi!(18; a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r);
+array_abi!(19; a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s);
+array_abi!(20; a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t);
+array_abi!(21; a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u);
+array_abi!(22; a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v);
+array_abi!(23; a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w);
+array_abi!(24; a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x);
+array_abi!(25; a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y);
+array_abi!(26; a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z);
+array_abi!(27; a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z, aa);
+array_abi!(28; a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z, aa, bb);
+array_abi!(29; a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z, aa, bb, cc);
+array_abi!(30; a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z, aa, bb, cc, dd);
+array_abi!(31; a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z, aa, bb, cc, dd, ee);
+array_abi!(32; a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z, aa, bb, cc, dd, ee, ff);
 
 /// Deconstructed representation of an enum, compatible with FFI.
 ///
