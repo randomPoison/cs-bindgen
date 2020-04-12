@@ -8,6 +8,7 @@ edition = "2018"
 cs-bindgen-shared = { version = "0.1.0", path = "../cs-bindgen-shared" }
 failure = "0.1.6"
 heck = "0.3.1"
+lazy_static = "1.4.0"
 parity-wasm = "0.41.0"
 proc-macro2 = "1.0.8"
 quote = "1.0.3"

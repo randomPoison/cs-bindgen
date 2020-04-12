@@ -1,6 +1,6 @@
 //! Code generation for exported named types that are marshaled as handles.
 
-use crate::generate::{binding, func::*, TypeMap};
+use crate::generate::{binding, func, TypeMap};
 use cs_bindgen_shared::{Method, NamedType, Schema};
 use proc_macro2::TokenStream;
 use quote::*;
@@ -25,20 +25,20 @@ pub fn quote_handle_ptr() -> TokenStream {
 pub fn quote_handle_type(export: &NamedType) -> TokenStream {
     let ident = format_ident!("{}", &*export.name);
     let drop_fn = format_ident!("__cs_bindgen_drop__{}", &*export.name);
-    let raw_repr = binding::raw_ident(&export.name);
+    let raw_repr = quote_handle_ptr();
 
     let from_raw = binding::from_raw_fn_ident();
     let into_raw = binding::into_raw_fn_ident();
 
     let raw_conversions = binding::wrap_bindings(quote! {
-        internal static #ident #from_raw(#raw_repr raw)
+        internal static void #from_raw(#raw_repr raw, out #ident result)
         {
-            return new #ident(raw);
+            result = new #ident(raw);
         }
 
-        internal static #raw_repr #into_raw(#ident self)
+        internal static void #into_raw(#ident value, out #raw_repr result)
         {
-            return new #raw_repr(self);
+            result = value._handle;
         }
     });
 
@@ -49,7 +49,7 @@ pub fn quote_handle_type(export: &NamedType) -> TokenStream {
 
             internal #ident(#raw_repr raw)
             {
-                _handle = raw.Handle;
+                _handle = raw;
             }
 
             public void Dispose()
@@ -62,23 +62,11 @@ pub fn quote_handle_type(export: &NamedType) -> TokenStream {
             }
         }
 
-        [StructLayout(LayoutKind.Explicit)]
-        internal unsafe struct #raw_repr
-        {
-            [FieldOffset(0)]
-            public void* Handle;
-
-            public #raw_repr(#ident orig)
-            {
-                this.Handle = orig._handle;
-            }
-        }
-
         #raw_conversions
     }
 }
 
-pub fn quote_method_binding(item: &Method, type_map: &TypeMap) -> TokenStream {
+pub fn quote_method_binding(item: &Method, types: &TypeMap) -> TokenStream {
     // Determine the name of the generated wrapper class based on the self type.
     let class_name = match &item.self_type {
         Schema::Struct(struct_) => &struct_.name,
@@ -99,21 +87,20 @@ pub fn quote_method_binding(item: &Method, type_map: &TypeMap) -> TokenStream {
     // * A non-static method.
     // * A static method.
     let wrapper_fn = if is_constructor {
-        let binding = format_ident!("{}", &*item.binding);
-        let args = quote_args(item.inputs(), type_map);
-        let invoke_args = quote_invoke_args(item.inputs());
-
-        let invoke = fold_fixed_blocks(
-            quote! { _handle = __bindings.#binding(#invoke_args).Handle; },
-            item.inputs(),
+        let args = func::quote_args(item.inputs(), types);
+        let body = func::quote_wrapper_body(
+            &item.binding,
+            None,
+            &item.inputs().collect::<Vec<_>>(),
+            Some(&quote! { this._handle }),
+            types,
         );
 
         quote! {
             public #class_ident(#( #args ),*)
             {
-                unsafe
-                {
-                    #invoke
+                unsafe {
+                    #body
                 }
             }
         }
@@ -122,22 +109,22 @@ pub fn quote_method_binding(item: &Method, type_map: &TypeMap) -> TokenStream {
         // correctly by passing the handle pointer directly, but in order to handle
         // `self` we'll need some concept of "consuming" the handle. Likely this will
         // meaning setting the handle to `null` after calling the function.
-        quote_wrapper_fn(
+        func::quote_wrapper_fn(
             &*item.name,
             &*item.binding,
             Some(quote! { this._handle }),
             item.inputs(),
             item.output.as_ref(),
-            type_map,
+            types,
         )
     } else {
-        quote_wrapper_fn(
+        func::quote_wrapper_fn(
             &*item.name,
             &*item.binding,
             None,
             item.inputs(),
             item.output.as_ref(),
-            type_map,
+            types,
         )
     };
 

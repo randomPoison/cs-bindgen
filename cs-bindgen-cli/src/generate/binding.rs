@@ -10,7 +10,7 @@
 //! function, using the `[DllImport]` attribute to load the corresponding function
 //! from the Rust dylib.
 
-use crate::generate::{class, strukt, TypeMap};
+use crate::generate::{class, enumeration, strukt, TypeMap, STRING_SCHEMA};
 use cs_bindgen_shared::{
     schematic::{Field, Schema, TypeName},
     BindingStyle, Export,
@@ -125,7 +125,7 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
 // NOTE: We're not currently using the type map parameter, but we'll eventually need
 // it once we support custom namespaces, since we'll need to look up the export
 // information to determine the fully-qualified name for the type.
-pub fn quote_raw_type_reference(schema: &Schema, _types: &TypeMap) -> TokenStream {
+pub fn quote_raw_type_reference(schema: &Schema, types: &TypeMap) -> TokenStream {
     fn named_type_raw_reference(type_name: &TypeName) -> TokenStream {
         let ident = raw_ident(&type_name.name);
         quote! {
@@ -134,35 +134,97 @@ pub fn quote_raw_type_reference(schema: &Schema, _types: &TypeMap) -> TokenStrea
     }
 
     match schema {
+        Schema::Unit => quote! { byte },
+        Schema::Bool => quote! { byte },
+        Schema::Char => quote! { uint },
+
         Schema::I8 => quote! { sbyte },
         Schema::I16 => quote! { short },
         Schema::I32 => quote! { int },
         Schema::I64 => quote! { long },
+        Schema::ISize => quote! { IntPtr },
+
         Schema::U8 => quote! { byte },
         Schema::U16 => quote! { ushort },
         Schema::U32 => quote! { uint },
         Schema::U64 => quote! { ulong },
+        Schema::USize => quote! { UIntPtr },
+
         Schema::F32 => quote! { float },
         Schema::F64 => quote! { double },
-        Schema::Bool => quote! { RustBool },
-        Schema::Char => quote! { uint },
-        Schema::String => quote! { RustOwnedString },
 
-        // NOTE: The unwrap here is valid because all of the struct-like variants are
-        // guaranteed to have a type name. If this panic, that indicates a bug in the
-        // schematic crate.
-        Schema::Enum(_)
-        | Schema::Struct(_)
-        | Schema::UnitStruct(_)
-        | Schema::NewtypeStruct(_)
-        | Schema::TupleStruct(_) => named_type_raw_reference(schema.type_name().unwrap()),
-
-        // TODO: Add support for collection types.
-        Schema::Option(_) | Schema::Seq(_) | Schema::Tuple(_) | Schema::Map { .. } => {
-            todo!("Generate argument binding")
+        // NOTE: The `unwrap` here is valid because `String` is a built-in type and so
+        // describing it will never fail.
+        //
+        // TODO: Directly compare the type names once the `Describe` trait has an associated
+        // constant for type names.
+        Schema::String(_) => {
+            if schema == &*STRING_SCHEMA {
+                quote! { RawVec }
+            } else {
+                todo!("Handle unknown custom string types")
+            }
         }
 
-        Schema::Unit => quote! { byte },
+        Schema::Str => quote! { RawSlice },
+
+        Schema::Enum(schema) => {
+            let export = types
+                .get(&schema.name)
+                .unwrap_or_else(|| panic!("No export found for named type {:?}", &schema.name));
+
+            // There are three possible raw representations for an exported enum:
+            //
+            // * Enums that are marshalled as handles are represented as the raw handle pointer
+            //   type (`void*`).
+            // * Data-carrying enums have an associate struct that represents its raw type.
+            // * C-like enums are marshalled directly as an integer value.
+            if export.binding_style == BindingStyle::Handle {
+                class::quote_handle_ptr()
+            } else if schema.has_data() {
+                named_type_raw_reference(&schema.name)
+            } else {
+                enumeration::quote_discriminant_type(schema)
+            }
+        }
+
+        Schema::Struct(_)
+        | Schema::UnitStruct(_)
+        | Schema::NewtypeStruct(_)
+        | Schema::TupleStruct(_) => {
+            // NOTE: The `unwrap` here is valid because all of the struct-like variants are
+            // guaranteed to have a type name. If this panic, that indicates a bug in the
+            // schematic crate.
+            let type_name = schema.type_name().unwrap();
+
+            let export = types
+                .get(type_name)
+                .unwrap_or_else(|| panic!("No export found for named type {:?}", type_name));
+
+            // Determine the raw representation based on the marshaling style.
+            if export.binding_style == BindingStyle::Handle {
+                class::quote_handle_ptr()
+            } else {
+                named_type_raw_reference(type_name)
+            }
+        }
+
+        Schema::Array(_) => todo!("Support passing fixed-size arrays"),
+
+        Schema::Slice(_) => quote! { RawSlice },
+
+        Schema::Seq(schema) => {
+            if schema.name.name == "Vec" && schema.name.module == "alloc::vec" {
+                quote! { RawVec }
+            } else {
+                todo!("Handle unknown sequence types")
+            }
+        }
+
+        // TODO: Add support for collection types.
+        Schema::Option(_) | Schema::Tuple(_) | Schema::Map { .. } => {
+            todo!("Generate argument binding")
+        }
 
         Schema::I128 | Schema::U128 => {
             unreachable!("Invalid types should have already been handled")

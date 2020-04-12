@@ -22,12 +22,12 @@ pub fn quote_enum(export: &NamedType, schema: &Enum, types: &TypeMap) -> TokenSt
     let from_raw_impl = from_raw_impl(export, schema);
     let into_raw_impl = into_raw_impl(export, schema);
     let raw_conversions = binding::wrap_bindings(quote! {
-        internal static #repr #from_raw(#raw_repr raw)
+        internal static void #from_raw(#raw_repr raw, out #repr result)
         {
             #from_raw_impl
         }
 
-        internal static #raw_repr #into_raw(#repr self)
+        internal static void #into_raw(#repr value, out #raw_repr result)
         {
             #into_raw_impl
         }
@@ -53,7 +53,7 @@ pub fn quote_type_reference(export: &NamedType, schema: &Enum) -> TokenStream {
 /// communicating with Rust. On the C# side, C-like enums are always represented as
 /// `int` under the hood, and complex enums don't have a specific discriminant since
 /// they are represented using an interface.
-fn quote_discriminant_type(schema: &Enum) -> TokenStream {
+pub fn quote_discriminant_type(schema: &Enum) -> TokenStream {
     schema
         .repr
         .map(quote_primitive_type)
@@ -65,7 +65,7 @@ fn from_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
     // the C# enum type.
     if !schema.has_data() {
         let cs_repr = quote_type_reference(export, schema);
-        return quote! { return (#cs_repr)raw; };
+        return quote! { result = (#cs_repr)raw; };
     }
 
     let discriminants = schema
@@ -79,12 +79,12 @@ fn from_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
 
         if variant.is_empty() {
             quote! {
-                return new #cs_repr();
+                result = new #cs_repr();
             }
         } else {
             let union_field = format_ident!("{}", variant.name());
             quote! {
-                return new #cs_repr(raw.Value.#union_field);
+                result = new #cs_repr(raw.Value.#union_field);
             }
         }
     });
@@ -96,7 +96,7 @@ fn from_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
                 case #discriminants:
                 {
                     #convert_variants
-                }
+                } break;
             )*
 
             default: throw new Exception("Invalid discriminant " + raw.Discriminant);
@@ -105,11 +105,12 @@ fn from_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
 }
 
 fn into_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
-    // For C-like enums, the conversion is just invoking the constructor of the raw struct.
+    // For C-like enums, the conversion is just casting the C# enum value to the
+    // appropriate discriminant type.
     if !schema.has_data() {
-        let raw_ident = binding::raw_ident(&export.name);
+        let discriminant_ty = quote_discriminant_type(schema);
         return quote! {
-            return new #raw_ident(self);
+            result = (#discriminant_ty)value;
         };
     }
 
@@ -147,19 +148,19 @@ fn into_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
     });
 
     quote! {
-        switch (self)
+        switch (value)
         {
             #(
                 case #variant_type #variant_name:
                 {
-                    return new #raw_struct_ty(
+                    result = new #raw_struct_ty(
                         #discriminant,
                         new #union_ty() { #convert_union_field });
-                }
+                } break;
             )*
 
             default:
-                throw new Exception("Unrecognized enum variant: " + self);
+                throw new Exception("Unrecognized enum variant: " + value);
         }
     }
 }
@@ -188,29 +189,9 @@ fn quote_simple_enum(export: &NamedType, schema: &Enum) -> TokenStream {
         }
     });
 
-    let raw_ident = binding::raw_ident(&export.name);
-    let discriminant_ty = quote_discriminant_type(schema);
-
     quote! {
         public enum #ident {
             #( #variants ),*
-        }
-
-        [StructLayout(LayoutKind.Explicit)]
-        internal unsafe struct #raw_ident
-        {
-            [FieldOffset(0)]
-            public #discriminant_ty Inner;
-
-            public #raw_ident(#ident self)
-            {
-                this.Inner = (#discriminant_ty)self;
-            }
-
-            public static explicit operator #ident(#raw_ident raw)
-            {
-                return (#ident)raw.Inner;
-            }
         }
     }
 }
@@ -287,7 +268,7 @@ fn quote_complex_enum(export: &NamedType, schema: &Enum, types: &TypeMap) -> Tok
                 internal #ident(#raw_ident raw)
                 {
                     #(
-                        this.#field_ident = #bindings.#from_raw_fn(raw.#field_ident);
+                        #bindings.#from_raw_fn(raw.#field_ident, out this.#field_ident);
                     )*
                 }
             }
@@ -300,10 +281,10 @@ fn quote_complex_enum(export: &NamedType, schema: &Enum, types: &TypeMap) -> Tok
 
                 // Generate a constructor that converts the C# representation of the variant into
                 // its raw representation.
-                public #raw_ident(#ident self)
+                public #raw_ident(#ident value)
                 {
                     #(
-                        this.#field_ident = #bindings.#into_raw_fn(self.#field_ident);
+                        #bindings.#into_raw_fn(value.#field_ident, out this.#field_ident);
                     )*
                 }
             }

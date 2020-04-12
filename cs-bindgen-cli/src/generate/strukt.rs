@@ -34,14 +34,14 @@ pub fn quote_struct(export: &NamedType, schema: StructLike<'_>, types: &TypeMap)
     let into_raw = binding::into_raw_fn_ident();
 
     let raw_conversions = binding::wrap_bindings(quote! {
-        internal static #ident #from_raw(#raw_ident raw)
+        internal static void #from_raw(#raw_ident raw, out #ident result)
         {
-            return new #ident(raw);
+            result = new #ident(raw);
         }
 
-        internal static #raw_ident #into_raw(#ident self)
+        internal static void #into_raw(#ident self, out #raw_ident result)
         {
-            return new #raw_ident(self);
+            result = new #raw_ident(self);
         }
     });
 
@@ -55,7 +55,7 @@ pub fn quote_struct(export: &NamedType, schema: StructLike<'_>, types: &TypeMap)
             internal #ident(#raw_ident raw)
             {
                 #(
-                    this.#field_ident = #bindings.#from_raw(raw.#field_ident);
+                    #bindings.#from_raw(raw.#field_ident, out this.#field_ident);
                 )*
             }
         }
@@ -67,7 +67,7 @@ pub fn quote_struct(export: &NamedType, schema: StructLike<'_>, types: &TypeMap)
             internal #raw_ident(#ident self)
             {
                 #(
-                    this.#field_ident = #bindings.#into_raw(self.#field_ident);
+                    #bindings.#into_raw(self.#field_ident, out this.#field_ident);
                 )*
             }
         }
