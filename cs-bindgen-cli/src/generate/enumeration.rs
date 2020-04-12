@@ -96,7 +96,7 @@ fn from_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
                 case #discriminants:
                 {
                     #convert_variants
-                }
+                } break;
             )*
 
             default: throw new Exception("Invalid discriminant " + raw.Discriminant);
@@ -156,11 +156,11 @@ fn into_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
                     result = new #raw_struct_ty(
                         #discriminant,
                         new #union_ty() { #convert_union_field });
-                }
+                } break;
             )*
 
             default:
-                throw new Exception("Unrecognized enum variant: " + self);
+                throw new Exception("Unrecognized enum variant: " + value);
         }
     }
 }
