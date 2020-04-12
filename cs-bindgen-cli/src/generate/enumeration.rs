@@ -189,29 +189,9 @@ fn quote_simple_enum(export: &NamedType, schema: &Enum) -> TokenStream {
         }
     });
 
-    let raw_ident = binding::raw_ident(&export.name);
-    let discriminant_ty = quote_discriminant_type(schema);
-
     quote! {
         public enum #ident {
             #( #variants ),*
-        }
-
-        [StructLayout(LayoutKind.Explicit)]
-        internal unsafe struct #raw_ident
-        {
-            [FieldOffset(0)]
-            public #discriminant_ty Inner;
-
-            public #raw_ident(#ident self)
-            {
-                this.Inner = (#discriminant_ty)self;
-            }
-
-            public static explicit operator #ident(#raw_ident raw)
-            {
-                return (#ident)raw.Inner;
-            }
         }
     }
 }

@@ -125,7 +125,7 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
 // NOTE: We're not currently using the type map parameter, but we'll eventually need
 // it once we support custom namespaces, since we'll need to look up the export
 // information to determine the fully-qualified name for the type.
-pub fn quote_raw_type_reference(schema: &Schema, _types: &TypeMap) -> TokenStream {
+pub fn quote_raw_type_reference(schema: &Schema, types: &TypeMap) -> TokenStream {
     fn named_type_raw_reference(type_name: &TypeName) -> TokenStream {
         let ident = raw_ident(&type_name.name);
         quote! {
@@ -168,24 +168,46 @@ pub fn quote_raw_type_reference(schema: &Schema, _types: &TypeMap) -> TokenStrea
 
         Schema::Str => quote! { RawSlice },
 
-        // For data-carrying enums, the raw representation will be a struct named according
-        // to the naming convention for raw structs. For C-Like enums the raw representation
-        // will be the integer type of the discriminant.
         Schema::Enum(schema) => {
-            if schema.has_data() {
+            let export = types
+                .get(&schema.name)
+                .unwrap_or_else(|| panic!("No export found for named type {:?}", &schema.name));
+
+            // There are three possible raw representations for an exported enum:
+            //
+            // * Enums that are marshalled as handles are represented as the raw handle pointer
+            //   type (`void*`).
+            // * Data-carrying enums have an associate struct that represents its raw type.
+            // * C-like enums are marshalled directly as an integer value.
+            if export.binding_style == BindingStyle::Handle {
+                class::quote_handle_ptr()
+            } else if schema.has_data() {
                 named_type_raw_reference(&schema.name)
             } else {
                 enumeration::quote_discriminant_type(schema)
             }
         }
 
-        // NOTE: The `unwrap` here is valid because all of the struct-like variants are
-        // guaranteed to have a type name. If this panic, that indicates a bug in the
-        // schematic crate.
         Schema::Struct(_)
         | Schema::UnitStruct(_)
         | Schema::NewtypeStruct(_)
-        | Schema::TupleStruct(_) => named_type_raw_reference(schema.type_name().unwrap()),
+        | Schema::TupleStruct(_) => {
+            // NOTE: The `unwrap` here is valid because all of the struct-like variants are
+            // guaranteed to have a type name. If this panic, that indicates a bug in the
+            // schematic crate.
+            let type_name = schema.type_name().unwrap();
+
+            let export = types
+                .get(type_name)
+                .unwrap_or_else(|| panic!("No export found for named type {:?}", type_name));
+
+            // Determine the raw representation based on the marshaling style.
+            if export.binding_style == BindingStyle::Handle {
+                class::quote_handle_ptr()
+            } else {
+                named_type_raw_reference(type_name)
+            }
+        }
 
         Schema::Array(_) => todo!("Support passing fixed-size arrays"),
 
