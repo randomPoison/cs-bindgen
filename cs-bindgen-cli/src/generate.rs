@@ -1,10 +1,11 @@
 use self::{binding::*, class::*, enumeration::*, func::*};
 use crate::Opt;
 use cs_bindgen_shared::{
-    schematic::{Primitive, Schema, TypeName},
+    schematic::{self, Primitive, Schema, TypeName},
     Export, NamedType,
 };
 use heck::*;
+use lazy_static::lazy_static;
 use proc_macro2::TokenStream;
 use quote::*;
 use std::{collections::HashMap, ffi::OsStr};
@@ -16,6 +17,10 @@ mod func;
 mod strukt;
 
 type TypeMap<'a> = HashMap<&'a TypeName, &'a NamedType>;
+
+lazy_static! {
+    static ref STRING_SCHEMA: Schema = schematic::describe::<String>().unwrap();
+}
 
 pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, failure::Error> {
     // TODO: Add a validation pass to detect any invalid types (e.g. 128 bit integers,
@@ -78,9 +83,7 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
                     &types,
                 )),
 
-                Schema::Enum(schema) => {
-                    binding_items.push(quote_enum(export, schema, &types))
-                }
+                Schema::Enum(schema) => binding_items.push(quote_enum(export, schema, &types)),
 
                 _ => {
                     return Err(failure::format_err!(
@@ -106,58 +109,66 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
             #dll_name,
             EntryPoint = "__cs_bindgen_drop_string",
             CallingConvention = CallingConvention.Cdecl)]
-        internal static extern void __cs_bindgen_drop_string(RustOwnedString raw);
+        internal static extern void __cs_bindgen_drop_string(RawVec raw);
 
         [DllImport(
             #dll_name,
             EntryPoint = "__cs_bindgen_string_from_utf16",
             CallingConvention = CallingConvention.Cdecl)]
-        internal static extern RustOwnedString __cs_bindgen_string_from_utf16(RawCsString raw);
+        internal static extern RawVec __cs_bindgen_string_from_utf16(RawSlice raw);
 
         // Overloads of `__FromRaw` for primitives and built-in types.
-        internal static byte __FromRaw(byte raw) { return raw; }
-        internal static sbyte __FromRaw(sbyte raw) { return raw; }
-        internal static short __FromRaw(short raw) { return raw; }
-        internal static ushort __FromRaw(ushort raw) { return raw; }
-        internal static int __FromRaw(int raw) { return raw; }
-        internal static uint __FromRaw(uint raw) { return raw; }
-        internal static long __FromRaw(long raw) { return raw; }
-        internal static ulong __FromRaw(ulong raw) { return raw; }
-        internal static float __FromRaw(float raw) { return raw; }
-        internal static double __FromRaw(double raw) { return raw; }
-        internal static bool __FromRaw(RustBool raw) { return raw; }
+        internal static void __FromRaw(byte raw, out byte result) { result = raw; }
+        internal static void __FromRaw(sbyte raw, out sbyte result) { result = raw; }
+        internal static void __FromRaw(short raw, out short result) { result = raw; }
+        internal static void __FromRaw(ushort raw, out ushort result) { result = raw; }
+        internal static void __FromRaw(int raw, out int result) { result = raw; }
+        internal static void __FromRaw(uint raw, out uint result) { result = raw; }
+        internal static void __FromRaw(long raw, out long result) { result = raw; }
+        internal static void __FromRaw(ulong raw, out ulong result) { result = raw; }
+        internal static void __FromRaw(float raw, out float result) { result = raw; }
+        internal static void __FromRaw(double raw, out double result) { result = raw; }
 
-        internal static string __FromRaw(RustOwnedString raw)
+        internal static void __FromRaw(byte raw, out bool result)
         {
-            string result = Encoding.UTF8.GetString(raw.Ptr, (int)raw.Length);
+            result = raw != 0 ? true : false;
+        }
+
+        internal static void __FromRaw(RawVec raw, out string result)
+        {
+            result = Encoding.UTF8.GetString((byte*)raw.Ptr, (int)raw.Length);
             __bindings.__cs_bindgen_drop_string(raw);
-            return result;
         }
 
         // Overloads of `__IntoRaw` for primitives and built-in types.
-        internal static byte __IntoRaw(byte raw) { return raw; }
-        internal static sbyte __IntoRaw(sbyte raw) { return raw; }
-        internal static short __IntoRaw(short raw) { return raw; }
-        internal static ushort __IntoRaw(ushort raw) { return raw; }
-        internal static int __IntoRaw(int raw) { return raw; }
-        internal static uint __IntoRaw(uint raw) { return raw; }
-        internal static long __IntoRaw(long raw) { return raw; }
-        internal static ulong __IntoRaw(ulong raw) { return raw; }
-        internal static float __IntoRaw(float raw) { return raw; }
-        internal static double __IntoRaw(double raw) { return raw; }
-        internal static RustBool __IntoRaw(bool raw) { return raw; }
+        internal static void __IntoRaw(byte value, out byte result) { result = value; }
+        internal static void __IntoRaw(sbyte value, out sbyte result) { result = value; }
+        internal static void __IntoRaw(short value, out short result) { result = value; }
+        internal static void __IntoRaw(ushort value, out ushort result) { result = value; }
+        internal static void __IntoRaw(int value, out int result) { result = value; }
+        internal static void __IntoRaw(uint value, out uint result) { result = value; }
+        internal static void __IntoRaw(long value, out long result) { result = value; }
+        internal static void __IntoRaw(ulong value, out ulong result) { result = value; }
+        internal static void __IntoRaw(float value, out float result) { result = value; }
+        internal static void __IntoRaw(double value, out double result) { result = value; }
 
-        internal static RustOwnedString __IntoRaw(string orig)
+        internal static void __IntoRaw(bool value, out byte result)
         {
-            fixed (char* origPtr = orig)
+            result = value ? (byte)1 : (byte)0;
+        }
+
+        internal static void __IntoRaw(string value, out RawVec result)
+        {
+            fixed (char* charPtr = value)
             {
-                return __cs_bindgen_string_from_utf16(new RawCsString(origPtr, orig.Length));
+                result = __cs_bindgen_string_from_utf16(new RawSlice((void*)charPtr, value.Length));
             }
         }
     });
 
     let generated = quote! {
         using System;
+        using System.Collections.Generic;
         using System.Runtime.InteropServices;
         using System.Text;
 
@@ -171,47 +182,27 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
 
         #( #binding_items )*
 
-        [StructLayout(LayoutKind.Explicit, Size = 1)]
-        internal struct RustBool
-        {
-            [FieldOffset(0)]
-            private byte _inner;
-
-            public static implicit operator bool(RustBool b)
-            {
-                return b._inner != 0;
-            }
-
-            public static implicit operator RustBool(bool b)
-            {
-                return new RustBool()
-                {
-                    _inner = b ? (byte)1 : (byte)0,
-                };
-            }
-        }
-
         [StructLayout(LayoutKind.Sequential)]
-        internal unsafe struct RustOwnedString
+        internal unsafe struct RawVec
         {
-            public byte* Ptr;
+            public void* Ptr;
             public UIntPtr Length;
             public UIntPtr Capacity;
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        internal unsafe struct RawCsString
+        internal unsafe struct RawSlice
         {
-            public char* Ptr;
+            public void* Ptr;
             public UIntPtr Length;
 
-            public RawCsString(char* ptr, UIntPtr len)
+            public RawSlice(void* ptr, UIntPtr len)
             {
                 Ptr = ptr;
                 Length = len;
             }
 
-            public RawCsString(char* ptr, int len)
+            public RawSlice(void* ptr, int len)
             {
                 Ptr = ptr;
                 Length = (UIntPtr)len;
@@ -249,6 +240,13 @@ fn quote_primitive_type(ty: Primitive) -> TokenStream {
 
 /// Generates the idiomatic C# type corresponding to the given type schema.
 fn quote_cs_type(schema: &Schema, types: &TypeMap) -> TokenStream {
+    let quote_sequence_type = |element| {
+        let element = quote_cs_type(element, types);
+        quote! {
+            List<#element>
+        }
+    };
+
     // Create a helper closure for generating references to named types in a uniform way.
     let named_type_reference = |type_name, types: &TypeMap| {
         let export = types
@@ -277,6 +275,8 @@ fn quote_cs_type(schema: &Schema, types: &TypeMap) -> TokenStream {
         // don't have to differentiate between the two here.
         Schema::Unit => quote! { void },
 
+        Schema::Bool => quote! { bool },
+
         // TODO: Should we be generating more idiomatic return types for numeric types? Any
         // numeric type that's not `int`, `long`, or `float`/double` is going to be awkward
         // to use in most cases.
@@ -286,19 +286,23 @@ fn quote_cs_type(schema: &Schema, types: &TypeMap) -> TokenStream {
         Schema::I16 => quote! { short },
         Schema::I32 => quote! { int },
         Schema::I64 => quote! { long },
+        Schema::ISize => quote! { IntPtr },
+
         Schema::U8 => quote! { byte },
         Schema::U16 => quote! { ushort },
         Schema::U32 => quote! { uint },
         Schema::U64 => quote! { ulong },
+        Schema::USize => quote! { UIntPtr },
+
         Schema::F32 => quote! { float },
         Schema::F64 => quote! { double },
-        Schema::Bool => quote! { bool },
-        Schema::String => quote! { string },
 
         Schema::Char => todo!("Support passing single chars"),
 
+        Schema::Str | Schema::String(_) => quote! { string },
+
         // NOTE: The unwrap here is valid because all of the struct-like variants are
-        // guaranteed to have a type name. If this panic, that indicates a bug in the
+        // guaranteed to have a type name. If this panics, that indicates a bug in the
         // schematic crate.
         Schema::Enum(_)
         | Schema::Struct(_)
@@ -306,10 +310,35 @@ fn quote_cs_type(schema: &Schema, types: &TypeMap) -> TokenStream {
         | Schema::UnitStruct(_)
         | Schema::NewtypeStruct(_) => named_type_reference(schema.type_name().unwrap(), types),
 
-        // TODO: Add support for collection types.
-        Schema::Option(_) | Schema::Seq(_) | Schema::Tuple(_) | Schema::Map { .. } => {
-            todo!("Generate argument binding")
+        // All sequence types are exposed in C# as a `List<T>`, since for all practical
+        // purposes that's the most efficient and flexible option.
+        Schema::Array(schema) => quote_sequence_type(&schema.element),
+        Schema::Slice(element) => quote_sequence_type(element),
+        Schema::Seq(schema) => quote_sequence_type(&schema.element),
+
+        // Map types are exposed in C# as a `Dictionary<K, V>`.
+        Schema::Map(schema) => {
+            let key = quote_cs_type(&schema.key, types);
+            let value = quote_cs_type(&schema.value, types);
+            quote! {
+                Dictionary<#key, #value>
+            }
         }
+
+        // Generate an unnamed tuple type for an exported Rust tuple. Conveniently this has
+        // the same syntax in C# as in Rust, e.g. `(int, Foo, Bar)`. How nice!
+        Schema::Tuple(elements) => {
+            let element = elements.iter().map(|schema| quote_cs_type(schema, types));
+            quote! {
+                ( #( #element ),* )
+            }
+        }
+
+        // TODO: Add support for optional types. In order to do so, we'll need to determine
+        // if the type is a reference type or a value type. Reference types are inherently
+        // nullable, but value types need to be converted to `Nullable<T>` (or `T?` for
+        // short).
+        Schema::Option(_) => todo!("Generate nullable type reference"),
 
         Schema::I128 | Schema::U128 => {
             unreachable!("Invalid argument types should have already been rejected");

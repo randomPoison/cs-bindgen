@@ -10,7 +10,7 @@
 //! function, using the `[DllImport]` attribute to load the corresponding function
 //! from the Rust dylib.
 
-use crate::generate::{class, strukt, TypeMap};
+use crate::generate::{class, enumeration, strukt, TypeMap, STRING_SCHEMA};
 use cs_bindgen_shared::{
     schematic::{Field, Schema, TypeName},
     BindingStyle, Export,
@@ -134,35 +134,75 @@ pub fn quote_raw_type_reference(schema: &Schema, _types: &TypeMap) -> TokenStrea
     }
 
     match schema {
+        Schema::Unit => quote! { byte },
+        Schema::Bool => quote! { byte },
+        Schema::Char => quote! { uint },
+
         Schema::I8 => quote! { sbyte },
         Schema::I16 => quote! { short },
         Schema::I32 => quote! { int },
         Schema::I64 => quote! { long },
+        Schema::ISize => quote! { IntPtr },
+
         Schema::U8 => quote! { byte },
         Schema::U16 => quote! { ushort },
         Schema::U32 => quote! { uint },
         Schema::U64 => quote! { ulong },
+        Schema::USize => quote! { UIntPtr },
+
         Schema::F32 => quote! { float },
         Schema::F64 => quote! { double },
-        Schema::Bool => quote! { RustBool },
-        Schema::Char => quote! { uint },
-        Schema::String => quote! { RustOwnedString },
 
-        // NOTE: The unwrap here is valid because all of the struct-like variants are
+        // NOTE: The `unwrap` here is valid because `String` is a built-in type and so
+        // describing it will never fail.
+        //
+        // TODO: Directly compare the type names once the `Describe` trait has an associated
+        // constant for type names.
+        Schema::String(_) => {
+            if schema == &*STRING_SCHEMA {
+                quote! { RawVec }
+            } else {
+                todo!("Handle unknown custom string types")
+            }
+        }
+
+        Schema::Str => quote! { RawSlice },
+
+        // For data-carrying enums, the raw representation will be a struct named according
+        // to the naming convention for raw structs. For C-Like enums the raw representation
+        // will be the integer type of the discriminant.
+        Schema::Enum(schema) => {
+            if schema.has_data() {
+                named_type_raw_reference(&schema.name)
+            } else {
+                enumeration::quote_discriminant_type(schema)
+            }
+        }
+
+        // NOTE: The `unwrap` here is valid because all of the struct-like variants are
         // guaranteed to have a type name. If this panic, that indicates a bug in the
         // schematic crate.
-        Schema::Enum(_)
-        | Schema::Struct(_)
+        Schema::Struct(_)
         | Schema::UnitStruct(_)
         | Schema::NewtypeStruct(_)
         | Schema::TupleStruct(_) => named_type_raw_reference(schema.type_name().unwrap()),
 
-        // TODO: Add support for collection types.
-        Schema::Option(_) | Schema::Seq(_) | Schema::Tuple(_) | Schema::Map { .. } => {
-            todo!("Generate argument binding")
+        Schema::Array(_) => todo!("Support passing fixed-size arrays"),
+
+        Schema::Slice(_) => quote! { RawSlice },
+
+        Schema::Seq(schema) => {
+            if schema.name.name == "Vec" && schema.name.module == "alloc::vec" {
+                quote! { RawVec }
+            } else {
+                todo!("Handle unknown sequence types")
+            }
         }
 
-        Schema::Unit => quote! { byte },
+        // TODO: Add support for collection types.
+        Schema::Option(_) | Schema::Tuple(_) | Schema::Map { .. } => {
+            todo!("Generate argument binding")
+        }
 
         Schema::I128 | Schema::U128 => {
             unreachable!("Invalid types should have already been handled")

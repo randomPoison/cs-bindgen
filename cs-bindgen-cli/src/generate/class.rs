@@ -25,20 +25,20 @@ pub fn quote_handle_ptr() -> TokenStream {
 pub fn quote_handle_type(export: &NamedType) -> TokenStream {
     let ident = format_ident!("{}", &*export.name);
     let drop_fn = format_ident!("__cs_bindgen_drop__{}", &*export.name);
-    let raw_repr = binding::raw_ident(&export.name);
+    let raw_repr = quote_handle_ptr();
 
     let from_raw = binding::from_raw_fn_ident();
     let into_raw = binding::into_raw_fn_ident();
 
     let raw_conversions = binding::wrap_bindings(quote! {
-        internal static #ident #from_raw(#raw_repr raw)
+        internal static void #from_raw(#raw_repr raw, out #ident result)
         {
-            return new #ident(raw);
+            result = new #ident(raw);
         }
 
-        internal static #raw_repr #into_raw(#ident self)
+        internal static void #into_raw(#ident value, out #raw_repr result)
         {
-            return new #raw_repr(self);
+            result = value._handle;
         }
     });
 
@@ -105,7 +105,7 @@ pub fn quote_method_binding(item: &Method, type_map: &TypeMap) -> TokenStream {
 
         let invoke = fold_fixed_blocks(
             quote! { _handle = __bindings.#binding(#invoke_args).Handle; },
-            item.inputs(),
+            &item.inputs().collect::<Vec<_>>(),
         );
 
         quote! {

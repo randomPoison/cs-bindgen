@@ -1,5 +1,6 @@
 use cs_bindgen::prelude::*;
 
+pub mod collections;
 pub mod copy_types;
 pub mod data_enum;
 pub mod name_collision;
