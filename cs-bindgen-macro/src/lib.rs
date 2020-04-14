@@ -466,3 +466,16 @@ fn extract_type_ident(ty: &Type) -> syn::Result<Ident> {
         .join("__");
     Ok(format_ident!("{}", ident_string))
 }
+
+/// Generates a function for converting an element in a slice.
+fn quote_index_fn(ty: &Ident) -> syn::Result<TokenStream> {
+    let fn_ident = format_ident!("__cs_bindgen_generated_index_{}", ty);
+    Ok(quote! {
+        pub unsafe extern "C" fn #fn_ident(
+            slice: cs_bindgen::abi::RawSlice<#ty>,
+            index: usize,
+        ) -> <#ty as cs_bindgen::abi::Abi>::Abi {
+            slice.convert_element(index)
+        }
+    })
+}

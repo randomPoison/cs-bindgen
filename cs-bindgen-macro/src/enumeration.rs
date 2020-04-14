@@ -1,4 +1,4 @@
-use crate::{describe_named_type, reject_generics, value, BindingStyle};
+use crate::{describe_named_type, quote_index_fn, reject_generics, value, BindingStyle};
 use proc_macro2::{Literal, TokenStream};
 use quote::*;
 use syn::*;
@@ -211,6 +211,8 @@ fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
         }
     });
 
+    let index_fn = quote_index_fn(ident)?;
+
     Ok(quote! {
         #[repr(C)]
         #[derive(Clone, Copy)]
@@ -241,6 +243,8 @@ fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
                 }
             }
         }
+
+        #index_fn
     })
 }
 

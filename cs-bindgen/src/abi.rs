@@ -278,6 +278,18 @@ impl<T> RawSlice<T> {
     }
 }
 
+impl<'a, T: 'a> RawSlice<T>
+where
+    T: Abi,
+    &'a T: Abi<Abi = T::Abi>,
+{
+    pub unsafe fn convert_element(self, index: usize) -> T::Abi {
+        let slice = self.as_slice();
+        let element = &slice[index];
+        Abi::into_abi(element)
+    }
+}
+
 impl RawSlice<u8> {
     pub unsafe fn as_str<'a>(self) -> Result<&'a str, str::Utf8Error> {
         str::from_utf8(slice::from_raw_parts(self.ptr, self.len))

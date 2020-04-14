@@ -1,4 +1,7 @@
-use crate::{describe_named_type, handle, has_derive_copy, reject_generics, value, BindingStyle};
+use crate::{
+    describe_named_type, handle, has_derive_copy, quote_index_fn, reject_generics, value,
+    BindingStyle,
+};
 use proc_macro2::{Literal, TokenStream};
 use quote::*;
 use syn::*;
@@ -36,6 +39,8 @@ pub fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
             Fields::Unit => quote! {},
         };
 
+        let index_fn = quote_index_fn(&ident)?;
+
         Ok(quote! {
             #abi_struct
 
@@ -55,6 +60,7 @@ pub fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
 
             #describe_impl
             #describe_fn
+            #index_fn
         })
     } else {
         let binding = handle::quote_type_as_handle(&item.ident)?;

@@ -140,6 +140,15 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
             __bindings.__cs_bindgen_drop_string(raw);
         }
 
+        internal static void __FromRaw<T>(RawVec raw, out List<T> result)
+        {
+            var output = new List<T>();
+            for (int index = 0; index < raw.Length; index += 1)
+            {
+                // Heck how do we index into the array? Don't we need to know the size/alignment of the element type?
+            }
+        }
+
         // Overloads of `__IntoRaw` for primitives and built-in types.
         internal static void __IntoRaw(byte value, out byte result) { result = value; }
         internal static void __IntoRaw(sbyte value, out sbyte result) { result = value; }
