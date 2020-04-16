@@ -140,6 +140,11 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
             __bindings.__cs_bindgen_drop_string(raw);
         }
 
+        internal static void __FromRaw(RawVec raw, out List<int> result)
+        {
+            result = raw.ToPrimitiveList<int>();
+        }
+
         // Overloads of `__IntoRaw` for primitives and built-in types.
         internal static void __IntoRaw(byte value, out byte result) { result = value; }
         internal static void __IntoRaw(sbyte value, out sbyte result) { result = value; }
@@ -188,6 +193,19 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
             public void* Ptr;
             public UIntPtr Length;
             public UIntPtr Capacity;
+
+            public List<T> ToPrimitiveList<T>() where T: unmanaged
+            {
+                var result = new List<T>((int)Length);
+                var orig = (T*)Ptr;
+
+                for (int index = 0; index < (int)Length; index += 1)
+                {
+                    result.Add(orig[index]);
+                }
+
+                return result;
+            }
         }
 
         [StructLayout(LayoutKind.Sequential)]
