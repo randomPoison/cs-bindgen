@@ -131,7 +131,7 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
 
         internal static void __FromRaw(byte raw, out bool result)
         {
-            result = raw != 0 ? true : false;
+            result = raw != 0;
         }
 
         internal static void __FromRaw(RawVec raw, out string result)
@@ -140,9 +140,20 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
             __bindings.__cs_bindgen_drop_string(raw);
         }
 
-        internal static void __FromRaw(RawVec raw, out List<int> result)
+        internal static void __FromRaw(RawVec raw, out List<byte> result) { result = raw.ToPrimitiveList<byte>(); }
+        internal static void __FromRaw(RawVec raw, out List<sbyte> result) { result = raw.ToPrimitiveList<sbyte>(); }
+        internal static void __FromRaw(RawVec raw, out List<short> result) { result = raw.ToPrimitiveList<short>(); }
+        internal static void __FromRaw(RawVec raw, out List<ushort> result) { result = raw.ToPrimitiveList<ushort>(); }
+        internal static void __FromRaw(RawVec raw, out List<int> result) { result = raw.ToPrimitiveList<int>(); }
+        internal static void __FromRaw(RawVec raw, out List<uint> result) { result = raw.ToPrimitiveList<uint>(); }
+        internal static void __FromRaw(RawVec raw, out List<long> result) { result = raw.ToPrimitiveList<long>(); }
+        internal static void __FromRaw(RawVec raw, out List<ulong> result) { result = raw.ToPrimitiveList<ulong>(); }
+        internal static void __FromRaw(RawVec raw, out List<float> result) { result = raw.ToPrimitiveList<float>(); }
+        internal static void __FromRaw(RawVec raw, out List<double> result) { result = raw.ToPrimitiveList<double>(); }
+
+        internal static void __FromRaw(RawVec raw, out List<bool> result)
         {
-            result = raw.ToPrimitiveList<int>();
+            result = raw.ToPrimitiveList<byte, bool>(raw => raw != 0);
         }
 
         // Overloads of `__IntoRaw` for primitives and built-in types.
@@ -202,6 +213,19 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
                 for (int index = 0; index < (int)Length; index += 1)
                 {
                     result.Add(orig[index]);
+                }
+
+                return result;
+            }
+
+            public List<T> ToPrimitiveList<D, T>(Func<D, T> conversion) where D: unmanaged
+            {
+                var result = new List<T>((int)Length);
+                var orig = (D*)Ptr;
+
+                for (int index = 0; index < (int)Length; index += 1)
+                {
+                    result.Add(conversion(orig[index]));
                 }
 
                 return result;
