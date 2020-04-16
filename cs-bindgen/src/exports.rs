@@ -14,11 +14,36 @@
 //!
 //! [`export`]: ../macro.export.html
 
-use crate::abi::{RawSlice, RawString};
+use crate::abi::{RawSlice, RawString, RawVec};
 
-/// Drops a `CString` that has been passed to the .NET runtime.
-pub unsafe fn __cs_bindgen_drop_string(raw: RawString) {
-    let _ = raw.into_string();
+macro_rules! drop_vec {
+    ( $( $prim:ty => $fn_name:ident, )* ) => {
+        $(
+            pub unsafe fn $fn_name(raw: RawVec<$prim>) {
+                let _ = raw.into_vec();
+            }
+        )*
+    }
+}
+
+drop_vec! {
+    u8 => __cs_bindgen_drop_vec_u8,
+    u16 => __cs_bindgen_drop_vec_u16,
+    u32 => __cs_bindgen_drop_vec_u32,
+    u64 => __cs_bindgen_drop_vec_u64,
+    usize => __cs_bindgen_drop_vec_usize,
+
+    i8 => __cs_bindgen_drop_vec_i8,
+    i16 => __cs_bindgen_drop_vec_i16,
+    i32 => __cs_bindgen_drop_vec_i32,
+    i64 => __cs_bindgen_drop_vec_i64,
+    isize => __cs_bindgen_drop_vec_isize,
+
+    f32 => __cs_bindgen_drop_vec_f32,
+    f64 => __cs_bindgen_drop_vec_f64,
+
+    bool => __cs_bindgen_drop_vec_bool,
+    char => __cs_bindgen_drop_vec_char,
 }
 
 /// Converts a C# string (i.e. a UTF-16 slice) into a Rust string.

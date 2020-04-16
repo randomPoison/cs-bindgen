@@ -107,9 +107,73 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
         // Bindings to built-in helper functions.
         [DllImport(
             #dll_name,
-            EntryPoint = "__cs_bindgen_drop_string",
             CallingConvention = CallingConvention.Cdecl)]
-        internal static extern void __cs_bindgen_drop_string(RawVec raw);
+        internal static extern void __cs_bindgen_drop_vec_u8(RawVec raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void __cs_bindgen_drop_vec_i8(RawVec raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void __cs_bindgen_drop_vec_u16(RawVec raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void __cs_bindgen_drop_vec_i16(RawVec raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void __cs_bindgen_drop_vec_u32(RawVec raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void __cs_bindgen_drop_vec_i32(RawVec raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void __cs_bindgen_drop_vec_u64(RawVec raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void __cs_bindgen_drop_vec_i64(RawVec raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void __cs_bindgen_drop_vec_usize(RawVec raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void __cs_bindgen_drop_vec_isize(RawVec raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void __cs_bindgen_drop_vec_f32(RawVec raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void __cs_bindgen_drop_vec_f64(RawVec raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void __cs_bindgen_drop_vec_bool(RawVec raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void __cs_bindgen_drop_vec_char(RawVec raw);
 
         [DllImport(
             #dll_name,
@@ -137,23 +201,73 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
         internal static void __FromRaw(RawVec raw, out string result)
         {
             result = Encoding.UTF8.GetString((byte*)raw.Ptr, (int)raw.Length);
-            __bindings.__cs_bindgen_drop_string(raw);
+            __bindings.__cs_bindgen_drop_vec_u8(raw);
         }
 
-        internal static void __FromRaw(RawVec raw, out List<byte> result) { result = raw.ToPrimitiveList<byte>(); }
-        internal static void __FromRaw(RawVec raw, out List<sbyte> result) { result = raw.ToPrimitiveList<sbyte>(); }
-        internal static void __FromRaw(RawVec raw, out List<short> result) { result = raw.ToPrimitiveList<short>(); }
-        internal static void __FromRaw(RawVec raw, out List<ushort> result) { result = raw.ToPrimitiveList<ushort>(); }
-        internal static void __FromRaw(RawVec raw, out List<int> result) { result = raw.ToPrimitiveList<int>(); }
-        internal static void __FromRaw(RawVec raw, out List<uint> result) { result = raw.ToPrimitiveList<uint>(); }
-        internal static void __FromRaw(RawVec raw, out List<long> result) { result = raw.ToPrimitiveList<long>(); }
-        internal static void __FromRaw(RawVec raw, out List<ulong> result) { result = raw.ToPrimitiveList<ulong>(); }
-        internal static void __FromRaw(RawVec raw, out List<float> result) { result = raw.ToPrimitiveList<float>(); }
-        internal static void __FromRaw(RawVec raw, out List<double> result) { result = raw.ToPrimitiveList<double>(); }
+        internal static void __FromRaw(RawVec raw, out List<byte> result)
+        {
+            result = raw.ToPrimitiveList<byte>();
+            __bindings.__cs_bindgen_drop_vec_u8(raw);
+        }
+
+        internal static void __FromRaw(RawVec raw, out List<sbyte> result)
+        {
+            result = raw.ToPrimitiveList<sbyte>();
+            __bindings.__cs_bindgen_drop_vec_i8(raw);
+        }
+
+        internal static void __FromRaw(RawVec raw, out List<short> result)
+        {
+            result = raw.ToPrimitiveList<short>();
+            __bindings.__cs_bindgen_drop_vec_i16(raw);
+        }
+
+        internal static void __FromRaw(RawVec raw, out List<ushort> result)
+        {
+            result = raw.ToPrimitiveList<ushort>();
+            __bindings.__cs_bindgen_drop_vec_u16(raw);
+        }
+
+        internal static void __FromRaw(RawVec raw, out List<int> result)
+        {
+            result = raw.ToPrimitiveList<int>();
+            __bindings.__cs_bindgen_drop_vec_i32(raw);
+        }
+
+        internal static void __FromRaw(RawVec raw, out List<uint> result)
+        {
+            result = raw.ToPrimitiveList<uint>();
+            __bindings.__cs_bindgen_drop_vec_u32(raw);
+        }
+
+        internal static void __FromRaw(RawVec raw, out List<long> result)
+        {
+            result = raw.ToPrimitiveList<long>();
+            __bindings.__cs_bindgen_drop_vec_i64(raw);
+        }
+
+        internal static void __FromRaw(RawVec raw, out List<ulong> result)
+        {
+            result = raw.ToPrimitiveList<ulong>();
+            __bindings.__cs_bindgen_drop_vec_u64(raw);
+        }
+
+        internal static void __FromRaw(RawVec raw, out List<float> result)
+        {
+            result = raw.ToPrimitiveList<float>();
+            __bindings.__cs_bindgen_drop_vec_f32(raw);
+        }
+
+        internal static void __FromRaw(RawVec raw, out List<double> result)
+        {
+            result = raw.ToPrimitiveList<double>();
+            __bindings.__cs_bindgen_drop_vec_f32(raw);
+        }
 
         internal static void __FromRaw(RawVec raw, out List<bool> result)
         {
             result = raw.ToPrimitiveList<byte, bool>(raw => raw != 0);
+            __bindings.__cs_bindgen_drop_vec_u8(raw);
         }
 
         // Overloads of `__IntoRaw` for primitives and built-in types.
