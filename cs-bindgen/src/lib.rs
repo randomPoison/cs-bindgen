@@ -31,7 +31,24 @@ macro_rules! export {
     };
 
     () => {
-        $crate::export!(fn __cs_bindgen_drop_string(raw: $crate::abi::RawString));
         $crate::export!(fn __cs_bindgen_string_from_utf16(raw: $crate::abi::RawSlice<u16>) -> $crate::abi::RawString);
+
+        $crate::export!(fn __cs_bindgen_drop_vec_u8(raw: $crate::abi::RawVec<u8>));
+        $crate::export!(fn __cs_bindgen_drop_vec_u16(raw: $crate::abi::RawVec<u16>));
+        $crate::export!(fn __cs_bindgen_drop_vec_u32(raw: $crate::abi::RawVec<u32>));
+        $crate::export!(fn __cs_bindgen_drop_vec_u64(raw: $crate::abi::RawVec<u64>));
+        $crate::export!(fn __cs_bindgen_drop_vec_usize(raw: $crate::abi::RawVec<usize>));
+
+        $crate::export!(fn __cs_bindgen_drop_vec_i8(raw: $crate::abi::RawVec<i8>));
+        $crate::export!(fn __cs_bindgen_drop_vec_i16(raw: $crate::abi::RawVec<i16>));
+        $crate::export!(fn __cs_bindgen_drop_vec_i32(raw: $crate::abi::RawVec<i32>));
+        $crate::export!(fn __cs_bindgen_drop_vec_i64(raw: $crate::abi::RawVec<i64>));
+        $crate::export!(fn __cs_bindgen_drop_vec_isize(raw: $crate::abi::RawVec<isize>));
+
+        $crate::export!(fn __cs_bindgen_drop_vec_f32(raw: $crate::abi::RawVec<f32>));
+        $crate::export!(fn __cs_bindgen_drop_vec_f64(raw: $crate::abi::RawVec<f64>));
+
+        $crate::export!(fn __cs_bindgen_drop_vec_bool(raw: $crate::abi::RawVec<bool>));
+        $crate::export!(fn __cs_bindgen_drop_vec_char(raw: $crate::abi::RawVec<char>));
     };
 }
