@@ -66,38 +66,50 @@ impl Describe for ExampleStruct {
 }
 
 impl Abi for ExampleStruct {
-    type Abi = *mut Self;
+    type Abi = *const Self;
+
+    fn as_abi(&self) -> Self::Abi {
+        self as *const _
+    }
 
     fn into_abi(self) -> Self::Abi {
         std::boxed::Box::into_raw(std::boxed::Box::new(self))
     }
 
     unsafe fn from_abi(abi: Self::Abi) -> Self {
-        *std::boxed::Box::from_raw(abi)
+        *std::boxed::Box::from_raw(abi as *mut _)
     }
 }
 
 impl<'a> Abi for &'a ExampleStruct {
-    type Abi = Self;
+    type Abi = *const ExampleStruct;
+
+    fn as_abi(&self) -> Self::Abi {
+        *self
+    }
 
     fn into_abi(self) -> Self::Abi {
         self
     }
 
     unsafe fn from_abi(abi: Self::Abi) -> Self {
-        abi
+        &*abi
     }
 }
 
 impl<'a> Abi for &'a mut ExampleStruct {
-    type Abi = *mut ExampleStruct;
+    type Abi = *const ExampleStruct;
+
+    fn as_abi(&self) -> Self::Abi {
+        *self
+    }
 
     fn into_abi(self) -> Self::Abi {
-        self as *mut _
+        self
     }
 
     unsafe fn from_abi(abi: Self::Abi) -> Self {
-        &mut *abi
+        &mut *(abi as *mut _)
     }
 }
 
@@ -111,6 +123,7 @@ impl<'a> Abi for &'a mut ExampleStruct {
 // The raw representation of the enum is a integer discriminant paired with a union
 // of all the fields. The `RawEnum` helper struct pairs the two together.
 
+#[derive(Debug, Clone, Copy)]
 pub enum SimpleEnum {
     Foo,
     Bar,
@@ -128,6 +141,10 @@ impl Abi for SimpleEnum {
 
             _ => panic!("Unknown discriminant {} for `SimpleEnum`", abi),
         }
+    }
+
+    fn as_abi(&self) -> Self::Abi {
+        *self as _
     }
 
     fn into_abi(self) -> Self::Abi {
@@ -167,6 +184,32 @@ impl Abi for ComplexEnum {
             _ => panic!(
                 "Unknown discriminant {} for `ComplexEnum`",
                 abi.discriminant
+            ),
+        }
+    }
+
+    fn as_abi(&self) -> Self::Abi {
+        match self {
+            Self::Foo => RawEnum::unit(0),
+
+            Self::Bar(element_0, element_1) => RawEnum::new(
+                1,
+                ComplexEnum_Abi {
+                    Bar: ComplexEnum_Abi_Bar {
+                        element_0: element_0.as_abi(),
+                        element_1: element_1.as_abi(),
+                    },
+                },
+            ),
+
+            Self::Baz { first, second } => RawEnum::new(
+                2,
+                ComplexEnum_Abi {
+                    Baz: ComplexEnum_Abi_Baz {
+                        first: first.as_abi(),
+                        second: second.as_abi(),
+                    },
+                },
             ),
         }
     }
