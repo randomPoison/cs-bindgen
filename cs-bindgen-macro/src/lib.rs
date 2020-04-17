@@ -468,9 +468,9 @@ fn extract_type_ident(ty: &Type) -> syn::Result<Ident> {
 }
 
 /// Generates a function for converting an element in a slice.
-fn quote_index_fn(ty: &Ident) -> syn::Result<TokenStream> {
+fn quote_index_fn(ty: &Ident) -> TokenStream {
     let fn_ident = format_ident!("__cs_bindgen_generated_index_{}", ty);
-    Ok(quote! {
+    quote! {
         #[allow(bad_style)]
         pub unsafe extern "C" fn #fn_ident(
             slice: cs_bindgen::abi::RawSlice<#ty>,
@@ -478,5 +478,15 @@ fn quote_index_fn(ty: &Ident) -> syn::Result<TokenStream> {
         ) -> <#ty as cs_bindgen::abi::Abi>::Abi {
             slice.convert_element(index)
         }
-    })
+    }
+}
+
+fn quote_vec_drop_fn(ty: &Ident) -> TokenStream {
+    let fn_ident = format_ident!("__cs_bindgen_generated_drop_vec_{}", ty);
+    quote! {
+        #[allow(bad_style)]
+        pub unsafe extern "C" fn #fn_ident(raw: cs_bindgen::abi::RawVec<#ty>) {
+            let _ = raw.into_vec();
+        }
+    }
 }
