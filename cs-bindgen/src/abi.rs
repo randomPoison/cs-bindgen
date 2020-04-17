@@ -42,10 +42,37 @@ pub type RawStr = RawSlice<u8>;
 pub unsafe trait AbiPrimitive: Copy {}
 
 /// A value that can be returned from a Rust function when called from C#.
-pub trait Abi {
+pub trait Abi: Sized {
+    /// The FFI-compatible representation of the type.
     type Abi: AbiPrimitive;
 
+    /// Borrow the contents of `self` in an ABI-compatible representation.
+    ///
+    /// This function performs a shallow conversion of the types contents, such that the
+    /// returned object does not own any data. This means that the data returned from
+    /// this function doesn't need to custom drop handling.
+    ///
+    /// This function is primarily used when indexing into arrays of values in order to
+    /// access its data from C# without moving the value out of the array.
+    fn as_abi(&self) -> Self::Abi;
+
+    /// Converts `self` into an ABI-compatible representation.
+    ///
+    /// This function transfers ownership of any resources owned by `self` to the
+    /// returned object. This means that the returned object may require special drop
+    /// handling. This is primarily a concern with collection types like `Vec<T>` that
+    /// allocate data.
     fn into_abi(self) -> Self::Abi;
+
+    /// Reconstructs an instance of `Self` from its raw representation.
+    ///
+    /// # Safety
+    ///
+    /// The exact safety constraints for this function will depend on the exact details
+    /// of the type implementing this trait. However, it should always be possible to
+    /// pass the value returned from `into_abi`. Calling this function twice on the same
+    /// logical object can result in undefined behavior depending on the specifics of
+    /// the type.
     unsafe fn from_abi(abi: Self::Abi) -> Self;
 }
 
@@ -56,6 +83,10 @@ macro_rules! abi_primitives {
 
             impl Abi for $ty {
                 type Abi = Self;
+
+                fn as_abi(&self) -> Self::Abi {
+                    *self
+                }
 
                 fn into_abi(self) -> Self::Abi {
                     self
@@ -88,6 +119,10 @@ abi_primitives! {
 impl Abi for () {
     type Abi = u8;
 
+    fn as_abi(&self) -> Self::Abi {
+        0
+    }
+
     fn into_abi(self) -> Self::Abi {
         0
     }
@@ -103,19 +138,30 @@ unsafe impl<T> AbiPrimitive for *const T {}
 unsafe impl<T> AbiPrimitive for *mut T {}
 
 impl<T> Abi for Box<T> {
-    type Abi = *mut T;
+    type Abi = *const T;
 
-    unsafe fn from_abi(abi: Self::Abi) -> Self {
-        Box::from_raw(abi)
+    fn as_abi(&self) -> Self::Abi {
+        &**self as *const _
     }
 
     fn into_abi(self) -> Self::Abi {
         Box::into_raw(self)
     }
+
+    unsafe fn from_abi(abi: Self::Abi) -> Self {
+        // NOTE: We need to cast the raw pointer to a `*mut T` in order to reconstruct the
+        // `Box`. If the calling code never did anything invalid with the pointer (such as
+        // mutating its contents) this should be safe.
+        Box::from_raw(abi as *mut T)
+    }
 }
 
 impl Abi for char {
     type Abi = u32;
+
+    fn as_abi(&self) -> Self::Abi {
+        (*self).into()
+    }
 
     fn into_abi(self) -> Self::Abi {
         self.into()
@@ -128,6 +174,10 @@ impl Abi for char {
 
 impl Abi for bool {
     type Abi = u8;
+
+    fn as_abi(&self) -> Self::Abi {
+        (*self).into()
+    }
 
     fn into_abi(self) -> Self::Abi {
         self.into()
@@ -144,6 +194,10 @@ where
 {
     type Abi = RawVec<T>;
 
+    fn as_abi(&self) -> Self::Abi {
+        self.as_slice().into()
+    }
+
     fn into_abi(self) -> Self::Abi {
         self.into()
     }
@@ -156,8 +210,12 @@ where
 impl Abi for String {
     type Abi = RawVec<u8>;
 
+    fn as_abi(&self) -> Self::Abi {
+        self.as_bytes().into()
+    }
+
     fn into_abi(self) -> Self::Abi {
-        self.into()
+        self.into_bytes().into()
     }
 
     unsafe fn from_abi(abi: Self::Abi) -> Self {
@@ -167,6 +225,10 @@ impl Abi for String {
 
 impl<'a> Abi for &'a str {
     type Abi = RawSlice<u8>;
+
+    fn as_abi(&self) -> Self::Abi {
+        (*self).into()
+    }
 
     fn into_abi(self) -> Self::Abi {
         self.into()
@@ -189,14 +251,17 @@ impl<'a> Abi for &'a str {
 /// [`String`]: https://doc.rust-lang.org/std/string/struct.String.html
 #[repr(C)]
 pub struct RawVec<T> {
-    pub ptr: *mut T,
+    pub ptr: *const T,
     pub len: usize,
     pub capacity: usize,
 }
 
 impl<T> RawVec<T> {
     pub unsafe fn into_vec(self) -> Vec<T> {
-        Vec::from_raw_parts(self.ptr, self.len, self.capacity)
+        // NOTE: We need to cast the raw pointer to a `*mut T` in order to reconstruct the
+        // `Vec`. If the calling code never did anything invalid with the pointer (such as
+        // mutating its contents) this should be safe.
+        Vec::from_raw_parts(self.ptr as *mut _, self.len, self.capacity)
     }
 }
 
@@ -219,11 +284,24 @@ impl RawVec<u8> {
     /// `into_string` must only be called once per string instance. Calling it more than
     /// once on the same string will result in undefined behavior.
     pub unsafe fn into_string(self) -> String {
-        String::from_raw_parts(self.ptr, self.len, self.capacity)
+        // NOTE: We need to cast the raw pointer to a `*mut T` in order to reconstruct the
+        // `STring`. If the calling code never did anything invalid with the pointer (such
+        // as mutating its contents) this should be safe.
+        String::from_raw_parts(self.ptr as *mut _, self.len, self.capacity)
     }
 }
 
 unsafe impl<T> AbiPrimitive for RawVec<T> {}
+
+impl<T> From<&'_ [T]> for RawVec<T> {
+    fn from(from: &[T]) -> Self {
+        Self {
+            ptr: from.as_ptr(),
+            len: from.len(),
+            capacity: 0,
+        }
+    }
+}
 
 impl<T> From<Vec<T>> for RawVec<T> {
     fn from(mut from: Vec<T>) -> Self {
@@ -233,8 +311,8 @@ impl<T> From<Vec<T>> for RawVec<T> {
             capacity: from.capacity(),
         };
 
-        // Ensure that the string isn't de-allocated, effectively transferring ownership of
-        // its data to the `RawString`.
+        // Ensure that the `Vec` isn't de-allocated, effectively transferring ownership of
+        // its data to the `RawVec`.
         mem::forget(from);
 
         raw
@@ -361,6 +439,18 @@ macro_rules! array_abi {
 
         impl<T: Abi> Abi for [T; $len] {
             type Abi = [T::Abi; $len];
+
+            fn as_abi(&self) -> Self::Abi {
+                let [
+                    $( $elem, )*
+                ] = self;
+
+                [
+                    $(
+                        $crate::abi::Abi::as_abi($elem),
+                    )*
+                ]
+            }
 
             fn into_abi(self) -> Self::Abi {
                 let [

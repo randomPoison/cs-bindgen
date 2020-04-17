@@ -13,38 +13,50 @@ pub fn quote_type_as_handle(ident: &Ident) -> syn::Result<TokenStream> {
         // Implement `Abi` for the type and references to the type.
 
         impl cs_bindgen::abi::Abi for #ident {
-            type Abi = *mut Self;
+            type Abi = *const Self;
+
+            fn as_abi(&self) -> Self::Abi {
+                self
+            }
 
             fn into_abi(self) -> Self::Abi {
                 std::boxed::Box::into_raw(std::boxed::Box::new(self))
             }
 
             unsafe fn from_abi(abi: Self::Abi) -> Self {
-                *std::boxed::Box::from_raw(abi)
+                *std::boxed::Box::from_raw(abi as *mut _)
             }
         }
 
         impl<'a> cs_bindgen::abi::Abi for &'a #ident {
-            type Abi = Self;
+            type Abi = *const #ident;
+
+            fn as_abi(&self) -> Self::Abi {
+                #ident::as_abi(self)
+            }
 
             fn into_abi(self) -> Self::Abi {
-                self
+                #ident::as_abi(self)
             }
 
             unsafe fn from_abi(abi: Self::Abi) -> Self {
-                abi
+                &*abi
             }
         }
 
         impl<'a> cs_bindgen::abi::Abi for &'a mut #ident {
-            type Abi = *mut #ident;
+            type Abi = *const #ident;
+
+            fn as_abi(&self) -> Self::Abi {
+                #ident::as_abi(self)
+            }
 
             fn into_abi(self) -> Self::Abi {
-                self as *mut _
+                #ident::as_abi(self)
             }
 
             unsafe fn from_abi(abi: Self::Abi) -> Self {
-                &mut *abi
+                &mut *(abi as *mut _)
             }
         }
 

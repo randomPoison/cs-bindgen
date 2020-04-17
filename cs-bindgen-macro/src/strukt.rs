@@ -17,18 +17,28 @@ pub fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
 
     // Determine whether we should marshal the type as a handle or by value.
     if has_derive_copy(&item.attrs)? {
-        let abi_struct_ident = format_binding_ident!(item.ident);
-        let abi_struct = value::quote_abi_struct(&abi_struct_ident, &item.fields);
-        let into_abi_fields = value::into_abi_fields(&item.fields, |index, field| {
-            let accessor = field
+        fn field_accessor(index: usize, field: &Field) -> TokenStream {
+            field
                 .ident
                 .as_ref()
                 .map(|ident| ident.into_token_stream())
-                .unwrap_or_else(|| Literal::usize_unsuffixed(index).into_token_stream());
+                .unwrap_or_else(|| Literal::usize_unsuffixed(index).into_token_stream())
+        }
+
+        let abi_struct_ident = format_binding_ident!(item.ident);
+        let abi_struct = value::quote_abi_struct(&abi_struct_ident, &item.fields);
+        let describe_fn = describe_named_type(&item.ident, BindingStyle::Value);
+        let index_fn = quote_index_fn(&item.ident)?;
+
+        let into_abi_fields = value::into_abi_fields(&item.fields, |index, field| {
+            let accessor = field_accessor(index, field);
             quote! { self.#accessor }
         });
-        let describe_fn = describe_named_type(&item.ident, BindingStyle::Value);
-        let ident = item.ident;
+
+        let as_abi_fields = value::as_abi_fields(&item.fields, |index, field| {
+            let accessor = field_accessor(index, field);
+            quote! { &self.#accessor }
+        });
 
         // Generate the `from_abi` conversions for the fields, then wrap that code in the
         // appropriate kind of braces based on the style of the struct.
@@ -39,8 +49,7 @@ pub fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
             Fields::Unit => quote! {},
         };
 
-        let index_fn = quote_index_fn(&ident)?;
-
+        let ident = item.ident;
         Ok(quote! {
             #abi_struct
 
@@ -49,6 +58,12 @@ pub fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
 
                 unsafe fn from_abi(abi: Self::Abi) -> Self {
                     Self #from_abi_braces
+                }
+
+                fn as_abi(&self) -> Self::Abi {
+                    Self::Abi {
+                        #as_abi_fields
+                    }
                 }
 
                 fn into_abi(self) -> Self::Abi {
