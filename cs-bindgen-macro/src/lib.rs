@@ -426,6 +426,8 @@ fn reject_generics<M: Display>(generics: &Generics, message: M) -> syn::Result<(
 fn describe_named_type(ident: &Ident, style: BindingStyle) -> TokenStream {
     let describe_ident = format_describe_ident!(ident);
     let name = ident.to_string();
+    let index_fn = index_fn_ident(ident).to_string();
+    let drop_vec_fn = drop_vec_fn_ident(ident).to_string();
 
     let style = match style {
         BindingStyle::Handle => quote! { Handle },
@@ -439,6 +441,8 @@ fn describe_named_type(ident: &Ident, style: BindingStyle) -> TokenStream {
                 name: #name.into(),
                 schema: cs_bindgen::shared::schematic::describe::<#ident>().expect("Failed to describe enum type"),
                 binding_style: cs_bindgen::shared::BindingStyle::#style,
+                index_fn: #index_fn.into(),
+                drop_vec_fn: #drop_vec_fn.into(),
             };
 
             std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())
@@ -465,4 +469,37 @@ fn extract_type_ident(ty: &Type) -> syn::Result<Ident> {
         .collect::<Vec<_>>()
         .join("__");
     Ok(format_ident!("{}", ident_string))
+}
+
+fn index_fn_ident(ty: &Ident) -> Ident {
+    format_ident!("__cs_bindgen_generated_index_{}", ty)
+}
+
+/// Generates a function for converting an element in a slice.
+fn quote_index_fn(ty: &Ident) -> TokenStream {
+    let fn_ident = index_fn_ident(ty);
+    quote! {
+        #[no_mangle]
+        #[allow(bad_style)]
+        pub unsafe extern "C" fn #fn_ident(
+            slice: cs_bindgen::abi::RawSlice<#ty>,
+            index: usize,
+        ) -> <#ty as cs_bindgen::abi::Abi>::Abi {
+            slice.convert_element(index)
+        }
+    }
+}
+
+fn drop_vec_fn_ident(ty: &Ident) -> Ident {
+    format_ident!("__cs_bindgen_generated_drop_vec_{}", ty)
+}
+
+fn quote_vec_drop_fn(ty: &Ident) -> TokenStream {
+    let fn_ident = drop_vec_fn_ident(ty);
+    quote! {
+        #[allow(bad_style)]
+        pub unsafe extern "C" fn #fn_ident(raw: cs_bindgen::abi::RawVec<#ty>) {
+            let _ = raw.into_vec();
+        }
+    }
 }

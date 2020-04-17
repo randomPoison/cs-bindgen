@@ -1,4 +1,6 @@
-use crate::{describe_named_type, reject_generics, value, BindingStyle};
+use crate::{
+    describe_named_type, quote_index_fn, quote_vec_drop_fn, reject_generics, value, BindingStyle,
+};
 use proc_macro2::{Literal, TokenStream};
 use quote::*;
 use syn::*;
@@ -101,6 +103,9 @@ fn quote_simple_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
         .map(|variant| &variant.ident)
         .collect::<Vec<_>>();
 
+    let index_fn = quote_index_fn(&ident);
+    let drop_vec_fn = quote_vec_drop_fn(&ident);
+
     Ok(quote! {
         #(
             #[allow(bad_style)]
@@ -135,6 +140,9 @@ fn quote_simple_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
                 }
             }
         }
+
+        #index_fn
+        #drop_vec_fn
     })
 }
 
@@ -280,6 +288,9 @@ fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
         }
     });
 
+    let index_fn = quote_index_fn(ident);
+    let vec_drop_fn = quote_vec_drop_fn(ident);
+
     Ok(quote! {
         #[repr(C)]
         #[derive(Clone, Copy)]
@@ -316,6 +327,9 @@ fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
                 }
             }
         }
+
+        #index_fn
+        #vec_drop_fn
     })
 }
 

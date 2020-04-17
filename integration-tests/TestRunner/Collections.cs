@@ -39,5 +39,45 @@ namespace TestRunner
             var actual = new List<bool>() { true, false, true, true };
             Assert.Equal(expected, actual);
         }
+
+        // TODO: Re-enable test case once we fix support for passing list of handle types.
+        // [Fact]
+        // public void ReturnHandleList()
+        // {
+        //     var items = IntegrationTests.ReturnHandleVec();
+        //     Assert.Equal(2, items.Count);
+        //     Assert.Equal(33, items[0].Bar());
+        //     Assert.Equal(12345, items[1].Bar());
+        // }
+
+        [Fact]
+        public void ReturnStructList()
+        {
+            var items = IntegrationTests.ReturnStructVec();
+            Assert.Equal(2, items.Count);
+            Assert.Equal(33, items[0].Bar);
+            Assert.Equal(12345, items[1].Bar);
+        }
+
+        [Fact]
+        public void ReturnSimpleEnumList()
+        {
+            var expected = new List<SimpleCEnum>() { SimpleCEnum.Foo, SimpleCEnum.Bar, SimpleCEnum.Baz };
+            var actual = IntegrationTests.ReturnSimpleEnumVec();
+            Assert.Equal(expected, actual);
+        }
+
+        [Fact]
+        public void ReturnDataEnumList()
+        {
+            var expected = new List<IDataEnum>()
+            {
+                new DataEnum.Foo(),
+                new DataEnum.Bar("Cool string"),
+                new DataEnum.Coolness(new InnerEnum.Coolest(SimpleCEnum.Foo)),
+            };
+            var actual = IntegrationTests.ReturnDataEnumVec();
+            Assert.Equal(expected, actual);
+        }
     }
 }

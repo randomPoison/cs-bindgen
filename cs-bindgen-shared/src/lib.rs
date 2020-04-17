@@ -73,6 +73,9 @@ pub struct NamedType {
     pub name: Cow<'static, str>,
     pub binding_style: BindingStyle,
     pub schema: Schema,
+
+    pub index_fn: Cow<'static, str>,
+    pub drop_vec_fn: Cow<'static, str>,
 }
 
 #[derive(Debug, Clone, From, Serialize, Deserialize)]

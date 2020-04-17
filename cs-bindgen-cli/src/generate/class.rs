@@ -13,13 +13,13 @@ pub fn quote_drop_fn(export: &NamedType, dll_name: &str) -> TokenStream {
             #dll_name,
             EntryPoint = #entry_point,
             CallingConvention = CallingConvention.Cdecl)]
-        internal static extern void #binding_ident(void* self);
+        internal static extern void #binding_ident(IntPtr self);
     }
 }
 
-/// Quotes the pointer type used for handles, i.e. `void*`.
+/// Quotes the pointer type used for handles, i.e. `IntPtr`.
 pub fn quote_handle_ptr() -> TokenStream {
-    quote! { void* }
+    quote! { IntPtr }
 }
 
 pub fn quote_handle_type(export: &NamedType) -> TokenStream {
@@ -45,7 +45,7 @@ pub fn quote_handle_type(export: &NamedType) -> TokenStream {
     quote! {
         public unsafe partial class #ident : IDisposable
         {
-            internal void* _handle;
+            internal IntPtr _handle;
 
             internal #ident(#raw_repr raw)
             {
@@ -54,10 +54,10 @@ pub fn quote_handle_type(export: &NamedType) -> TokenStream {
 
             public void Dispose()
             {
-                if (_handle != null)
+                if (_handle != IntPtr.Zero)
                 {
                     __bindings.#drop_fn(_handle);
-                    _handle = null;
+                    _handle = IntPtr.Zero;
                 }
             }
         }

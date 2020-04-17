@@ -291,7 +291,7 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
         {
             fixed (char* charPtr = value)
             {
-                result = __cs_bindgen_string_from_utf16(new RawSlice((void*)charPtr, value.Length));
+                result = __cs_bindgen_string_from_utf16(new RawSlice((IntPtr)charPtr, value.Length));
             }
         }
     });
@@ -312,10 +312,12 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
 
         #( #binding_items )*
 
+        internal delegate void FromRaw<R, T>(R raw, out T result);
+
         [StructLayout(LayoutKind.Sequential)]
         internal unsafe struct RawVec
         {
-            public void* Ptr;
+            public IntPtr Ptr;
             public UIntPtr Length;
             public UIntPtr Capacity;
 
@@ -344,21 +346,44 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
 
                 return result;
             }
+
+            public List<T> ToList<R, T>(
+                Func<RawSlice, UIntPtr, R> indexFn,
+                FromRaw<R, T> fromRaw)
+            where R: unmanaged
+            {
+                var slice = AsSlice();
+                var result = new List<T>((int)Length);
+
+                for (int index = 0; index < (int)Length; index += 1)
+                {
+                    R rawElement = indexFn(slice, (UIntPtr)index);
+                    fromRaw(rawElement, out T element);
+                    result.Add(element);
+                }
+
+                return result;
+            }
+
+            public RawSlice AsSlice()
+            {
+                return new RawSlice(Ptr, Length);
+            }
         }
 
         [StructLayout(LayoutKind.Sequential)]
         internal unsafe struct RawSlice
         {
-            public void* Ptr;
+            public IntPtr Ptr;
             public UIntPtr Length;
 
-            public RawSlice(void* ptr, UIntPtr len)
+            public RawSlice(IntPtr ptr, UIntPtr len)
             {
                 Ptr = ptr;
                 Length = len;
             }
 
-            public RawSlice(void* ptr, int len)
+            public RawSlice(IntPtr ptr, int len)
             {
                 Ptr = ptr;
                 Length = (UIntPtr)len;

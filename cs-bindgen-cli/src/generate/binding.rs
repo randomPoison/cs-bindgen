@@ -10,7 +10,7 @@
 //! function, using the `[DllImport]` attribute to load the corresponding function
 //! from the Rust dylib.
 
-use crate::generate::{class, enumeration, strukt, TypeMap, STRING_SCHEMA};
+use crate::generate::{self, class, enumeration, strukt, TypeMap, STRING_SCHEMA};
 use cs_bindgen_shared::{
     schematic::{Field, Schema, TypeName},
     BindingStyle, Export,
@@ -71,23 +71,16 @@ pub fn wrap_bindings(tokens: TokenStream) -> TokenStream {
 pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> TokenStream {
     match export {
         Export::Fn(export) => {
-            let dll_import_attrib = quote_dll_import(dll_name, &export.binding);
-            let binding_ident = format_ident!("{}", &*export.binding);
+            let args = quote_binding_args(export.inputs(), types);
             let return_ty = match &export.output {
                 Some(output) => quote_raw_type_reference(output, types),
                 None => quote! { void },
             };
-            let args = quote_binding_args(export.inputs(), types);
 
-            quote! {
-                #dll_import_attrib
-                internal static extern #return_ty #binding_ident(#args);
-            }
+            quote_raw_fn_binding(&export.binding, return_ty, args.to_token_stream(), dll_name)
         }
 
         Export::Method(export) => {
-            let dll_import_attrib = quote_dll_import(dll_name, &export.binding);
-            let binding_ident = format_ident!("{}", &*export.binding);
             let return_ty = match &export.output {
                 Some(output) => quote_raw_type_reference(output, types),
                 None => quote! { void },
@@ -103,19 +96,48 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
                 args.insert(0, quote! { #handle_type self });
             }
 
-            quote! {
-                #dll_import_attrib
-                internal static extern #return_ty #binding_ident(#args);
-            }
+            quote_raw_fn_binding(&export.binding, return_ty, args.to_token_stream(), dll_name)
         }
 
         // Generate the binding for the destructor for any named types that are marshaled
         // as handles.
         Export::Named(export) => {
-            if export.binding_style == BindingStyle::Handle {
+            let index_fn = quote_raw_fn_binding(
+                &export.index_fn,
+                quote_raw_type_reference(&export.schema, types),
+                quote! { RawSlice slice, UIntPtr index },
+                dll_name,
+            );
+
+            let drop_vec_fn = quote_raw_fn_binding(
+                &export.drop_vec_fn,
+                quote! { void },
+                quote! { RawVec vec },
+                dll_name,
+            );
+
+            let from_raw = from_raw_fn_ident();
+            let ty = generate::quote_cs_type(&export.schema, types);
+            let raw_repr = quote_raw_type_reference(&export.schema, types);
+            let index_fn_name = format_ident!("{}", &*export.index_fn);
+            let list_from_raw = quote! {
+                internal static void #from_raw(RawVec raw, out List<#ty> result)
+                {
+                    result = raw.ToList<#raw_repr, #ty>(#index_fn_name, #from_raw);
+                }
+            };
+
+            let drop_fn = if export.binding_style == BindingStyle::Handle {
                 class::quote_drop_fn(&export, dll_name)
             } else {
                 quote! {}
+            };
+
+            quote! {
+                #index_fn
+                #drop_vec_fn
+                #drop_fn
+                #list_from_raw
             }
         }
     }
@@ -176,7 +198,7 @@ pub fn quote_raw_type_reference(schema: &Schema, types: &TypeMap) -> TokenStream
             // There are three possible raw representations for an exported enum:
             //
             // * Enums that are marshalled as handles are represented as the raw handle pointer
-            //   type (`void*`).
+            //   type (`IntPtr`).
             // * Data-carrying enums have an associate struct that represents its raw type.
             // * C-like enums are marshalled directly as an integer value.
             if export.binding_style == BindingStyle::Handle {
@@ -251,15 +273,6 @@ pub fn raw_struct_fields(fields: &[Field<'_>], types: &TypeMap) -> TokenStream {
     }
 }
 
-fn quote_dll_import(dll_name: &str, entry_point: &str) -> TokenStream {
-    quote! {
-        [DllImport(
-            #dll_name,
-            EntryPoint = #entry_point,
-            CallingConvention = CallingConvention.Cdecl)]
-    }
-}
-
 fn quote_binding_args<'a>(
     inputs: impl Iterator<Item = (&'a str, &'a Schema)>,
     types: &TypeMap<'_>,
@@ -272,4 +285,20 @@ fn quote_binding_args<'a>(
             quote! { #ty #ident }
         })
         .collect()
+}
+
+fn quote_raw_fn_binding(
+    entry_point: &str,
+    return_ty: TokenStream,
+    args: TokenStream,
+    dll: &str,
+) -> TokenStream {
+    let fn_name = format_ident!("{}", entry_point);
+    quote! {
+        [DllImport(
+            #dll,
+            EntryPoint = #entry_point,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern #return_ty #fn_name(#args);
+    }
 }
