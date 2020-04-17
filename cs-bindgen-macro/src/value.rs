@@ -77,6 +77,29 @@ pub fn into_abi_fields(
     }
 }
 
+pub fn as_abi_fields(
+    fields: &Fields,
+    field_accessor: impl Fn(usize, &Field) -> TokenStream,
+) -> TokenStream {
+    let abi_field = fields
+        .iter()
+        .enumerate()
+        .map(|(index, field)| raw_field_ident(index, field));
+
+    let conversion = fields.iter().enumerate().map(|(index, field)| {
+        let input_field = field_accessor(index, field);
+        quote! {
+            cs_bindgen::abi::Abi::as_abi(#input_field)
+        }
+    });
+
+    quote! {
+        #(
+            #abi_field: #conversion,
+        )*
+    }
+}
+
 pub fn from_abi_fields(fields: &Fields, input: &TokenStream) -> TokenStream {
     let assignment = fields.iter().map(|field| match &field.ident {
         Some(ident) => quote! { #ident: },
