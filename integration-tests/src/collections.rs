@@ -56,3 +56,13 @@ pub fn return_vec_f64() -> Vec<f64> {
 pub fn return_vec_bool() -> Vec<bool> {
     vec![true, false, true, true]
 }
+
+#[cs_bindgen]
+pub struct Foo {
+    pub bar: u32,
+}
+
+#[cs_bindgen]
+pub fn return_struct_vec() -> Vec<Foo> {
+    vec![Foo { bar: 1 }, Foo { bar: 2 }]
+}

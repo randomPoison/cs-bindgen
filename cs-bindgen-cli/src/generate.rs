@@ -312,6 +312,8 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
 
         #( #binding_items )*
 
+        internal delegate void FromRaw<R, T>(R raw, out T result);
+
         [StructLayout(LayoutKind.Sequential)]
         internal unsafe struct RawVec
         {
@@ -343,6 +345,29 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
                 }
 
                 return result;
+            }
+
+            public List<T> ToList<R, T>(
+                Func<RawSlice, UIntPtr, R> indexFn,
+                FromRaw<R, T> fromRaw)
+            where R: unmanaged
+            {
+                var slice = AsSlice();
+                var result = new List<T>((int)Length);
+
+                for (int index = 0; index < (int)Length; index += 1)
+                {
+                    R rawElement = indexFn(slice, (UIntPtr)index);
+                    fromRaw(rawElement, out T element);
+                    result.Add(element);
+                }
+
+                return result;
+            }
+
+            public RawSlice AsSlice()
+            {
+                return new RawSlice(Ptr, Length);
             }
         }
 
