@@ -291,7 +291,7 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
         {
             fixed (char* charPtr = value)
             {
-                result = __cs_bindgen_string_from_utf16(new RawSlice((void*)charPtr, value.Length));
+                result = __cs_bindgen_string_from_utf16(new RawSlice((IntPtr)charPtr, value.Length));
             }
         }
     });
@@ -317,7 +317,7 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
         [StructLayout(LayoutKind.Sequential)]
         internal unsafe struct RawVec
         {
-            public void* Ptr;
+            public IntPtr Ptr;
             public UIntPtr Length;
             public UIntPtr Capacity;
 
@@ -374,16 +374,16 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
         [StructLayout(LayoutKind.Sequential)]
         internal unsafe struct RawSlice
         {
-            public void* Ptr;
+            public IntPtr Ptr;
             public UIntPtr Length;
 
-            public RawSlice(void* ptr, UIntPtr len)
+            public RawSlice(IntPtr ptr, UIntPtr len)
             {
                 Ptr = ptr;
                 Length = len;
             }
 
-            public RawSlice(void* ptr, int len)
+            public RawSlice(IntPtr ptr, int len)
             {
                 Ptr = ptr;
                 Length = (UIntPtr)len;

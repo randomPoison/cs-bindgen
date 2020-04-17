@@ -198,7 +198,7 @@ pub fn quote_raw_type_reference(schema: &Schema, types: &TypeMap) -> TokenStream
             // There are three possible raw representations for an exported enum:
             //
             // * Enums that are marshalled as handles are represented as the raw handle pointer
-            //   type (`void*`).
+            //   type (`IntPtr`).
             // * Data-carrying enums have an associate struct that represents its raw type.
             // * C-like enums are marshalled directly as an integer value.
             if export.binding_style == BindingStyle::Handle {
