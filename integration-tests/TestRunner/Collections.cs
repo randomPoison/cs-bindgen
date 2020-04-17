@@ -39,5 +39,24 @@ namespace TestRunner
             var actual = new List<bool>() { true, false, true, true };
             Assert.Equal(expected, actual);
         }
+
+        [Fact]
+        public void ReturnHandleList()
+        {
+            var items = IntegrationTests.ReturnHandleVec();
+            Assert.Equal(2, items.Count);
+            Assert.Equal(33, items[0].Bar());
+            Assert.Equal(12345, items[1].Bar());
+        }
+
+
+        [Fact]
+        public void ReturnStructList()
+        {
+            var items = IntegrationTests.ReturnStructVec();
+            Assert.Equal(2, items.Count);
+            Assert.Equal(33, items[0].Bar);
+            Assert.Equal(12345, items[1].Bar);
+        }
     }
 }

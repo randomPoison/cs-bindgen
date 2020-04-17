@@ -58,11 +58,31 @@ pub fn return_vec_bool() -> Vec<bool> {
 }
 
 #[cs_bindgen]
-pub struct Foo {
-    pub bar: u32,
+pub struct HandleStruct {
+    pub bar: i32,
 }
 
 #[cs_bindgen]
-pub fn return_struct_vec() -> Vec<Foo> {
-    vec![Foo { bar: 1 }, Foo { bar: 2 }]
+pub fn return_handle_vec() -> Vec<HandleStruct> {
+    vec![HandleStruct { bar: 33 }, HandleStruct { bar: 12345 }]
 }
+
+#[cs_bindgen]
+impl HandleStruct {
+    pub fn bar(&self) -> i32 {
+        self.bar
+    }
+}
+
+#[cs_bindgen]
+#[derive(Debug, Clone, Copy)]
+pub struct CopyStruct {
+    pub bar: i32,
+}
+
+#[cs_bindgen]
+pub fn return_struct_vec() -> Vec<CopyStruct> {
+    vec![CopyStruct { bar: 33 }, CopyStruct { bar: 12345 }]
+}
+
+pub enum 
