@@ -66,5 +66,18 @@ namespace TestRunner
             var actual = IntegrationTests.ReturnSimpleEnumVec();
             Assert.Equal(expected, actual);
         }
+
+        [Fact]
+        public void ReturnDataEnumList()
+        {
+            var expected = new List<IDataEnum>()
+            {
+                new DataEnum.Foo(),
+                new DataEnum.Bar("Cool string"),
+                new DataEnum.Coolness(new InnerEnum.Coolest(SimpleCEnum.Foo)),
+            };
+            var actual = IntegrationTests.ReturnDataEnumVec();
+            Assert.Equal(expected, actual);
+        }
     }
 }

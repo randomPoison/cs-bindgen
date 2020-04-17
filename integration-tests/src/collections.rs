@@ -1,6 +1,9 @@
 //! Tests verifying that collection types (e.g. arrays and maps) can be used with C#.
 
-use crate::simple_enum::SimpleCEnum;
+use crate::{
+    data_enum::{DataEnum, InnerEnum},
+    simple_enum::SimpleCEnum,
+};
 use cs_bindgen::prelude::*;
 
 #[cs_bindgen]
@@ -89,4 +92,13 @@ pub fn return_struct_vec() -> Vec<CopyStruct> {
 #[cs_bindgen]
 pub fn return_simple_enum_vec() -> Vec<SimpleCEnum> {
     vec![SimpleCEnum::Foo, SimpleCEnum::Bar, SimpleCEnum::Baz]
+}
+
+#[cs_bindgen]
+pub fn return_data_enum_vec() -> Vec<DataEnum> {
+    vec![
+        DataEnum::Foo,
+        DataEnum::Bar("Cool string".into()),
+        DataEnum::Coolness(InnerEnum::Coolest(SimpleCEnum::Foo)),
+    ]
 }
