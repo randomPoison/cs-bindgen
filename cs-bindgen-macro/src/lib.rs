@@ -471,6 +471,7 @@ fn extract_type_ident(ty: &Type) -> syn::Result<Ident> {
 fn quote_index_fn(ty: &Ident) -> syn::Result<TokenStream> {
     let fn_ident = format_ident!("__cs_bindgen_generated_index_{}", ty);
     Ok(quote! {
+        #[allow(bad_style)]
         pub unsafe extern "C" fn #fn_ident(
             slice: cs_bindgen::abi::RawSlice<#ty>,
             index: usize,

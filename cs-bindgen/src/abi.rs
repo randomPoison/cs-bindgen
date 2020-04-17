@@ -359,12 +359,11 @@ impl<T> RawSlice<T> {
 impl<'a, T: 'a> RawSlice<T>
 where
     T: Abi,
-    &'a T: Abi<Abi = T::Abi>,
 {
     pub unsafe fn convert_element(self, index: usize) -> T::Abi {
         let slice = self.as_slice();
         let element = &slice[index];
-        Abi::into_abi(element)
+        Abi::as_abi(element)
     }
 }
 
