@@ -89,7 +89,7 @@ pub fn as_abi_fields(
     let conversion = fields.iter().enumerate().map(|(index, field)| {
         let input_field = field_accessor(index, field);
         quote! {
-            cs_bindgen::abi::Abi::as_abi(&#input_field)
+            cs_bindgen::abi::Abi::as_abi(#input_field)
         }
     });
 

@@ -43,15 +43,22 @@ fn quote_simple_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
     // discriminant.
     let discriminant_ty = quote! { isize };
 
-    // Generate constants for each discriminant of the enum. This is to handle arbitrary expressions for discriminant values.
-    let mut next_discriminant = quote! { 0 };
-    let discriminant_consts = item.variants.iter().map(|variant| {
-        let const_ident = format_ident!(
-            "__cs_bindgen_generated__{}__{}__DISCRIMINANT",
-            ident,
-            &variant.ident
-        );
+    let const_ident = item
+        .variants
+        .iter()
+        .map(|variant| {
+            format_ident!(
+                "__cs_bindgen_generated__{}__{}__DISCRIMINANT",
+                ident,
+                &variant.ident
+            )
+        })
+        .collect::<Vec<_>>();
 
+    // Generate constants for each discriminant of the enum. This is to handle arbitrary
+    // expressions for discriminant values.
+    let mut next_discriminant = quote! { 0 };
+    let discriminant_expr = item.variants.iter().enumerate().map(|(index, variant)| {
         // Generate the expression for the variant's discriminant:
         //
         // * If the variant has an explicit discriminant, reuse that expression in the constant.
@@ -68,11 +75,10 @@ fn quote_simple_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
 
         // Generate the expression for the next variant's discriminant based on the
         // constant for the current variant.
+        let const_ident = &const_ident[index];
         next_discriminant = quote! { #const_ident + 1 };
 
-        quote! {
-            const #const_ident: #discriminant_ty = #expr;
-        }
+        expr
     });
 
     // Generate the match arms for the `from_abi` impl.
@@ -89,18 +95,39 @@ fn quote_simple_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
         }
     });
 
+    let variant_name = item
+        .variants
+        .iter()
+        .map(|variant| &variant.ident)
+        .collect::<Vec<_>>();
+
     Ok(quote! {
+        #(
+            #[allow(bad_style)]
+            const #const_ident: #discriminant_ty = #discriminant_expr;
+        )*
+
         impl cs_bindgen::abi::Abi for #ident {
             type Abi = #discriminant_ty;
 
+            fn as_abi(&self) -> Self::Abi {
+                match self {
+                    #(
+                        Self::#variant_name => #const_ident,
+                    )*
+                }
+            }
+
             fn into_abi(self) -> Self::Abi {
-                self as #discriminant_ty
+                match self {
+                    #(
+                        Self::#variant_name => #const_ident,
+                    )*
+                }
             }
 
             #[allow(bad_style)]
             unsafe fn from_abi(abi: Self::Abi) -> Self {
-                #( #discriminant_consts )*
-
                 match abi {
                     #( #from_abi_patterns, )*
 
@@ -145,6 +172,48 @@ fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
         Some(quote! {
             #field_ident: #field_ty
         })
+    });
+
+    let as_abi_match_arms = item.variants.iter().enumerate().map(|(index, variant)| {
+        let variant_ident = &variant.ident;
+        let discriminant = Literal::usize_unsuffixed(index);
+        let abi_ident = format_ident!("{}__{}", abi_union_ty, variant.ident);
+
+        let field_idents = variant
+            .fields
+            .iter()
+            .enumerate()
+            .map(|(index, field)| value::raw_field_ident(index, field));
+
+        // Generate the destructuring expression for the fields of the variant.
+        let destructure = match &variant.fields {
+            Fields::Named { .. } => quote! { { #( #field_idents, )* } },
+            Fields::Unnamed { .. } => quote! { ( #( #field_idents, )* ) },
+            Fields::Unit => quote! {},
+        };
+
+        // For empty variants use `RawEnum::unit` to create an enum representation with just
+        // a discriminant.
+        if variant.fields.is_empty() {
+            return quote! {
+                Self::#variant_ident #destructure => cs_bindgen::abi::RawEnum::unit(#discriminant)
+            };
+        }
+
+        let convert_fields = value::as_abi_fields(&variant.fields, |index, field| {
+            value::raw_field_ident(index, field).into_token_stream()
+        });
+
+        quote! {
+            Self::#variant_ident #destructure => cs_bindgen::abi::RawEnum::new(
+                #discriminant,
+                #abi_union_ty {
+                    #variant_ident: #abi_ident {
+                        #convert_fields
+                    },
+                },
+            )
+        }
     });
 
     let into_abi_match_arms = item.variants.iter().enumerate().map(|(index, variant)| {
@@ -232,6 +301,12 @@ fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
                     #( #from_abi_match_arms, )*
 
                     _ => panic!("Unknown discriminant {} for {}", abi.discriminant, stringify!(#ident)),
+                }
+            }
+
+            fn as_abi(&self) -> Self::Abi {
+                match self {
+                    #( #as_abi_match_arms, )*
                 }
             }
 
