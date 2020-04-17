@@ -14,16 +14,19 @@ pub fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
 
     // Determine whether we should marshal the type as a handle or by value.
     if has_derive_copy(&item.attrs)? {
-        let abi_struct_ident = format_binding_ident!(item.ident);
-        let abi_struct = value::quote_abi_struct(&abi_struct_ident, &item.fields);
-        let into_abi_fields = value::into_abi_fields(&item.fields, |index, field| {
+        let field_accessor = |index, field: &Field| {
             let accessor = field
                 .ident
                 .as_ref()
                 .map(|ident| ident.into_token_stream())
                 .unwrap_or_else(|| Literal::usize_unsuffixed(index).into_token_stream());
             quote! { self.#accessor }
-        });
+        };
+
+        let abi_struct_ident = format_binding_ident!(item.ident);
+        let abi_struct = value::quote_abi_struct(&abi_struct_ident, &item.fields);
+        let into_abi_fields = value::into_abi_fields(&item.fields, field_accessor);
+        let as_abi_fields = value::as_abi_fields(&item.fields, field_accessor);
         let describe_fn = describe_named_type(&item.ident, BindingStyle::Value);
         let ident = item.ident;
 
@@ -44,6 +47,12 @@ pub fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
 
                 unsafe fn from_abi(abi: Self::Abi) -> Self {
                     Self #from_abi_braces
+                }
+
+                fn as_abi(&self) -> Self::Abi {
+                    Self::Abi {
+                        #as_abi_fields
+                    }
                 }
 
                 fn into_abi(self) -> Self::Abi {
