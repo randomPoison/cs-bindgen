@@ -84,5 +84,3 @@ pub struct CopyStruct {
 pub fn return_struct_vec() -> Vec<CopyStruct> {
     vec![CopyStruct { bar: 33 }, CopyStruct { bar: 12345 }]
 }
-
-pub enum 
