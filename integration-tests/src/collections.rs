@@ -1,5 +1,6 @@
 //! Tests verifying that collection types (e.g. arrays and maps) can be used with C#.
 
+use crate::simple_enum::SimpleCEnum;
 use cs_bindgen::prelude::*;
 
 #[cs_bindgen]
@@ -83,4 +84,9 @@ pub struct CopyStruct {
 #[cs_bindgen]
 pub fn return_struct_vec() -> Vec<CopyStruct> {
     vec![CopyStruct { bar: 33 }, CopyStruct { bar: 12345 }]
+}
+
+#[cs_bindgen]
+pub fn return_simple_enum_vec() -> Vec<SimpleCEnum> {
+    vec![SimpleCEnum::Foo, SimpleCEnum::Bar, SimpleCEnum::Baz]
 }

@@ -42,14 +42,13 @@ namespace TestRunner
 
         // TODO: Re-enable test case once we fix support for passing list of handle types.
         // [Fact]
-        public void ReturnHandleList()
-        {
-            var items = IntegrationTests.ReturnHandleVec();
-            Assert.Equal(2, items.Count);
-            Assert.Equal(33, items[0].Bar());
-            Assert.Equal(12345, items[1].Bar());
-        }
-
+        // public void ReturnHandleList()
+        // {
+        //     var items = IntegrationTests.ReturnHandleVec();
+        //     Assert.Equal(2, items.Count);
+        //     Assert.Equal(33, items[0].Bar());
+        //     Assert.Equal(12345, items[1].Bar());
+        // }
 
         [Fact]
         public void ReturnStructList()
@@ -58,6 +57,14 @@ namespace TestRunner
             Assert.Equal(2, items.Count);
             Assert.Equal(33, items[0].Bar);
             Assert.Equal(12345, items[1].Bar);
+        }
+
+        [Fact]
+        public void ReturnSimpleEnumList()
+        {
+            var expected = new List<SimpleCEnum>() { SimpleCEnum.Foo, SimpleCEnum.Bar, SimpleCEnum.Baz };
+            var actual = IntegrationTests.ReturnSimpleEnumVec();
+            Assert.Equal(expected, actual);
         }
     }
 }

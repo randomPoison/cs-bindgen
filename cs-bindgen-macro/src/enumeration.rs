@@ -103,6 +103,9 @@ fn quote_simple_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
         .map(|variant| &variant.ident)
         .collect::<Vec<_>>();
 
+    let index_fn = quote_index_fn(&ident);
+    let drop_vec_fn = quote_vec_drop_fn(&ident);
+
     Ok(quote! {
         #(
             #[allow(bad_style)]
@@ -137,6 +140,9 @@ fn quote_simple_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
                 }
             }
         }
+
+        #index_fn
+        #drop_vec_fn
     })
 }
 
