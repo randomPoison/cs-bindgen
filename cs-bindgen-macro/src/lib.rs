@@ -497,6 +497,7 @@ fn drop_vec_fn_ident(ty: &Ident) -> Ident {
 fn quote_vec_drop_fn(ty: &Ident) -> TokenStream {
     let fn_ident = drop_vec_fn_ident(ty);
     quote! {
+        #[no_mangle]
         #[allow(bad_style)]
         pub unsafe extern "C" fn #fn_ident(raw: cs_bindgen::abi::RawVec<#ty>) {
             let _ = raw.into_vec();

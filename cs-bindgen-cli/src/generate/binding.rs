@@ -120,10 +120,12 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
             let ty = generate::quote_cs_type(&export.schema, types);
             let raw_repr = quote_raw_type_reference(&export.schema, types);
             let index_fn_name = format_ident!("{}", &*export.index_fn);
+            let drop_vec_fn_name = format_ident!("{}", &*export.drop_vec_fn);
             let list_from_raw = quote! {
                 internal static void #from_raw(RawVec raw, out List<#ty> result)
                 {
                     result = raw.ToList<#raw_repr, #ty>(#index_fn_name, #from_raw);
+                    #drop_vec_fn_name(raw);
                 }
             };
 

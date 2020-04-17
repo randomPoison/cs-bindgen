@@ -14,13 +14,20 @@ namespace TestRunner
         }
 
         [Fact]
+        public void ReturnVecIntManyTimes()
+        {
+            for (var count = 0; count < 100_000; count += 1)
+            {
+                ReturnVecInt();
+            }
+        }
+
+        [Fact]
         public void ReturnVecIntRepeated()
         {
             for (var count = 0; count < 100_000; count += 1)
             {
-                var expected = IntegrationTests.ReturnVecI32();
-                var actual = new List<int>() { 1, 2, 3, 4 };
-                Assert.Equal(expected, actual);
+                ReturnVecInt();
             }
         }
 
@@ -68,6 +75,15 @@ namespace TestRunner
         }
 
         [Fact]
+        public void ReturnSimpleEnumListManyTimes()
+        {
+            for (var count = 0; count < 100_000; count += 1)
+            {
+                ReturnSimpleEnumList();
+            }
+        }
+
+        [Fact]
         public void ReturnDataEnumList()
         {
             var expected = new List<IDataEnum>()
@@ -78,6 +94,15 @@ namespace TestRunner
             };
             var actual = IntegrationTests.ReturnDataEnumVec();
             Assert.Equal(expected, actual);
+        }
+
+        [Fact]
+        public void DataEnumListManyTimes()
+        {
+            for (var count = 0; count < 100_000; count += 1)
+            {
+                ReturnDataEnumList();
+            }
         }
     }
 }
