@@ -266,7 +266,7 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
 
         internal static void __FromRaw(RawVec raw, out List<bool> result)
         {
-            result = raw.ToPrimitiveList<byte, bool>(raw => raw != 0);
+            result = raw.ToPrimitiveList<byte, bool>(rawElem => rawElem != 0);
             __bindings.__cs_bindgen_drop_vec_u8(raw);
         }
 
