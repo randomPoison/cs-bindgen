@@ -2,7 +2,7 @@ use self::{binding::*, class::*, enumeration::*, func::*};
 use crate::Opt;
 use cs_bindgen_shared::{
     schematic::{self, Primitive, Schema, TypeName},
-    Export, NamedType,
+    BindingStyle, Export, NamedType,
 };
 use heck::*;
 use lazy_static::lazy_static;
@@ -40,13 +40,7 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
     let types = exports
         .iter()
         .filter_map(|export| match export {
-            Export::Named(export) => Some((
-                export
-                    .schema
-                    .type_name()
-                    .expect("Named type's schema did not have a type name"),
-                export,
-            )),
+            Export::Named(export) => Some((export.type_name(), export)),
             _ => None,
         })
         .collect::<HashMap<_, _>>();
@@ -70,28 +64,34 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
                 &types,
             )),
 
-            Export::Named(export) => match &export.schema {
-                Schema::Struct(_)
-                | Schema::TupleStruct(_)
-                | Schema::UnitStruct(_)
-                | Schema::NewtypeStruct(_) => binding_items.push(strukt::quote_struct(
-                    export,
-                    // NOTE: The unwrap here will not panic because all of the matched variants have
-                    // a struct-like representation. If it panics here, then it likely indicates a
-                    // bug in the schematic crate.
-                    export.schema.as_struct_like().unwrap(),
-                    &types,
-                )),
-
-                Schema::Enum(schema) => binding_items.push(quote_enum(export, schema, &types)),
-
-                _ => {
-                    return Err(failure::format_err!(
-                        "Invalid schema for exported type {}: {:?}",
-                        export.name,
-                        export.schema
-                    ))
+            Export::Named(export) => match &export.binding_style {
+                BindingStyle::Handle(type_name) => {
+                    binding_items.push(class::quote_handle_type(export))
                 }
+
+                BindingStyle::Value(schema) => match schema {
+                    Schema::Struct(_)
+                    | Schema::TupleStruct(_)
+                    | Schema::UnitStruct(_)
+                    | Schema::NewtypeStruct(_) => binding_items.push(strukt::quote_struct(
+                        export,
+                        // NOTE: The unwrap here will not panic because all of the matched variants have
+                        // a struct-like representation. If it panics here, then it likely indicates a
+                        // bug in the schematic crate.
+                        schema.as_struct_like().unwrap(),
+                        &types,
+                    )),
+
+                    Schema::Enum(schema) => binding_items.push(quote_enum(export, schema, &types)),
+
+                    _ => {
+                        return Err(failure::format_err!(
+                            "Invalid schema for exported type {}: {:?}",
+                            export.name,
+                            schema
+                        ))
+                    }
+                },
             },
 
             Export::Method(export) => binding_items.push(quote_method_binding(export, &types)),
@@ -434,13 +434,12 @@ fn quote_cs_type(schema: &Schema, types: &TypeMap) -> TokenStream {
             .get(type_name)
             .unwrap_or_else(|| panic!("Could not resolve type reference: {:?}", type_name));
 
-        // NOTE: Enums are a special case since the user-facing type for a data-carrying
-        // enum is an interface, and therefore has a different naming convention from
-        // Rust structs.
-        let ident = if let Schema::Enum(schema) = &schema {
-            enumeration::quote_type_reference(export, schema)
-        } else {
-            format_ident!("{}", &*export.name).into_token_stream()
+        // NOTE: Enums that are exported by value are a special case since the user-facing
+        // type for a data-carrying enum is an interface, and therefore has a different
+        // naming convention from Rust structs.
+        let ident = match &export.binding_style {
+            BindingStyle::Value(Schema::Enum(schema)) => enumeration::quote_type_reference(schema),
+            _ => format_ident!("{}", &*export.name).into_token_stream(),
         };
 
         // TODO: Take into account things like custom namespaces or renaming the type, once

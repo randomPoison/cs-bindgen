@@ -83,7 +83,6 @@ pub fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
         let binding = handle::quote_type_as_handle(&item.ident)?;
         Ok(quote! {
             #binding
-            #describe_impl
         })
     }
 }

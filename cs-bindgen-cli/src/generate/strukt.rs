@@ -1,6 +1,6 @@
 //! Code generation for exported struct types.
 
-use crate::generate::{self, binding, class, TypeMap};
+use crate::generate::{self, binding, TypeMap};
 use cs_bindgen_shared::{
     schematic::{Field, StructLike},
     BindingStyle, NamedType,
@@ -11,9 +11,11 @@ use quote::*;
 use syn::Ident;
 
 pub fn quote_struct(export: &NamedType, schema: StructLike<'_>, types: &TypeMap) -> TokenStream {
-    if export.binding_style == BindingStyle::Handle {
-        return class::quote_handle_type(export);
-    }
+    assert!(
+        matches!(export.binding_style, BindingStyle::Value(..)),
+        "Trying to generate by-value marshaling for {} which is expected to be marshaled by handle",
+        export.name,
+    );
 
     let ident = format_ident!("{}", &*export.name);
     let raw_ident = binding::raw_ident(&export.name);
