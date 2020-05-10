@@ -101,47 +101,44 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
 
         // Generate the binding for the destructor for any named types that are marshaled
         // as handles.
-        Export::Named(export) => {
-            let index_fn = quote_raw_fn_binding(
-                &export.index_fn,
-                quote_raw_type_reference(&export.schema, types),
-                quote! { RawSlice slice, UIntPtr index },
-                dll_name,
-            );
+        Export::Named(export) => match &export.binding_style {
+            BindingStyle::Handle(type_name) => class::quote_drop_fn(&export, dll_name),
 
-            let drop_vec_fn = quote_raw_fn_binding(
-                &export.drop_vec_fn,
-                quote! { void },
-                quote! { RawVec vec },
-                dll_name,
-            );
+            BindingStyle::Value(schema) => {
+                let index_fn = quote_raw_fn_binding(
+                    &export.index_fn,
+                    quote_raw_type_reference(schema, types),
+                    quote! { RawSlice slice, UIntPtr index },
+                    dll_name,
+                );
 
-            let from_raw = from_raw_fn_ident();
-            let ty = generate::quote_cs_type(&export.schema, types);
-            let raw_repr = quote_raw_type_reference(&export.schema, types);
-            let index_fn_name = format_ident!("{}", &*export.index_fn);
-            let drop_vec_fn_name = format_ident!("{}", &*export.drop_vec_fn);
-            let list_from_raw = quote! {
-                internal static void #from_raw(RawVec raw, out List<#ty> result)
-                {
-                    result = raw.ToList<#raw_repr, #ty>(#index_fn_name, #from_raw);
-                    #drop_vec_fn_name(raw);
+                let drop_vec_fn = quote_raw_fn_binding(
+                    &export.drop_vec_fn,
+                    quote! { void },
+                    quote! { RawVec vec },
+                    dll_name,
+                );
+
+                let from_raw = from_raw_fn_ident();
+                let ty = generate::quote_cs_type(schema, types);
+                let raw_repr = quote_raw_type_reference(schema, types);
+                let index_fn_name = format_ident!("{}", &*export.index_fn);
+                let drop_vec_fn_name = format_ident!("{}", &*export.drop_vec_fn);
+                let list_from_raw = quote! {
+                    internal static void #from_raw(RawVec raw, out List<#ty> result)
+                    {
+                        result = raw.ToList<#raw_repr, #ty>(#index_fn_name, #from_raw);
+                        #drop_vec_fn_name(raw);
+                    }
+                };
+
+                quote! {
+                    #index_fn
+                    #drop_vec_fn
+                    #list_from_raw
                 }
-            };
-
-            let drop_fn = if export.binding_style == BindingStyle::Handle {
-                class::quote_drop_fn(&export, dll_name)
-            } else {
-                quote! {}
-            };
-
-            quote! {
-                #index_fn
-                #drop_vec_fn
-                #drop_fn
-                #list_from_raw
             }
-        }
+        },
     }
 }
 
@@ -203,7 +200,7 @@ pub fn quote_raw_type_reference(schema: &Schema, types: &TypeMap) -> TokenStream
             //   type (`IntPtr`).
             // * Data-carrying enums have an associate struct that represents its raw type.
             // * C-like enums are marshalled directly as an integer value.
-            if export.binding_style == BindingStyle::Handle {
+            if matches!(export.binding_style, BindingStyle::Handle(..)) {
                 class::quote_handle_ptr()
             } else if schema.has_data() {
                 named_type_raw_reference(&schema.name)
@@ -226,7 +223,7 @@ pub fn quote_raw_type_reference(schema: &Schema, types: &TypeMap) -> TokenStream
                 .unwrap_or_else(|| panic!("No export found for named type {:?}", type_name));
 
             // Determine the raw representation based on the marshaling style.
-            if export.binding_style == BindingStyle::Handle {
+            if matches!(export.binding_style, BindingStyle::Handle(..)) {
                 class::quote_handle_ptr()
             } else {
                 named_type_raw_reference(type_name)

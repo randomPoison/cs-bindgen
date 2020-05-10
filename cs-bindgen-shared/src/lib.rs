@@ -4,7 +4,7 @@ use std::borrow::Cow;
 
 // Re-export schematic so that dependent crates don't need to directly depend on it.
 pub use schematic;
-pub use schematic::Schema;
+pub use schematic::{Schema, TypeName};
 
 pub fn serialize_export<E: Into<Export>>(export: E) -> String {
     let export = export.into();
@@ -72,10 +72,25 @@ impl Func {
 pub struct NamedType {
     pub name: Cow<'static, str>,
     pub binding_style: BindingStyle,
-    pub schema: Schema,
 
     pub index_fn: Cow<'static, str>,
     pub drop_vec_fn: Cow<'static, str>,
+}
+
+impl NamedType {
+    pub fn type_name(&self) -> &TypeName {
+        match &self.binding_style {
+            BindingStyle::Handle(name) => name,
+            BindingStyle::Value(schema) => schema.type_name().expect("No type name for named type"),
+        }
+    }
+
+    pub fn schema(&self) -> Option<&Schema> {
+        match &self.binding_style {
+            BindingStyle::Value(schema) => Some(schema),
+            BindingStyle::Handle(..) => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, From, Serialize, Deserialize)]
@@ -105,8 +120,8 @@ pub enum ReceiverStyle {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BindingStyle {
     /// The type is exported as a class wrapping an opaque handle.
-    Handle,
+    Handle(TypeName),
 
     /// Values of the type are marshalled directly into C# values.
-    Value,
+    Value(Schema),
 }

@@ -1,4 +1,4 @@
-//! Code generation for exported enum types.
+//! Code generation for exported enum types that are marshaled by value.
 
 use crate::generate::{binding, quote_primitive_type, strukt, TypeMap};
 use cs_bindgen_shared::{schematic::Enum, schematic::Variant, BindingStyle, NamedType};
@@ -7,6 +7,12 @@ use quote::*;
 use syn::Ident;
 
 pub fn quote_enum(export: &NamedType, schema: &Enum, types: &TypeMap) -> TokenStream {
+    assert!(
+        matches!(export.binding_style, BindingStyle::Value(..)),
+        "Trying to generate by-value marshaling for {} which is expected to be marshaled by handle",
+        export.name,
+    );
+
     // Determine if we're dealing with a simple (C-like) enum or one with fields.
     let generated = if schema.has_data() {
         quote_complex_enum(export, schema, types)
@@ -14,10 +20,13 @@ pub fn quote_enum(export: &NamedType, schema: &Enum, types: &TypeMap) -> TokenSt
         quote_simple_enum(export, schema)
     };
 
-    let repr = quote_type_reference(export, schema);
-    let raw_repr = binding::quote_raw_type_reference(&export.schema, types);
+    let repr = quote_type_reference(schema);
     let from_raw = binding::from_raw_fn_ident();
     let into_raw = binding::into_raw_fn_ident();
+
+    // NOTE: The unwrap here won't panic because we've already verified above that the
+    // binding style is by-value.
+    let raw_repr = binding::quote_raw_type_reference(&export.schema().unwrap(), types);
 
     let from_raw_impl = from_raw_impl(export, schema);
     let into_raw_impl = into_raw_impl(export, schema);
@@ -39,11 +48,11 @@ pub fn quote_enum(export: &NamedType, schema: &Enum, types: &TypeMap) -> TokenSt
     }
 }
 
-pub fn quote_type_reference(export: &NamedType, schema: &Enum) -> TokenStream {
-    if export.binding_style == BindingStyle::Value && schema.has_data() {
-        format_ident!("I{}", &*export.name).into_token_stream()
+pub fn quote_type_reference(schema: &Enum) -> TokenStream {
+    if schema.has_data() {
+        format_ident!("I{}", &*schema.name.name).into_token_stream()
     } else {
-        format_ident!("{}", &*export.name).into_token_stream()
+        format_ident!("{}", &*schema.name.name).into_token_stream()
     }
 }
 
@@ -64,7 +73,7 @@ fn from_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
     // For C-like enums, the conversion is just casting the raw discriminant value to
     // the C# enum type.
     if !schema.has_data() {
-        let cs_repr = quote_type_reference(export, schema);
+        let cs_repr = quote_type_reference(schema);
         return quote! { result = (#cs_repr)raw; };
     }
 

@@ -430,16 +430,27 @@ fn describe_named_type(ident: &Ident, style: BindingStyle) -> TokenStream {
     let drop_vec_fn = drop_vec_fn_ident(ident).to_string();
 
     let style = match style {
-        BindingStyle::Handle => quote! { Handle },
-        BindingStyle::Value => quote! { Value },
+        BindingStyle::Handle => quote! {
+            Handle(cs_bindgen::shared::schematic::type_name!(#ident))
+        },
+
+        BindingStyle::Value => quote! {
+            Value(
+                cs_bindgen::shared::schematic::describe::<#ident>()
+                    .expect("Failed to describe enum type")
+            )
+        },
     };
 
     quote! {
         #[no_mangle]
         pub unsafe extern "C" fn #describe_ident() -> std::boxed::Box<cs_bindgen::abi::RawString> {
+            // NOTE: We need to import `schematic` so that usage of the `type_name!` macro
+            // resolves correctly, since the expanded code references `schematic` directly.
+            use cs_bindgen::shared::schematic;
+
             let export = cs_bindgen::shared::NamedType {
                 name: #name.into(),
-                schema: cs_bindgen::shared::schematic::describe::<#ident>().expect("Failed to describe enum type"),
                 binding_style: cs_bindgen::shared::BindingStyle::#style,
                 index_fn: #index_fn.into(),
                 drop_vec_fn: #drop_vec_fn.into(),
