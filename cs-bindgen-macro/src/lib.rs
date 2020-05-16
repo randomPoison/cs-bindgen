@@ -351,7 +351,7 @@ fn quote_method_item(item: ImplItemMethod, self_ty: &Type) -> syn::Result<TokenS
             let export = Method {
                 name: #name.into(),
                 binding: #binding_name.into(),
-                self_type: describe::<#self_ty>().expect("Failed to generate schema for self type"),
+                self_type: <#self_ty as cs_bindgen::abi::NamedType>::TYPE_NAME.clone(),
                 receiver: #describe_receiver,
                 inputs: vec![#(
                     #describe_args,
@@ -457,6 +457,17 @@ fn describe_named_type(ident: &Ident, style: BindingStyle) -> TokenStream {
             };
 
             std::boxed::Box::new(cs_bindgen::shared::serialize_export(export).into())
+        }
+    }
+}
+
+fn impl_type_name(ident: &Ident) -> TokenStream {
+    quote! {
+        impl cs_bindgen::abi::NamedType for #ident {
+            const TYPE_NAME: cs_bindgen::shared::TypeName = cs_bindgen::shared::TypeName {
+                name: std::borrow::Cow::Borrowed(stringify!(#ident)),
+                module: std::borrow::Cow::Borrowed(module_path!()),
+            };
         }
     }
 }

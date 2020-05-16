@@ -16,6 +16,8 @@
 //! [nomicon-interop]: https://doc.rust-lang.org/nomicon/ffi.html#interoperability-with-foreign-code
 
 use core::mem::MaybeUninit;
+use cs_bindgen_shared::{schematic, Repr, TypeName};
+use schematic::Describe;
 use std::{convert::TryInto, mem, slice, str};
 
 /// The ABI-compatible equivalent to [`String`].
@@ -27,6 +29,21 @@ pub type RawString = RawVec<u8>;
 ///
 /// [`&str`]: https://doc.rust-lang.org/std/primitive.str.html
 pub type RawStr = RawSlice<u8>;
+
+/// Helper trait for accessing the type name for exported types.
+///
+/// Not all types implementing `Abi` need to implement `Describe`, but all types
+/// need to be able to referenced by name. This trait provides a uniform way to
+/// access a type's name when generating a reference to a type.
+pub trait NamedType {
+    fn type_name() -> TypeName;
+}
+
+impl<T: Describe> NamedType for T {
+    fn type_name() -> TypeName {
+        <T as Describe>::type_name()
+    }
+}
 
 /// A value that is ABI-compatible with C#.
 ///
@@ -45,6 +62,8 @@ pub unsafe trait AbiPrimitive: Copy {}
 pub trait Abi: Sized {
     /// The FFI-compatible representation of the type.
     type Abi: AbiPrimitive;
+
+    fn repr() -> Repr;
 
     /// Borrow the contents of `self` in an ABI-compatible representation.
     ///
@@ -77,12 +96,16 @@ pub trait Abi: Sized {
 }
 
 macro_rules! abi_primitives {
-    ($($ty:ty,)*) => {
+    ($($ty:ty => $repr:ident,)*) => {
         $(
             unsafe impl AbiPrimitive for $ty {}
 
             impl Abi for $ty {
                 type Abi = Self;
+
+                fn repr() -> Repr {
+                    Repr::$repr
+                }
 
                 fn as_abi(&self) -> Self::Abi {
                     *self
@@ -102,22 +125,28 @@ macro_rules! abi_primitives {
 
 // All numeric types are valid ABI primitives.
 abi_primitives! {
-    i8,
-    i16,
-    i32,
-    i64,
-    isize,
-    u8,
-    u16,
-    u32,
-    u64,
-    usize,
-    f32,
-    f64,
+    i8 => I8,
+    i16 => I16,
+    i32 => I32,
+    i64 => I64,
+    isize => ISize,
+
+    u8 => U8,
+    u16 => U16,
+    u32 => U32,
+    u64 => U64,
+    usize => USize,
+
+    f32 => F32,
+    f64 => F64,
 }
 
 impl Abi for () {
     type Abi = u8;
+
+    fn repr() -> Repr {
+        Repr::Unit
+    }
 
     fn as_abi(&self) -> Self::Abi {
         0
@@ -137,8 +166,12 @@ unsafe impl<'a, T> AbiPrimitive for &'a T {}
 unsafe impl<T> AbiPrimitive for *const T {}
 unsafe impl<T> AbiPrimitive for *mut T {}
 
-impl<T> Abi for Box<T> {
+impl<T: Abi> Abi for Box<T> {
     type Abi = *const T;
+
+    fn repr() -> Repr {
+        Repr::Box(Box::new(T::repr()))
+    }
 
     fn as_abi(&self) -> Self::Abi {
         &**self as *const _
@@ -159,6 +192,10 @@ impl<T> Abi for Box<T> {
 impl Abi for char {
     type Abi = u32;
 
+    fn repr() -> Repr {
+        Repr::Char
+    }
+
     fn as_abi(&self) -> Self::Abi {
         (*self).into()
     }
@@ -174,6 +211,10 @@ impl Abi for char {
 
 impl Abi for bool {
     type Abi = u8;
+
+    fn repr() -> Repr {
+        Repr::Bool
+    }
 
     fn as_abi(&self) -> Self::Abi {
         (*self).into()
@@ -194,6 +235,10 @@ where
 {
     type Abi = RawVec<T>;
 
+    fn repr() -> Repr {
+        Repr::Vec(Box::new(T::repr()))
+    }
+
     fn as_abi(&self) -> Self::Abi {
         self.as_slice().into()
     }
@@ -210,6 +255,10 @@ where
 impl Abi for String {
     type Abi = RawVec<u8>;
 
+    fn repr() -> Repr {
+        Repr::String
+    }
+
     fn as_abi(&self) -> Self::Abi {
         self.as_bytes().into()
     }
@@ -225,6 +274,10 @@ impl Abi for String {
 
 impl<'a> Abi for &'a str {
     type Abi = RawSlice<u8>;
+
+    fn repr() -> Repr {
+        Repr::Str
+    }
 
     fn as_abi(&self) -> Self::Abi {
         (*self).into()
@@ -438,6 +491,13 @@ macro_rules! array_abi {
 
         impl<T: Abi> Abi for [T; $len] {
             type Abi = [T::Abi; $len];
+
+            fn repr() -> Repr {
+                Repr::Array {
+                    element: Box::new(T::repr()),
+                    len: $len,
+                }
+            }
 
             fn as_abi(&self) -> Self::Abi {
                 let [

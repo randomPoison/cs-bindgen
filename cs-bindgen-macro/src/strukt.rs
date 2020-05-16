@@ -1,6 +1,6 @@
 use crate::{
-    describe_named_type, handle, has_derive_copy, quote_index_fn, quote_vec_drop_fn,
-    reject_generics, value, BindingStyle,
+    describe_named_type, handle, has_derive_copy, impl_type_name, quote_index_fn,
+    quote_vec_drop_fn, reject_generics, value, BindingStyle,
 };
 use proc_macro2::{Literal, TokenStream};
 use quote::*;
@@ -13,10 +13,12 @@ pub fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
         "Generic structs are not supported with `#[cs_bindgen]`",
     )?;
 
-    let describe_impl = describe_struct(&item);
+    let type_name_impl = impl_type_name(&item.ident);
 
     // Determine whether we should marshal the type as a handle or by value.
     if has_derive_copy(&item.attrs)? {
+        let describe_impl = describe_struct(&item);
+
         fn field_accessor(index: usize, field: &Field) -> TokenStream {
             field
                 .ident
@@ -74,6 +76,7 @@ pub fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
                 }
             }
 
+            #type_name_impl
             #describe_impl
             #describe_fn
             #index_fn
@@ -82,6 +85,7 @@ pub fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
     } else {
         let binding = handle::quote_type_as_handle(&item.ident)?;
         Ok(quote! {
+            #type_name_impl
             #binding
         })
     }
