@@ -1,5 +1,6 @@
 use crate::{
-    describe_named_type, quote_index_fn, quote_vec_drop_fn, reject_generics, value, BindingStyle,
+    describe_named_type, impl_type_name, quote_index_fn, quote_vec_drop_fn, reject_generics, value,
+    BindingStyle,
 };
 use proc_macro2::{Literal, TokenStream};
 use quote::*;
@@ -14,7 +15,9 @@ pub fn quote_enum_item(item: ItemEnum) -> syn::Result<TokenStream> {
     // Derive `Describe` for the enum.
     //
     // TODO: Move this into a dedicated derive macro for schematic.
-    let mut result = quote_describe_impl(&item)?;
+    let describe_impl = quote_describe_impl(&item)?;
+
+    let type_name_impl = impl_type_name(&item.ident);
 
     // Check the variants to determine if we're dealing with a C-style enum or one that
     // carries additional data.
@@ -29,13 +32,16 @@ pub fn quote_enum_item(item: ItemEnum) -> syn::Result<TokenStream> {
         quote_simple_enum(&item)?
     };
 
-    result.extend(bindings);
-
     // Export a function that describes the exported type.
     let ident = &item.ident;
-    result.extend(describe_named_type(&ident, BindingStyle::Value));
+    let describe_fn = describe_named_type(&ident, BindingStyle::Value);
 
-    Ok(result)
+    Ok(quote! {
+        #describe_impl
+        #type_name_impl
+        #bindings
+        #describe_fn
+    })
 }
 
 fn quote_simple_enum(item: &ItemEnum) -> syn::Result<TokenStream> {

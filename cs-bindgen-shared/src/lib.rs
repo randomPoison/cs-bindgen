@@ -20,7 +20,7 @@ pub enum Export {
 }
 
 /// A free function exported from the Rust lib.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Func {
     /// The original name of the function, as declared in the Rust source code.
     ///
@@ -40,24 +40,13 @@ pub struct Func {
     ///
     /// Note that these are the types of the original function, NOT the generated
     /// binding function.
-    pub inputs: Vec<(Cow<'static, str>, Schema)>,
+    pub inputs: Vec<FnArg>,
 
     /// The return type of the function.
     ///
     /// Note that this is the return type of the original function, NOT the generated
     /// binding function.
     pub output: Option<Schema>,
-}
-
-impl Func {
-    /// Returns an iterator over the inputs to the function.
-    ///
-    /// The argument names are automatically deref'd from `Cow<str>` to `&str` for
-    /// convenience. If direct access to the `Cow<str>` is needed, the `inputs` field
-    /// can be used directly.
-    pub fn inputs(&self) -> impl Iterator<Item = (&str, &Schema)> + Clone {
-        self.inputs.iter().map(|(name, schema)| (&**name, schema))
-    }
 }
 
 /// A user-defined type (i.e. a struct or an enum).
@@ -70,7 +59,7 @@ impl Func {
 /// not supported.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NamedType {
-    pub name: Cow<'static, str>,
+    pub type_name: TypeName,
     pub binding_style: BindingStyle,
 
     pub index_fn: Cow<'static, str>,
@@ -78,17 +67,10 @@ pub struct NamedType {
 }
 
 impl NamedType {
-    pub fn type_name(&self) -> &TypeName {
-        match &self.binding_style {
-            BindingStyle::Handle(name) => name,
-            BindingStyle::Value(schema) => schema.type_name().expect("No type name for named type"),
-        }
-    }
-
     pub fn schema(&self) -> Option<&Schema> {
         match &self.binding_style {
             BindingStyle::Value(schema) => Some(schema),
-            BindingStyle::Handle(..) => None,
+            BindingStyle::Handle => None,
         }
     }
 }
@@ -97,16 +79,16 @@ impl NamedType {
 pub struct Method {
     pub name: Cow<'static, str>,
     pub binding: Cow<'static, str>,
-    pub self_type: Schema,
+    pub self_type: TypeName,
     pub receiver: Option<ReceiverStyle>,
-    pub inputs: Vec<(Cow<'static, str>, Schema)>,
+    pub inputs: Vec<FnArg>,
     pub output: Option<Schema>,
 }
 
-impl Method {
-    pub fn inputs(&self) -> impl Iterator<Item = (&str, &Schema)> + Clone {
-        self.inputs.iter().map(|(name, schema)| (&**name, schema))
-    }
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FnArg {
+    pub name: Cow<'static, str>,
+    pub ty: Repr,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -120,8 +102,78 @@ pub enum ReceiverStyle {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BindingStyle {
     /// The type is exported as a class wrapping an opaque handle.
-    Handle(TypeName),
+    Handle,
 
     /// Values of the type are marshalled directly into C# values.
     Value(Schema),
+}
+
+/// The supported type representations that can be passed across the FFI boundary.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Repr {
+    Unit,
+    Bool,
+    Char,
+
+    I8,
+    I16,
+    I32,
+    I64,
+    ISize,
+
+    U8,
+    U16,
+    U32,
+    U64,
+    USize,
+
+    F32,
+    F64,
+
+    /// A user defined type passed by handle.
+    ///
+    /// The referenced type must be included in the set of exported types, such that the
+    /// given `TypeName` can be used to look up the full schema and metadata for the
+    /// type.
+    Handle(TypeName),
+
+    /// A user defined type passed by value.
+    ///
+    /// The referenced type must be included in the set of exported types, such that the
+    /// given `TypeName` can be used to look up the full schema and metadata for the
+    /// type.
+    Named(TypeName),
+
+    /// An owned pointer.
+    Box(Box<Repr>),
+
+    /// A borrowed pointer.
+    Ref(Box<Repr>),
+
+    /// An owned array of elements.
+    Vec(Box<Repr>),
+
+    /// A borrowed array of elements.
+    Slice(Box<Repr>),
+
+    /// An array of elements
+    Array {
+        element: Box<Repr>,
+        len: usize,
+    },
+
+    /// An owned string.
+    String,
+
+    /// A borrowed string slice.
+    Str,
+
+    /// An optional value.
+    Option(Box<Repr>),
+
+    /// The result of a fallible operation.
+    Result {
+        ok: Box<Repr>,
+        err: Box<Repr>,
+    },
 }
