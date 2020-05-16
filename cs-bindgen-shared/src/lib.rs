@@ -46,7 +46,7 @@ pub struct Func {
     ///
     /// Note that this is the return type of the original function, NOT the generated
     /// binding function.
-    pub output: Option<Schema>,
+    pub output: Option<Repr>,
 }
 
 /// A user-defined type (i.e. a struct or an enum).
@@ -82,13 +82,25 @@ pub struct Method {
     pub self_type: TypeName,
     pub receiver: Option<ReceiverStyle>,
     pub inputs: Vec<FnArg>,
-    pub output: Option<Schema>,
+    pub output: Option<Repr>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FnArg {
     pub name: Cow<'static, str>,
-    pub ty: Repr,
+    pub repr: Repr,
+}
+
+impl FnArg {
+    pub fn new<N>(name: N, repr: Repr) -> Self
+    where
+        N: Into<Cow<'static, str>>,
+    {
+        Self {
+            name: name.into(),
+            repr,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

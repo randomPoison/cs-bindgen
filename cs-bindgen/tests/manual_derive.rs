@@ -3,7 +3,6 @@
 //! for understanding how the code generation works.
 
 use cs_bindgen::{abi::*, shared::*};
-use schematic::*;
 
 // For an exported function, we generate two items:
 //
@@ -31,16 +30,10 @@ pub unsafe extern "C" fn __cs_bindgen_describe__example_fn() -> Box<RawVec<u8>> 
         name: "example_fn".into(),
         binding: "__cs_bindgen_generated__example_fn".into(),
         inputs: vec![
-            (
-                "first".into(),
-                describe::<u32>().expect("Failed to generate schema for argument"),
-            ),
-            (
-                "second".into(),
-                describe::<String>().expect("Failed to generate schema for argument"),
-            ),
+            FnArg::new("first", u32::repr()),
+            FnArg::new("second", String::repr()),
         ],
-        output: Some(describe::<String>().expect("Failed to generate schema for return type")),
+        output: Some(String::repr()),
     };
 
     Box::new(serialize_export(export).into())
@@ -55,18 +48,12 @@ pub struct ExampleStruct {
     pub field: String,
 }
 
-impl Describe for ExampleStruct {
-    fn describe<E>(describer: E) -> Result<E::Ok, E::Error>
-    where
-        E: Describer,
-    {
-        let describer = describer.describe_struct(type_name!(ExampleStruct))?;
-        describer.end()
-    }
-}
-
 impl Abi for ExampleStruct {
     type Abi = *const Self;
+
+    fn repr() -> Repr {
+        Repr::Handle(TypeName::new("ExampleStruct", module_path!()))
+    }
 
     fn as_abi(&self) -> Self::Abi {
         self as *const _
@@ -84,6 +71,10 @@ impl Abi for ExampleStruct {
 impl<'a> Abi for &'a ExampleStruct {
     type Abi = *const ExampleStruct;
 
+    fn repr() -> Repr {
+        Repr::Ref(Box::new(ExampleStruct::repr()))
+    }
+
     fn as_abi(&self) -> Self::Abi {
         *self
     }
@@ -99,6 +90,10 @@ impl<'a> Abi for &'a ExampleStruct {
 
 impl<'a> Abi for &'a mut ExampleStruct {
     type Abi = *const ExampleStruct;
+
+    fn repr() -> Repr {
+        Repr::Ref(Box::new(ExampleStruct::repr()))
+    }
 
     fn as_abi(&self) -> Self::Abi {
         *self
@@ -133,6 +128,10 @@ pub enum SimpleEnum {
 impl Abi for SimpleEnum {
     type Abi = isize;
 
+    fn repr() -> Repr {
+        Repr::Named(TypeName::new("SimpleEnum", module_path!()))
+    }
+
     unsafe fn from_abi(abi: Self::Abi) -> Self {
         match abi {
             0 => Self::Foo,
@@ -160,6 +159,10 @@ pub enum ComplexEnum {
 
 impl Abi for ComplexEnum {
     type Abi = RawEnum<isize, ComplexEnum_Abi>;
+
+    fn repr() -> Repr {
+        Repr::Named(TypeName::new("ComplexEnum", module_path!()))
+    }
 
     unsafe fn from_abi(abi: Self::Abi) -> Self {
         match abi.discriminant {
