@@ -1,6 +1,6 @@
 use crate::{
-    describe_named_type, quote_index_fn, quote_vec_drop_fn, reject_generics, repr_impl,
-    type_name_expr, value, BindingStyle,
+    describe_named_type, impl_named, quote_index_fn, quote_vec_drop_fn, reject_generics, repr_impl,
+    value, BindingStyle,
 };
 use proc_macro2::{Literal, TokenStream};
 use quote::*;
@@ -11,6 +11,8 @@ pub fn quote_enum_item(item: ItemEnum) -> syn::Result<TokenStream> {
         &item.generics,
         "Generic enums not supported with `#[cs_bindgen]`",
     )?;
+
+    let named_impl = impl_named(&item.ident);
 
     // Derive `Describe` for the enum.
     //
@@ -35,6 +37,7 @@ pub fn quote_enum_item(item: ItemEnum) -> syn::Result<TokenStream> {
     let describe_fn = describe_named_type(&ident, BindingStyle::Value);
 
     Ok(quote! {
+        #named_impl
         #describe_impl
         #bindings
         #describe_fn
@@ -427,12 +430,10 @@ fn quote_describe_impl(item: &ItemEnum) -> syn::Result<TokenStream> {
         }
     });
 
-    let type_name = type_name_expr(ident);
-
     Ok(quote! {
         impl cs_bindgen::shared::schematic::Describe for #ident {
             fn type_name() -> cs_bindgen::shared::TypeName {
-                #type_name
+                <Self as cs_bindgen::shared::Named>::type_name()
             }
 
             fn describe<E>(describer: E) -> Result<E::Ok, E::Error>

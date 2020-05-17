@@ -1,6 +1,6 @@
 use crate::{
-    describe_named_type, handle, has_derive_copy, quote_index_fn, quote_vec_drop_fn,
-    reject_generics, repr_impl, type_name_expr, value, BindingStyle,
+    describe_named_type, handle, has_derive_copy, impl_named, quote_index_fn, quote_vec_drop_fn,
+    reject_generics, repr_impl, value, BindingStyle,
 };
 use proc_macro2::{Literal, TokenStream};
 use quote::*;
@@ -17,6 +17,7 @@ pub fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
 
     // Determine whether we should marshal the type as a handle or by value.
     if has_derive_copy(&item.attrs)? {
+        let named_impl = impl_named(&item.ident);
         let describe_impl = describe_struct(&item);
 
         fn field_accessor(index: usize, field: &Field) -> TokenStream {
@@ -78,6 +79,7 @@ pub fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
                 }
             }
 
+            #named_impl
             #describe_impl
             #describe_fn
             #index_fn
@@ -145,12 +147,10 @@ fn describe_struct(item: &ItemStruct) -> TokenStream {
         }
     };
 
-    let type_name = type_name_expr(ident);
-
     quote! {
         impl cs_bindgen::shared::schematic::Describe for #ident {
             fn type_name() -> cs_bindgen::shared::TypeName {
-                #type_name
+                <Self as cs_bindgen::shared::Named>::type_name()
             }
 
             fn describe<D>(describer: D) -> Result<D::Ok, D::Error>
@@ -159,7 +159,7 @@ fn describe_struct(item: &ItemStruct) -> TokenStream {
             {
                 use cs_bindgen::shared::schematic::{Describer, DescribeStruct, DescribeTupleStruct};
 
-                let type_name = cs_bindgen::shared::schematic::type_name!(#ident);
+                let type_name = <Self as cs_bindgen::shared::Named>::type_name();
                 #body
             }
         }

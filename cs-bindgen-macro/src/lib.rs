@@ -351,7 +351,7 @@ fn quote_method_item(item: ImplItemMethod, self_ty: &Type) -> syn::Result<TokenS
             let export = Method {
                 name: #name.into(),
                 binding: #binding_name.into(),
-                self_type: <#self_ty as cs_bindgen::abi::NamedType>::TYPE_NAME.clone(),
+                self_type: <#self_ty as cs_bindgen::abi::NamedType>::type_name(),
                 receiver: #describe_receiver,
                 inputs: vec![#(
                     #describe_args,
@@ -427,7 +427,6 @@ fn describe_named_type(ident: &Ident, style: BindingStyle) -> TokenStream {
     let describe_ident = format_describe_ident!(ident);
     let index_fn = index_fn_ident(ident).to_string();
     let drop_vec_fn = drop_vec_fn_ident(ident).to_string();
-    let type_name = type_name_expr(ident);
 
     let style = match style {
         BindingStyle::Handle => quote! {
@@ -447,7 +446,7 @@ fn describe_named_type(ident: &Ident, style: BindingStyle) -> TokenStream {
             use cs_bindgen::shared::schematic;
 
             let export = cs_bindgen::shared::NamedType {
-                type_name: #type_name,
+                type_name: <#ident as cs_bindgen::shared::Named>::type_name(),
                 binding_style: cs_bindgen::shared::BindingStyle::#style,
                 index_fn: #index_fn.into(),
                 drop_vec_fn: #drop_vec_fn.into(),
@@ -458,17 +457,23 @@ fn describe_named_type(ident: &Ident, style: BindingStyle) -> TokenStream {
     }
 }
 
-fn type_name_expr(ident: &Ident) -> TokenStream {
+/// Generates an impl of `Named` for the specified type.
+fn impl_named(ident: &Ident) -> TokenStream {
     quote! {
-        cs_bindgen::shared::TypeName::new(stringify!(#ident), module_path!())
+        impl cs_bindgen::shared::Named for #ident {
+            fn type_name() -> cs_bindgen::shared::TypeName {
+                cs_bindgen::shared::TypeName::new(stringify!(#ident), module_path!())
+            }
+        }
     }
 }
 
+/// Generates an impl of the `repr` function in the `Abi` trait for the specified
+/// type.
 fn repr_impl(ident: &Ident) -> TokenStream {
-    let type_name = type_name_expr(ident);
     quote! {
         fn repr() -> cs_bindgen::shared::Repr {
-            cs_bindgen::shared::Repr::Named(#type_name)
+            cs_bindgen::shared::Repr::named::<#ident>()
         }
     }
 }
