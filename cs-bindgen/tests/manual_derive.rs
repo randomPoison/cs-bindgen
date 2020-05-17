@@ -48,11 +48,17 @@ pub struct ExampleStruct {
     pub field: String,
 }
 
+impl Named for ExampleStruct {
+    fn type_name() -> TypeName {
+        TypeName::new("ExampleStruct", module_path!())
+    }
+}
+
 impl Abi for ExampleStruct {
     type Abi = *const Self;
 
     fn repr() -> Repr {
-        Repr::Handle(TypeName::new("ExampleStruct", module_path!()))
+        Repr::named::<Self>()
     }
 
     fn as_abi(&self) -> Self::Abi {

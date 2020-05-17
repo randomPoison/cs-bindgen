@@ -18,7 +18,7 @@ use strum::{EnumIter, IntoEnumIterator};
 fn simple_enum_round_trip() {
     #[cs_bindgen]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
-    enum Simple {
+    pub enum Simple {
         Zero,
         One,
         Two,
@@ -65,7 +65,7 @@ fn simple_enum_explicit_discriminants() {
 fn simple_enum_explicit_first_discriminant() {
     #[cs_bindgen]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
-    enum FirstDiscriminant {
+    pub enum FirstDiscriminant {
         Zero = 123,
         One,
         Two,
