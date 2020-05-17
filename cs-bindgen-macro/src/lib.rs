@@ -101,7 +101,7 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
     let describe_output = match &signature.output {
         ReturnType::Default => quote! { None },
         ReturnType::Type(_, return_type) => quote! {
-            Some(describe::<#return_type>().expect("Failed to generate schema for return type"))
+            Some(<#return_type as cs_bindgen::abi::Abi>::repr())
         },
     };
 
@@ -136,7 +136,7 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
     let describe_args = inputs.iter().map(|(ident, ty)| {
         let name = ident.to_string();
         quote! {
-            (#name.into(), describe::<#ty>().expect("Failed to generate schema for argument type"))
+            cs_bindgen::shared::FnArg::new(#name, <#ty as cs_bindgen::abi::Abi>::repr())
         }
     });
 
