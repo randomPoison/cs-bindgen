@@ -1,6 +1,6 @@
 //! Utilities for generating the bindings for types that should be marshaled as a handle.
 
-use crate::{describe_named_type, repr_impl, BindingStyle};
+use crate::{describe_named_type, impl_named, repr_impl, BindingStyle};
 use proc_macro2::TokenStream;
 use quote::*;
 use syn::*;
@@ -9,6 +9,7 @@ pub fn quote_type_as_handle(ident: &Ident) -> syn::Result<TokenStream> {
     let drop_ident = format_drop_ident!(ident);
     let describe_fn = describe_named_type(ident, BindingStyle::Handle);
     let repr_fn = repr_impl(ident);
+    let named_impl = impl_named(ident);
 
     Ok(quote! {
         // Implement `Abi` for the type and references to the type.
@@ -73,6 +74,9 @@ pub fn quote_type_as_handle(ident: &Ident) -> syn::Result<TokenStream> {
 
         // Export a function that describes the exported type.
         #describe_fn
+
+        // Implement the `Named` trait for the type.
+        #named_impl
 
         // Export a function that can be used for dropping an instance of the type.
         #[no_mangle]

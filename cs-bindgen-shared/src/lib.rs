@@ -182,3 +182,20 @@ pub enum Repr {
         err: Box<Repr>,
     },
 }
+
+impl Repr {
+    /// Gets the repr for some user-defined type `T`.
+    ///
+    /// Returns [`Repr::Named`] with the [`TypeName`] returned by `T`'s
+    /// [`Named::type_name`] impl.
+    pub fn named<T: Named>() -> Self {
+        Repr::Named(T::type_name())
+    }
+}
+
+/// A user-defined type.
+pub trait Named {
+    // TODO: Make this an associated constant once we stop using schematic and our
+    // custom `TypeName` type doesn't require allocation.
+    fn type_name() -> TypeName;
+}
