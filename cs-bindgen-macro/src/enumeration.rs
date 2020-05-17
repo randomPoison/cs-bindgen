@@ -1,6 +1,6 @@
 use crate::{
-    describe_named_type, impl_type_name, quote_index_fn, quote_vec_drop_fn, reject_generics, value,
-    BindingStyle,
+    describe_named_type, quote_index_fn, quote_vec_drop_fn, reject_generics, repr_impl,
+    type_name_expr, value, BindingStyle,
 };
 use proc_macro2::{Literal, TokenStream};
 use quote::*;
@@ -16,8 +16,6 @@ pub fn quote_enum_item(item: ItemEnum) -> syn::Result<TokenStream> {
     //
     // TODO: Move this into a dedicated derive macro for schematic.
     let describe_impl = quote_describe_impl(&item)?;
-
-    let type_name_impl = impl_type_name(&item.ident);
 
     // Check the variants to determine if we're dealing with a C-style enum or one that
     // carries additional data.
@@ -38,7 +36,6 @@ pub fn quote_enum_item(item: ItemEnum) -> syn::Result<TokenStream> {
 
     Ok(quote! {
         #describe_impl
-        #type_name_impl
         #bindings
         #describe_fn
     })
@@ -109,6 +106,7 @@ fn quote_simple_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
         .map(|variant| &variant.ident)
         .collect::<Vec<_>>();
 
+    let repr_fn = repr_impl(&ident);
     let index_fn = quote_index_fn(&ident);
     let drop_vec_fn = quote_vec_drop_fn(&ident);
 
@@ -120,6 +118,8 @@ fn quote_simple_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
 
         impl cs_bindgen::abi::Abi for #ident {
             type Abi = #discriminant_ty;
+
+            #repr_fn
 
             fn as_abi(&self) -> Self::Abi {
                 match self {
@@ -294,6 +294,7 @@ fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
         }
     });
 
+    let repr_fn = repr_impl(ident);
     let index_fn = quote_index_fn(ident);
     let vec_drop_fn = quote_vec_drop_fn(ident);
 
@@ -312,6 +313,8 @@ fn quote_complex_enum(item: &ItemEnum) -> syn::Result<TokenStream> {
         // Generate the `Abi` impl for the enum.
         impl cs_bindgen::abi::Abi for #ident {
             type Abi = cs_bindgen::abi::RawEnum<#discriminant_ty, #abi_union_ty>;
+
+            #repr_fn
 
             unsafe fn from_abi(abi: Self::Abi) -> Self {
                 match abi.discriminant {
@@ -424,8 +427,14 @@ fn quote_describe_impl(item: &ItemEnum) -> syn::Result<TokenStream> {
         }
     });
 
+    let type_name = type_name_expr(ident);
+
     Ok(quote! {
         impl cs_bindgen::shared::schematic::Describe for #ident {
+            fn type_name() -> cs_bindgen::shared::TypeName {
+                #type_name
+            }
+
             fn describe<E>(describer: E) -> Result<E::Ok, E::Error>
             where
                 E: cs_bindgen::shared::schematic::Describer,

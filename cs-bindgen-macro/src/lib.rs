@@ -425,20 +425,17 @@ fn reject_generics<M: Display>(generics: &Generics, message: M) -> syn::Result<(
 
 fn describe_named_type(ident: &Ident, style: BindingStyle) -> TokenStream {
     let describe_ident = format_describe_ident!(ident);
-    let name = ident.to_string();
     let index_fn = index_fn_ident(ident).to_string();
     let drop_vec_fn = drop_vec_fn_ident(ident).to_string();
+    let type_name = type_name_expr(ident);
 
     let style = match style {
         BindingStyle::Handle => quote! {
-            Handle(cs_bindgen::shared::schematic::type_name!(#ident))
+            Handle
         },
 
         BindingStyle::Value => quote! {
-            Value(
-                cs_bindgen::shared::schematic::describe::<#ident>()
-                    .expect("Failed to describe enum type")
-            )
+            Value(cs_bindgen::shared::schematic::describe::<#ident>())
         },
     };
 
@@ -450,7 +447,7 @@ fn describe_named_type(ident: &Ident, style: BindingStyle) -> TokenStream {
             use cs_bindgen::shared::schematic;
 
             let export = cs_bindgen::shared::NamedType {
-                name: #name.into(),
+                type_name: #type_name,
                 binding_style: cs_bindgen::shared::BindingStyle::#style,
                 index_fn: #index_fn.into(),
                 drop_vec_fn: #drop_vec_fn.into(),
@@ -461,13 +458,17 @@ fn describe_named_type(ident: &Ident, style: BindingStyle) -> TokenStream {
     }
 }
 
-fn impl_type_name(ident: &Ident) -> TokenStream {
+fn type_name_expr(ident: &Ident) -> TokenStream {
     quote! {
-        impl cs_bindgen::abi::NamedType for #ident {
-            const TYPE_NAME: cs_bindgen::shared::TypeName = cs_bindgen::shared::TypeName {
-                name: std::borrow::Cow::Borrowed(stringify!(#ident)),
-                module: std::borrow::Cow::Borrowed(module_path!()),
-            };
+        cs_bindgen::shared::TypeName::new(stringify!(#ident), module_path!())
+    }
+}
+
+fn repr_impl(ident: &Ident) -> TokenStream {
+    let type_name = type_name_expr(ident);
+    quote! {
+        fn repr() -> cs_bindgen::shared::Repr {
+            cs_bindgen::shared::Repr::Named(#type_name)
         }
     }
 }
