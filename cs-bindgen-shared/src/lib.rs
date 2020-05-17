@@ -142,14 +142,7 @@ pub enum Repr {
     F32,
     F64,
 
-    /// A user defined type passed by handle.
-    ///
-    /// The referenced type must be included in the set of exported types, such that the
-    /// given `TypeName` can be used to look up the full schema and metadata for the
-    /// type.
-    Handle(TypeName),
-
-    /// A user defined type passed by value.
+    /// A user defined type.
     ///
     /// The referenced type must be included in the set of exported types, such that the
     /// given `TypeName` can be used to look up the full schema and metadata for the

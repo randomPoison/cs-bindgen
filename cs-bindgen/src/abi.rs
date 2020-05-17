@@ -16,8 +16,7 @@
 //! [nomicon-interop]: https://doc.rust-lang.org/nomicon/ffi.html#interoperability-with-foreign-code
 
 use core::mem::MaybeUninit;
-use cs_bindgen_shared::{schematic, Repr, TypeName};
-use schematic::Describe;
+use cs_bindgen_shared::Repr;
 use std::{convert::TryInto, mem, slice, str};
 
 /// The ABI-compatible equivalent to [`String`].
@@ -29,21 +28,6 @@ pub type RawString = RawVec<u8>;
 ///
 /// [`&str`]: https://doc.rust-lang.org/std/primitive.str.html
 pub type RawStr = RawSlice<u8>;
-
-/// Helper trait for accessing the type name for exported types.
-///
-/// Not all types implementing `Abi` need to implement `Describe`, but all types
-/// need to be able to referenced by name. This trait provides a uniform way to
-/// access a type's name when generating a reference to a type.
-pub trait NamedType {
-    fn type_name() -> TypeName;
-}
-
-impl<T: Describe> NamedType for T {
-    fn type_name() -> TypeName {
-        <T as Describe>::type_name()
-    }
-}
 
 /// A value that is ABI-compatible with C#.
 ///
