@@ -305,7 +305,7 @@ fn quote_method_item(item: ImplItemMethod, self_ty: &Type) -> syn::Result<TokenS
     let describe_output = match &signature.output {
         ReturnType::Default => quote! { None },
         ReturnType::Type(_, return_type) => quote! {
-            Some(describe::<#return_type>().expect("Failed to generate schema for return type"))
+            Some(<#return_type as cs_bindgen::abi::Abi>::repr())
         },
     };
 
@@ -339,7 +339,7 @@ fn quote_method_item(item: ImplItemMethod, self_ty: &Type) -> syn::Result<TokenS
     let describe_args = inputs.iter().map(|(ident, ty)| {
         let name = ident.to_string();
         quote! {
-            (#name.into(), describe::<#ty>().expect("Failed to generate schema for argument type"))
+            cs_bindgen::shared::FnArg::new(#name, <#ty as cs_bindgen::abi::Abi>::repr())
         }
     });
 
@@ -351,7 +351,7 @@ fn quote_method_item(item: ImplItemMethod, self_ty: &Type) -> syn::Result<TokenS
             let export = Method {
                 name: #name.into(),
                 binding: #binding_name.into(),
-                self_type: <#self_ty as cs_bindgen::abi::NamedType>::type_name(),
+                self_type: <#self_ty as cs_bindgen::shared::Named>::type_name(),
                 receiver: #describe_receiver,
                 inputs: vec![#(
                     #describe_args,
