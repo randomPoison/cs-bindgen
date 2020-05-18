@@ -185,7 +185,7 @@ pub fn raw_type_from_repr(repr: &Repr, types: &TypeMap) -> TokenStream {
                 .unwrap_or_else(|| panic!("No export found for named type {:?}", type_name));
 
             match &export.binding_style {
-                BindingStyle::Handle => named_type_raw_reference(type_name),
+                BindingStyle::Handle => class::quote_handle_ptr(),
                 BindingStyle::Value(schema) => raw_type_from_schema(schema, types),
             }
         }
