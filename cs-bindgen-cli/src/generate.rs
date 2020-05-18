@@ -2,13 +2,14 @@ use self::{binding::*, class::*, enumeration::*, func::*};
 use crate::Opt;
 use cs_bindgen_shared::{
     schematic::{self, Primitive, Schema, TypeName},
-    BindingStyle, Export, NamedType,
+    BindingStyle, Export, NamedType, Repr,
 };
 use heck::*;
 use lazy_static::lazy_static;
 use proc_macro2::TokenStream;
 use quote::*;
 use std::{collections::HashMap, ffi::OsStr};
+use syn::Ident;
 
 mod binding;
 mod class;
@@ -19,7 +20,7 @@ mod strukt;
 type TypeMap<'a> = HashMap<&'a TypeName, &'a NamedType>;
 
 lazy_static! {
-    static ref STRING_SCHEMA: Schema = schematic::describe::<String>().unwrap();
+    static ref STRING_SCHEMA: Schema = schematic::describe::<String>();
 }
 
 pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, failure::Error> {
@@ -40,7 +41,7 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
     let types = exports
         .iter()
         .filter_map(|export| match export {
-            Export::Named(export) => Some((export.type_name(), export)),
+            Export::Named(export) => Some((&export.type_name, export)),
             _ => None,
         })
         .collect::<HashMap<_, _>>();
@@ -59,15 +60,13 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
                 &*export.name,
                 &*export.binding,
                 None,
-                export.inputs(),
+                &export.inputs,
                 export.output.as_ref(),
                 &types,
             )),
 
             Export::Named(export) => match &export.binding_style {
-                BindingStyle::Handle(type_name) => {
-                    binding_items.push(class::quote_handle_type(export))
-                }
+                BindingStyle::Handle => binding_items.push(class::quote_handle_type(export)),
 
                 BindingStyle::Value(schema) => match schema {
                     Schema::Struct(_)
@@ -86,8 +85,8 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
 
                     _ => {
                         return Err(failure::format_err!(
-                            "Invalid schema for exported type {}: {:?}",
-                            export.name,
+                            "Invalid schema for exported type {:?}: {:?}",
+                            export.type_name,
                             schema
                         ))
                     }
@@ -419,10 +418,75 @@ fn quote_primitive_type(ty: Primitive) -> TokenStream {
     }
 }
 
-/// Generates the idiomatic C# type corresponding to the given type schema.
-fn quote_cs_type(schema: &Schema, types: &TypeMap) -> TokenStream {
+fn quote_cs_type_for_repr(repr: &Repr, types: &TypeMap) -> TokenStream {
     let quote_sequence_type = |element| {
-        let element = quote_cs_type(element, types);
+        let element = quote_cs_type_for_repr(element, types);
+        quote! {
+            System.Collections.Generic.List<#element>
+        }
+    };
+
+    match repr {
+        Repr::Unit => todo!("Support unit types"),
+
+        Repr::Bool => quote! { bool },
+
+        Repr::Char => todo!("Support passing `char` values"),
+
+        Repr::I8 => quote! { sbyte },
+        Repr::I16 => quote! { short },
+        Repr::I32 => quote! { int },
+        Repr::I64 => quote! { long },
+        Repr::ISize => quote! { IntPtr },
+
+        Repr::U8 => quote! { byte },
+        Repr::U16 => quote! { ushort },
+        Repr::U32 => quote! { uint },
+        Repr::U64 => quote! { ulong },
+        Repr::USize => quote! { UIntPtr },
+
+        Repr::F32 => quote! { float },
+        Repr::F64 => quote! { double },
+
+        Repr::Named(type_name) => {
+            let export = types
+                .get(type_name)
+                .unwrap_or_else(|| panic!("Could not resolve type reference: {:?}", type_name));
+
+            // NOTE: Enums that are exported by value are a special case since the user-facing
+            // type for a data-carrying enum is an interface, and therefore has a different
+            // naming convention from Rust structs.
+            let ident = match &export.binding_style {
+                BindingStyle::Value(Schema::Enum(schema)) => {
+                    enumeration::quote_type_reference(schema)
+                }
+                _ => format_ident!("{}", &*export.type_name.name).into_token_stream(),
+            };
+
+            // TODO: Take into account things like custom namespaces or renaming the type, once
+            // those are supported. For now, we manually prefix references to user-defined types
+            // with `global::` in order to avoid name collisions. Once we support custom
+            // namespaces, we'll want to use the correct namespace name instead.
+            quote! { global::#ident }
+        }
+
+        Repr::Vec(inner) => quote_sequence_type(inner),
+        Repr::Slice(inner) => quote_sequence_type(inner),
+        Repr::Array { element, .. } => quote_sequence_type(element),
+
+        Repr::String | Repr::Str => quote! { string },
+
+        Repr::Option(_) => todo!("Support optional values"),
+        Repr::Result { .. } => todo!("Support results"),
+
+        Repr::Box(_) | Repr::Ref(_) => todo!("Support pointer types"),
+    }
+}
+
+/// Generates the idiomatic C# type corresponding to the given type schema.
+fn quote_cs_type_for_schema(schema: &Schema, types: &TypeMap) -> TokenStream {
+    let quote_sequence_type = |element| {
+        let element = quote_cs_type_for_schema(element, types);
         quote! {
             List<#element>
         }
@@ -439,7 +503,7 @@ fn quote_cs_type(schema: &Schema, types: &TypeMap) -> TokenStream {
         // naming convention from Rust structs.
         let ident = match &export.binding_style {
             BindingStyle::Value(Schema::Enum(schema)) => enumeration::quote_type_reference(schema),
-            _ => format_ident!("{}", &*export.name).into_token_stream(),
+            _ => format_ident!("{}", &*export.type_name.name).into_token_stream(),
         };
 
         // TODO: Take into account things like custom namespaces or renaming the type, once
@@ -498,8 +562,8 @@ fn quote_cs_type(schema: &Schema, types: &TypeMap) -> TokenStream {
 
         // Map types are exposed in C# as a `Dictionary<K, V>`.
         Schema::Map(schema) => {
-            let key = quote_cs_type(&schema.key, types);
-            let value = quote_cs_type(&schema.value, types);
+            let key = quote_cs_type_for_schema(&schema.key, types);
+            let value = quote_cs_type_for_schema(&schema.value, types);
             quote! {
                 Dictionary<#key, #value>
             }
@@ -508,7 +572,9 @@ fn quote_cs_type(schema: &Schema, types: &TypeMap) -> TokenStream {
         // Generate an unnamed tuple type for an exported Rust tuple. Conveniently this has
         // the same syntax in C# as in Rust, e.g. `(int, Foo, Bar)`. How nice!
         Schema::Tuple(elements) => {
-            let element = elements.iter().map(|schema| quote_cs_type(schema, types));
+            let element = elements
+                .iter()
+                .map(|schema| quote_cs_type_for_schema(schema, types));
             quote! {
                 ( #( #element ),* )
             }
@@ -523,5 +589,12 @@ fn quote_cs_type(schema: &Schema, types: &TypeMap) -> TokenStream {
         Schema::I128 | Schema::U128 => {
             unreachable!("Invalid argument types should have already been rejected");
         }
+    }
+}
+
+#[extend::ext]
+impl TypeName {
+    fn ident(&self) -> Ident {
+        format_ident!("{}", self.name)
     }
 }

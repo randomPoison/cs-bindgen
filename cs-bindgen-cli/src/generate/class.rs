@@ -1,12 +1,12 @@
 //! Code generation for exported named types that are marshaled as handles.
 
-use crate::generate::{binding, func, TypeMap};
-use cs_bindgen_shared::{Method, NamedType, Schema};
+use crate::generate::{binding, func, TypeMap, TypeNameExt};
+use cs_bindgen_shared::{BindingStyle, Method, NamedType, Repr};
 use proc_macro2::TokenStream;
 use quote::*;
 
 pub fn quote_drop_fn(export: &NamedType, dll_name: &str) -> TokenStream {
-    let binding_ident = format_ident!("__cs_bindgen_drop__{}", &*export.name);
+    let binding_ident = format_ident!("__cs_bindgen_drop__{}", export.type_name.name);
     let entry_point = binding_ident.to_string();
     quote! {
         [DllImport(
@@ -23,8 +23,8 @@ pub fn quote_handle_ptr() -> TokenStream {
 }
 
 pub fn quote_handle_type(export: &NamedType) -> TokenStream {
-    let ident = format_ident!("{}", &*export.name);
-    let drop_fn = format_ident!("__cs_bindgen_drop__{}", &*export.name);
+    let ident = export.type_name.ident();
+    let drop_fn = format_ident!("__cs_bindgen_drop__{}", export.type_name.name);
     let raw_repr = quote_handle_ptr();
 
     let from_raw = binding::from_raw_fn_ident();
@@ -67,19 +67,19 @@ pub fn quote_handle_type(export: &NamedType) -> TokenStream {
 }
 
 pub fn quote_method_binding(item: &Method, types: &TypeMap) -> TokenStream {
-    // Determine the name of the generated wrapper class based on the self type.
-    let class_name = match &item.self_type {
-        Schema::Struct(struct_) => &struct_.name,
-        _ => todo!("Support methods for other named types"),
-    };
+    let self_type_export = types
+        .get(&item.self_type)
+        .unwrap_or_else(|| panic!("No export found for type name {:?}", item.self_type));
 
-    let class_ident = format_ident!("{}", &*class_name.name);
+    // Determine the name of the generated wrapper class based on the self type.
+    let class_ident = item.self_type.ident();
 
     // Use a heuristic to determine if the method should be treated as a constructor.
     //
     // TODO: Also support an explicit attribute to specify that a method should (or
     // should not) be treated as a constructor.
-    let is_constructor = item.receiver.is_none() && item.output.as_ref() == Some(&item.self_type);
+    let is_constructor =
+        item.receiver.is_none() && item.output == Some(Repr::Named(item.self_type.clone()));
 
     // Generate the right type of function for the exported method. There are three options:
     //
@@ -87,11 +87,11 @@ pub fn quote_method_binding(item: &Method, types: &TypeMap) -> TokenStream {
     // * A non-static method.
     // * A static method.
     let wrapper_fn = if is_constructor {
-        let args = func::quote_args(item.inputs(), types);
+        let args = func::quote_args(&item.inputs, types);
         let body = func::quote_wrapper_body(
             &item.binding,
             None,
-            &item.inputs().collect::<Vec<_>>(),
+            &item.inputs,
             Some(&quote! { this._handle }),
             types,
         );
@@ -113,7 +113,7 @@ pub fn quote_method_binding(item: &Method, types: &TypeMap) -> TokenStream {
             &*item.name,
             &*item.binding,
             Some(quote! { this._handle }),
-            item.inputs(),
+            &item.inputs,
             item.output.as_ref(),
             types,
         )
@@ -122,16 +122,31 @@ pub fn quote_method_binding(item: &Method, types: &TypeMap) -> TokenStream {
             &*item.name,
             &*item.binding,
             None,
-            item.inputs(),
+            &item.inputs,
             item.output.as_ref(),
             types,
         )
     };
 
-    quote! {
-        partial class #class_ident
-        {
-            #wrapper_fn
+    // Determine how to generate the method based on what type of item the self type is.
+    match &self_type_export.binding_style {
+        // For any type that's marshaled by handle we extend the generated class with a
+        // partial class containing the method.
+        BindingStyle::Handle => {
+            quote! {
+                partial class #class_ident
+                {
+                    #wrapper_fn
+                }
+            }
         }
+
+        // * For structs exported by value, we generate a partial struct containing the
+        //   method.
+        // * For data-carrying enums exported by value, we generate a partial interface
+        //   containing the method.
+        // * For a C-like enum exported by value, we generate a partial static class with
+        //   an extension method.
+        BindingStyle::Value(_) => todo!("Support methods on non-handle types"),
     }
 }

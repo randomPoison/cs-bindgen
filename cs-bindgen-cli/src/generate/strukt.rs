@@ -1,6 +1,6 @@
 //! Code generation for exported struct types.
 
-use crate::generate::{self, binding, TypeMap};
+use crate::generate::{self, binding, TypeMap, TypeNameExt};
 use cs_bindgen_shared::{
     schematic::{Field, StructLike},
     BindingStyle, NamedType,
@@ -13,12 +13,12 @@ use syn::Ident;
 pub fn quote_struct(export: &NamedType, schema: StructLike<'_>, types: &TypeMap) -> TokenStream {
     assert!(
         matches!(export.binding_style, BindingStyle::Value(..)),
-        "Trying to generate by-value marshaling for {} which is expected to be marshaled by handle",
-        export.name,
+        "Trying to generate by-value marshaling for {:?} which is expected to be marshaled by handle",
+        export.type_name,
     );
 
-    let ident = format_ident!("{}", &*export.name);
-    let raw_ident = binding::raw_ident(&export.name);
+    let ident = export.type_name.ident();
+    let raw_ident = binding::raw_ident(&export.type_name);
 
     let field_ident = schema
         .fields
@@ -88,7 +88,7 @@ pub fn struct_fields(fields: &[Field<'_>], types: &TypeMap) -> TokenStream {
 
     let field_ty = fields
         .iter()
-        .map(|field| generate::quote_cs_type(&field.schema, types));
+        .map(|field| generate::quote_cs_type_for_schema(&field.schema, types));
 
     quote! {
         #(
@@ -115,7 +115,7 @@ pub fn struct_constructor(ident: &Ident, fields: &[Field<'_>], types: &TypeMap) 
 
     let field_ty = fields
         .iter()
-        .map(|field| generate::quote_cs_type(&field.schema, types));
+        .map(|field| generate::quote_cs_type_for_schema(&field.schema, types));
 
     quote! {
         public #ident(#( #field_ty #arg_ident ),*)
