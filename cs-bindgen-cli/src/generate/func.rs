@@ -1,6 +1,7 @@
 //! Code generation for exported functions and methods.
 
-use crate::generate::{binding, quote_cs_type, TypeMap, STRING_SCHEMA};
+use super::quote_cs_type_for_repr;
+use crate::generate::{binding, TypeMap};
 use cs_bindgen_shared::*;
 use heck::*;
 use proc_macro2::TokenStream;
@@ -10,8 +11,8 @@ pub fn quote_wrapper_fn<'a>(
     name: &str,
     binding: &str,
     receiver: Option<TokenStream>,
-    inputs: impl Iterator<Item = (&'a str, &'a Schema)> + Clone + 'a,
-    output: Option<&Schema>,
+    inputs: &[FnArg],
+    output: Option<&Repr>,
     types: &'a TypeMap,
 ) -> TokenStream {
     // Determine the name of the wrapper function. The original function name is
@@ -20,7 +21,7 @@ pub fn quote_wrapper_fn<'a>(
     let name = format_ident!("{}", name.to_camel_case());
 
     let return_ty = match output {
-        Some(output) => quote_cs_type(&output, types),
+        Some(output) => quote_cs_type_for_repr(&output, types),
         None => quote! { void },
     };
 
@@ -30,7 +31,7 @@ pub fn quote_wrapper_fn<'a>(
     let ret = quote! { __raw_result };
     let ret_decl = match output {
         Some(schema) => {
-            let raw_return_ty = binding::quote_raw_type_reference(schema, types);
+            let raw_return_ty = binding::raw_type_from_repr(schema, types);
             quote! { #raw_return_ty #ret; }
         }
 
@@ -57,14 +58,8 @@ pub fn quote_wrapper_fn<'a>(
         quote! { static }
     };
 
-    let args = quote_args(inputs.clone(), types);
-    let body = quote_wrapper_body(
-        binding,
-        receiver,
-        &inputs.collect::<Vec<_>>(),
-        output.map(|_| &ret),
-        types,
-    );
+    let args = quote_args(inputs, types);
+    let body = quote_wrapper_body(binding, receiver, &inputs, output.map(|_| &ret), types);
 
     quote! {
         public #static_ #return_ty #name(#( #args ),*)
@@ -81,15 +76,15 @@ pub fn quote_wrapper_fn<'a>(
 pub fn quote_wrapper_body<'a>(
     binding_name: &str,
     receiver: Option<TokenStream>,
-    args: &[(&'a str, &'a Schema)],
+    args: &[FnArg],
     output: Option<&TokenStream>,
     types: &TypeMap,
 ) -> TokenStream {
-    let arg_name = args.iter().map(|(name, _)| format_ident!("{}", name));
-    let temp_arg_name = args.iter().map(|(name, _)| format_ident!("__{}", name));
+    let arg_name = args.iter().map(|arg| format_ident!("{}", arg.name));
+    let temp_arg_name = args.iter().map(|arg| format_ident!("__{}", arg.name));
     let raw_ty = args
         .iter()
-        .map(|(_, ty)| binding::quote_raw_type_reference(ty, types));
+        .map(|arg| binding::raw_type_from_repr(&arg.repr, types));
 
     let bindings = binding::bindings_class_ident();
     let into_raw = binding::into_raw_fn_ident();
@@ -125,14 +120,14 @@ pub fn quote_wrapper_body<'a>(
     fold_fixed_blocks(body, args)
 }
 
-fn fold_fixed_blocks<'a>(base_invoke: TokenStream, args: &[(&'a str, &'a Schema)]) -> TokenStream {
+fn fold_fixed_blocks<'a>(base_invoke: TokenStream, args: &[FnArg]) -> TokenStream {
     // Wrap the body of the function in `fixed` blocks for any parameters that need to
     // be passed as pointers to Rust (just strings for now). We use `Iterator::fold` to
     // generate a series of nested `fixed` blocks. This is very smart code and won't be
     // hard to maintain at all, I'm sure.
-    args.iter().fold(base_invoke, |body, (name, schema)| {
-        if schema == &&*STRING_SCHEMA {
-            let arg_ident = format_ident!("{}", name.to_mixed_case());
+    args.iter().fold(base_invoke, |body, arg| {
+        if arg.repr == Repr::String {
+            let arg_ident = format_ident!("{}", arg.name.to_mixed_case());
             let fixed_ident = format_ident!("__fixed_{}", arg_ident);
             quote! {
                 fixed (char* #fixed_ident = #arg_ident)
@@ -150,12 +145,12 @@ fn fold_fixed_blocks<'a>(base_invoke: TokenStream, args: &[(&'a str, &'a Schema)
 ///
 /// Attempts to use the most idiomatic C# type that corresponds to the original type.
 pub fn quote_args<'a>(
-    args: impl Iterator<Item = (&'a str, &'a Schema)> + 'a,
+    args: &'a [FnArg],
     types: &'a TypeMap<'_>,
 ) -> impl Iterator<Item = TokenStream> + 'a {
-    args.map(move |(name, schema)| {
-        let ident = format_ident!("{}", name.to_mixed_case());
-        let ty = quote_cs_type(schema, types);
+    args.iter().map(move |arg| {
+        let ident = format_ident!("{}", arg.name.to_mixed_case());
+        let ty = quote_cs_type_for_repr(&arg.repr, types);
         quote! { #ty #ident }
     })
 }

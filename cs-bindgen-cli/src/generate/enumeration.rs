@@ -1,7 +1,7 @@
 //! Code generation for exported enum types that are marshaled by value.
 
-use crate::generate::{binding, quote_primitive_type, strukt, TypeMap};
-use cs_bindgen_shared::{schematic::Enum, schematic::Variant, BindingStyle, NamedType};
+use crate::generate::{binding, quote_primitive_type, strukt, TypeMap, TypeNameExt};
+use cs_bindgen_shared::{schematic::Enum, schematic::Variant, BindingStyle, NamedType, TypeName};
 use proc_macro2::{Literal, TokenStream};
 use quote::*;
 use syn::Ident;
@@ -9,8 +9,8 @@ use syn::Ident;
 pub fn quote_enum(export: &NamedType, schema: &Enum, types: &TypeMap) -> TokenStream {
     assert!(
         matches!(export.binding_style, BindingStyle::Value(..)),
-        "Trying to generate by-value marshaling for {} which is expected to be marshaled by handle",
-        export.name,
+        "Trying to generate by-value marshaling for {:?} which is expected to be marshaled by handle",
+        export.type_name,
     );
 
     // Determine if we're dealing with a simple (C-like) enum or one with fields.
@@ -26,7 +26,7 @@ pub fn quote_enum(export: &NamedType, schema: &Enum, types: &TypeMap) -> TokenSt
 
     // NOTE: The unwrap here won't panic because we've already verified above that the
     // binding style is by-value.
-    let raw_repr = binding::quote_raw_type_reference(&export.schema().unwrap(), types);
+    let raw_repr = binding::raw_type_from_schema(&export.schema().unwrap(), types);
 
     let from_raw_impl = from_raw_impl(export, schema);
     let into_raw_impl = into_raw_impl(export, schema);
@@ -123,8 +123,8 @@ fn into_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
         };
     }
 
-    let raw_struct_ty = binding::raw_ident(&export.name);
-    let union_ty = union_struct_name(&export.name);
+    let raw_struct_ty = binding::raw_ident(&export.type_name);
+    let union_ty = union_struct_name(&export.type_name);
 
     let variant_name = schema
         .variants
@@ -175,7 +175,7 @@ fn into_raw_impl(export: &NamedType, schema: &Enum) -> TokenStream {
 }
 
 fn quote_simple_enum(export: &NamedType, schema: &Enum) -> TokenStream {
-    let ident = format_ident!("{}", &*export.name);
+    let ident = export.type_name.ident();
     let variants = schema.variants.iter().map(|variant| {
         let (name, discriminant) = match variant {
             Variant::Unit { name, discriminant } => (name, discriminant),
@@ -206,14 +206,13 @@ fn quote_simple_enum(export: &NamedType, schema: &Enum) -> TokenStream {
 }
 
 fn quote_complex_enum(export: &NamedType, schema: &Enum, types: &TypeMap) -> TokenStream {
-    assert_eq!(
-        export.binding_style,
-        BindingStyle::Value,
-        "Right now we only support exporting complex enums by value"
+    assert!(
+        matches!(export.binding_style, BindingStyle::Value(..)),
+        "Right now we only support exporting complex enums by value",
     );
 
-    let wrapper_class = format_ident!("{}", &*export.name);
-    let interface = format_ident!("I{}", &*export.name);
+    let wrapper_class = export.type_name.ident();
+    let interface = format_ident!("I{}", export.type_name.name);
 
     // Generate the declarations for the fields of the raw union. There's one field for
     // each data-carrying variant of the enum, i.e. unit-like variants don't have a
@@ -221,7 +220,7 @@ fn quote_complex_enum(export: &NamedType, schema: &Enum, types: &TypeMap) -> Tok
     let union_fields = schema.variants.iter().filter_map(|variant| match variant {
         Variant::Unit { .. } => None,
         _ => {
-            let binding_ty = binding::raw_ident(variant.name());
+            let binding_ty = raw_variant_struct_name(&export.type_name, variant.name());
             let name = format_ident!("{}", variant.name());
 
             Some(quote! {
@@ -238,7 +237,7 @@ fn quote_complex_enum(export: &NamedType, schema: &Enum, types: &TypeMap) -> Tok
     //   union for the enum.
     let variant_structs = schema.variants.iter().map(|variant| {
         let ident = variant_struct_name(variant);
-        let raw_ident = binding::raw_ident(variant.name());
+        let raw_ident = raw_variant_struct_name(&export.type_name, variant.name());
 
         let fields = variant.fields().collect::<Vec<_>>();
 
@@ -300,8 +299,8 @@ fn quote_complex_enum(export: &NamedType, schema: &Enum, types: &TypeMap) -> Tok
         }
     });
 
-    let raw_struct = binding::raw_ident(&export.name);
-    let union_struct = union_struct_name(&export.name);
+    let raw_struct = binding::raw_ident(&export.type_name);
+    let union_struct = union_struct_name(&export.type_name);
 
     quote! {
         // Generate an interface for the enum.
@@ -355,7 +354,7 @@ fn quote_complex_enum(export: &NamedType, schema: &Enum, types: &TypeMap) -> Tok
 
 /// Returns the name of the wrapper class generated for for the specified exported type.
 fn wrapper_class_name(export: &NamedType) -> Ident {
-    format_ident!("{}", &*export.name)
+    format_ident!("{}", &*export.type_name.name)
 }
 
 /// Returns the name for the C# struct representing the specified variant.
@@ -379,14 +378,19 @@ fn variant_struct_type_ref(export: &NamedType, variant: &Variant) -> TokenStream
     }
 }
 
+fn raw_variant_struct_name(type_name: &TypeName, variant_name: &str) -> Ident {
+    let raw_name = binding::raw_ident(type_name);
+    format_ident!("{}__{}", raw_name, variant_name)
+}
+
 fn raw_variant_struct_type_ref(export: &NamedType, variant: &Variant) -> TokenStream {
     let wrapper_class = wrapper_class_name(export);
-    let raw_variant_struct_name = binding::raw_ident(variant.name());
+    let raw_variant_struct_name = raw_variant_struct_name(&export.type_name, &variant.name());
     quote! {
         global::#wrapper_class.#raw_variant_struct_name
     }
 }
 
-fn union_struct_name(name: &str) -> Ident {
-    format_ident!("{}_Data_Raw", name)
+fn union_struct_name(type_name: &TypeName) -> Ident {
+    format_ident!("{}_Data_Raw", type_name.name)
 }

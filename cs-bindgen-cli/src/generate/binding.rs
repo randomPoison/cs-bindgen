@@ -13,7 +13,7 @@
 use crate::generate::{self, class, enumeration, strukt, TypeMap, STRING_SCHEMA};
 use cs_bindgen_shared::{
     schematic::{Field, Schema, TypeName},
-    BindingStyle, Export,
+    BindingStyle, Export, FnArg, Repr,
 };
 use proc_macro2::TokenStream;
 use quote::*;
@@ -55,8 +55,8 @@ pub fn into_raw_fn_ident() -> Ident {
 /// convert the C# representation of the type to-and-from the raw representation.
 /// This function provides the canonical way to generate the name of the raw type
 /// corresponding to any given exported Rust type.
-pub fn raw_ident(name: &str) -> Ident {
-    format_ident!("__{}__Raw", name)
+pub fn raw_ident(type_name: &TypeName) -> Ident {
+    format_ident!("__{}__Raw", type_name.name)
 }
 
 pub fn wrap_bindings(tokens: TokenStream) -> TokenStream {
@@ -71,9 +71,9 @@ pub fn wrap_bindings(tokens: TokenStream) -> TokenStream {
 pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> TokenStream {
     match export {
         Export::Fn(export) => {
-            let args = quote_binding_args(export.inputs(), types);
+            let args = quote_binding_args(&export.inputs, types);
             let return_ty = match &export.output {
-                Some(output) => quote_raw_type_reference(output, types),
+                Some(output) => raw_type_from_repr(output, types),
                 None => quote! { void },
             };
 
@@ -82,7 +82,7 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
 
         Export::Method(export) => {
             let return_ty = match &export.output {
-                Some(output) => quote_raw_type_reference(output, types),
+                Some(output) => raw_type_from_repr(output, types),
                 None => quote! { void },
             };
 
@@ -90,7 +90,7 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
             // manually insert the receiver. The current blocker is that schematic can't
             // represent reference types, so we can't generate a full list of inputs that
             // includes the receiver.
-            let mut args = quote_binding_args(export.inputs(), types);
+            let mut args = quote_binding_args(&export.inputs, types);
             if export.receiver.is_some() {
                 let handle_type = class::quote_handle_ptr();
                 args.insert(0, quote! { #handle_type self });
@@ -102,12 +102,12 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
         // Generate the binding for the destructor for any named types that are marshaled
         // as handles.
         Export::Named(export) => match &export.binding_style {
-            BindingStyle::Handle(type_name) => class::quote_drop_fn(&export, dll_name),
+            BindingStyle::Handle => class::quote_drop_fn(&export, dll_name),
 
             BindingStyle::Value(schema) => {
                 let index_fn = quote_raw_fn_binding(
                     &export.index_fn,
-                    quote_raw_type_reference(schema, types),
+                    raw_type_from_schema(schema, types),
                     quote! { RawSlice slice, UIntPtr index },
                     dll_name,
                 );
@@ -120,8 +120,8 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
                 );
 
                 let from_raw = from_raw_fn_ident();
-                let ty = generate::quote_cs_type(schema, types);
-                let raw_repr = quote_raw_type_reference(schema, types);
+                let ty = generate::quote_cs_type_for_schema(schema, types);
+                let raw_repr = raw_type_from_schema(schema, types);
                 let index_fn_name = format_ident!("{}", &*export.index_fn);
                 let drop_vec_fn_name = format_ident!("{}", &*export.drop_vec_fn);
                 let list_from_raw = quote! {
@@ -142,18 +142,71 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
     }
 }
 
-/// Generates the appropriate raw type name for the given type schema.
-// NOTE: We're not currently using the type map parameter, but we'll eventually need
-// it once we support custom namespaces, since we'll need to look up the export
-// information to determine the fully-qualified name for the type.
-pub fn quote_raw_type_reference(schema: &Schema, types: &TypeMap) -> TokenStream {
-    fn named_type_raw_reference(type_name: &TypeName) -> TokenStream {
-        let ident = raw_ident(&type_name.name);
-        quote! {
-            global::#ident
-        }
-    }
+/// Returns the raw type representation for for the given `repr`.
+///
+/// The raw representation is what is used in FFI calls:
+///
+/// * For primitive numeric types we use the corresponding C# numeric type.
+/// * For `String` and `Vec` we use `RawVec`.
+/// * For `str` and slices use `RawSlice`.
+/// * For named types we look up the export definition to determine what raw repr to
+///   use:
+///   * Handle types are represented as a raw pointer (`IntPtr`, specifically).
+///   * Value types have a corresponding raw struct.
+///   * C-like enums that are passed by value use the numeric type of their
+///     discriminant.
+///
+/// References to generated types are also prefixed with `global::` or the namespace
+/// path as necessary.
+pub fn raw_type_from_repr(repr: &Repr, types: &TypeMap) -> TokenStream {
+    match repr {
+        Repr::Unit => quote! { byte },
+        Repr::Bool => quote! { byte },
+        Repr::Char => quote! { uint },
 
+        Repr::I8 => quote! { sbyte },
+        Repr::I16 => quote! { short },
+        Repr::I32 => quote! { int },
+        Repr::I64 => quote! { long },
+        Repr::ISize => quote! { IntPtr },
+
+        Repr::U8 => quote! { byte },
+        Repr::U16 => quote! { ushort },
+        Repr::U32 => quote! { uint },
+        Repr::U64 => quote! { ulong },
+        Repr::USize => quote! { UIntPtr },
+
+        Repr::F32 => quote! { float },
+        Repr::F64 => quote! { double },
+
+        Repr::Named(type_name) => {
+            let export = types
+                .get(&type_name)
+                .unwrap_or_else(|| panic!("No export found for named type {:?}", type_name));
+
+            match &export.binding_style {
+                BindingStyle::Handle => named_type_raw_reference(type_name),
+                BindingStyle::Value(schema) => raw_type_from_schema(schema, types),
+            }
+        }
+
+        // Pointer types are all marshalled as `IntPtr`.
+        Repr::Box(_) | Repr::Ref(_) => quote! { IntPtr },
+
+        Repr::Vec(_) => quote! { RawVec },
+        Repr::Slice(_) => quote! { RawSlice },
+
+        Repr::String => quote! { RawVec },
+        Repr::Str => quote! { RawSlice },
+
+        Repr::Array { .. } => todo!("Support arrays"),
+        Repr::Option(_) => todo!("Support optional types"),
+        Repr::Result { .. } => todo!("Support `Result`"),
+    }
+}
+
+/// Generates the appropriate raw type name for the given type schema.
+pub fn raw_type_from_schema(schema: &Schema, types: &TypeMap) -> TokenStream {
     match schema {
         Schema::Unit => quote! { byte },
         Schema::Bool => quote! { byte },
@@ -200,7 +253,7 @@ pub fn quote_raw_type_reference(schema: &Schema, types: &TypeMap) -> TokenStream
             //   type (`IntPtr`).
             // * Data-carrying enums have an associate struct that represents its raw type.
             // * C-like enums are marshalled directly as an integer value.
-            if matches!(export.binding_style, BindingStyle::Handle(..)) {
+            if matches!(export.binding_style, BindingStyle::Handle) {
                 class::quote_handle_ptr()
             } else if schema.has_data() {
                 named_type_raw_reference(&schema.name)
@@ -223,7 +276,7 @@ pub fn quote_raw_type_reference(schema: &Schema, types: &TypeMap) -> TokenStream
                 .unwrap_or_else(|| panic!("No export found for named type {:?}", type_name));
 
             // Determine the raw representation based on the marshaling style.
-            if matches!(export.binding_style, BindingStyle::Handle(..)) {
+            if matches!(export.binding_style, BindingStyle::Handle) {
                 class::quote_handle_ptr()
             } else {
                 named_type_raw_reference(type_name)
@@ -263,7 +316,7 @@ pub fn raw_struct_fields(fields: &[Field<'_>], types: &TypeMap) -> TokenStream {
 
     let field_ty = fields
         .iter()
-        .map(|field| quote_raw_type_reference(&field.schema, types));
+        .map(|field| raw_type_from_schema(&field.schema, types));
 
     quote! {
         #(
@@ -272,15 +325,12 @@ pub fn raw_struct_fields(fields: &[Field<'_>], types: &TypeMap) -> TokenStream {
     }
 }
 
-fn quote_binding_args<'a>(
-    inputs: impl Iterator<Item = (&'a str, &'a Schema)>,
-    types: &TypeMap<'_>,
-) -> Punctuated<TokenStream, Comma> {
+fn quote_binding_args<'a>(inputs: &[FnArg], types: &TypeMap<'_>) -> Punctuated<TokenStream, Comma> {
     inputs
-        .map(|(name, schema)| {
-            let ident = format_ident!("{}", name);
-            let ty = quote_raw_type_reference(schema, types);
-
+        .iter()
+        .map(|arg| {
+            let ident = format_ident!("{}", &*arg.name);
+            let ty = raw_type_from_repr(&arg.repr, types);
             quote! { #ty #ident }
         })
         .collect()
@@ -299,5 +349,12 @@ fn quote_raw_fn_binding(
             EntryPoint = #entry_point,
             CallingConvention = CallingConvention.Cdecl)]
         internal static extern #return_ty #fn_name(#args);
+    }
+}
+
+fn named_type_raw_reference(type_name: &TypeName) -> TokenStream {
+    let ident = raw_ident(type_name);
+    quote! {
+        global::#ident
     }
 }
