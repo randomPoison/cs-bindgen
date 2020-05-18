@@ -422,7 +422,7 @@ fn quote_cs_type_for_repr(repr: &Repr, types: &TypeMap) -> TokenStream {
     let quote_sequence_type = |element| {
         let element = quote_cs_type_for_repr(element, types);
         quote! {
-            System.Collections.Generic.List<#element>
+            List<#element>
         }
     };
 
