@@ -50,10 +50,15 @@ namespace TestRunner
         [Fact]
         public void ReturnStructList()
         {
-            var items = IntegrationTests.ReturnStructVec();
-            Assert.Equal(2, items.Count);
-            Assert.Equal(33, items[0].Bar);
-            Assert.Equal(12345, items[1].Bar);
+            var expected = new List<CopyStruct>() {
+                new CopyStruct(33),
+                new CopyStruct(12345),
+            };
+            var actual = IntegrationTests.StructVecRoundTrip(expected);
+            Assert.Equal(expected, actual);
+            Assert.Equal(expected.Count, actual.Count);
+            Assert.Equal(expected[0].Bar, actual[0].Bar);
+            Assert.Equal(expected[1].Bar, actual[1].Bar);
         }
 
         [Fact]
