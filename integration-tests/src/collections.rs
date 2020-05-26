@@ -68,8 +68,8 @@ pub struct CopyStruct {
 }
 
 #[cs_bindgen]
-pub fn return_struct_vec() -> Vec<CopyStruct> {
-    vec![CopyStruct { bar: 33 }, CopyStruct { bar: 12345 }]
+pub fn struct_vec_round_trip(val: Vec<CopyStruct>) -> Vec<CopyStruct> {
+    val
 }
 
 #[cs_bindgen]
@@ -84,4 +84,10 @@ pub fn return_data_enum_vec() -> Vec<DataEnum> {
         DataEnum::Bar("Cool string".into()),
         DataEnum::Coolness(InnerEnum::Coolest(SimpleCEnum::Foo)),
     ]
+}
+
+#[cs_bindgen]
+#[derive(Clone)]
+pub enum ValueTypeWithCollection {
+    Foo { values: Vec<u32> },
 }

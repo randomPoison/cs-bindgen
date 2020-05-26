@@ -364,6 +364,37 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
                 return result;
             }
 
+            public static RawVec FromList<T, R>(List<T> items, Func<T, R> convertElement, Func<RawSlice, RawVec> handleResult)
+                where R : unmanaged
+            {
+                if (items.Count <= 32)
+                {
+                    Span<R> rawItems = stackalloc R[items.Count];
+                    for (int index = 0; index < items.Count; index += 1)
+                    {
+                        rawItems[index] = convertElement(items[index]);
+                    }
+
+                    fixed (R* ptr = rawItems)
+                    {
+                        return handleResult(new RawSlice((IntPtr)ptr, items.Count));
+                    }
+                }
+                else
+                {
+                    var rawItems = new R[items.Count];
+                    for (int index = 0; index < items.Count; index += 1)
+                    {
+                        rawItems[index] = convertElement(items[index]);
+                    }
+
+                    fixed (R* ptr = rawItems)
+                    {
+                        return handleResult(new RawSlice((IntPtr)ptr, items.Count));
+                    }
+                }
+            }
+
             public RawSlice AsSlice()
             {
                 return new RawSlice(Ptr, Length);

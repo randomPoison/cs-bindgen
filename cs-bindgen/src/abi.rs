@@ -464,6 +464,15 @@ impl<'a> From<&'a str> for RawSlice<u8> {
     }
 }
 
+/// Converts a slice of `T::Abi` to a vec of `T`, converting each element.
+pub unsafe fn convert_list<T: Abi>(raw: RawSlice<T::Abi>) -> RawVec<T> {
+    raw.as_slice()
+        .iter()
+        .map(|&raw| T::from_abi(raw))
+        .collect::<Vec<_>>()
+        .into()
+}
+
 /// Generates the `Abi` implementation for arrays of different lengths.
 ///
 /// For an array of type `T`, it's ABI-compatible representation is an array of the
