@@ -65,7 +65,7 @@ namespace TestRunner
         public void ReturnSimpleEnumList()
         {
             var expected = new List<SimpleCEnum>() { SimpleCEnum.Foo, SimpleCEnum.Bar, SimpleCEnum.Baz };
-            var actual = IntegrationTests.ReturnSimpleEnumVec();
+            var actual = IntegrationTests.RoundTripSimpleEnumVec(expected);
             Assert.Equal(expected, actual);
         }
 
@@ -87,7 +87,7 @@ namespace TestRunner
                 new DataEnum.Bar("Cool string"),
                 new DataEnum.Coolness(new InnerEnum.Coolest(SimpleCEnum.Foo)),
             };
-            var actual = IntegrationTests.ReturnDataEnumVec();
+            var actual = IntegrationTests.RoundTripDataEnumVec(expected);
             Assert.Equal(expected, actual);
         }
 
