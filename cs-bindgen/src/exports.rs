@@ -14,36 +14,40 @@
 //!
 //! [`export`]: ../macro.export.html
 
-use crate::abi::{RawSlice, RawString, RawVec};
+use crate::abi::{self, Abi, RawSlice, RawString, RawVec};
 
 macro_rules! drop_vec {
-    ( $( $prim:ty => $fn_name:ident, )* ) => {
+    ( $( $prim:ty => [$drop_fn:ident, $convert_fn:ident], )* ) => {
         $(
-            pub unsafe fn $fn_name(raw: RawVec<$prim>) {
+            pub unsafe fn $drop_fn(raw: RawVec<$prim>) {
                 let _ = raw.into_vec();
+            }
+
+            pub unsafe fn $convert_fn(raw: RawSlice<<$prim as Abi>::Abi>) -> RawVec<$prim> {
+                abi::convert_list(raw)
             }
         )*
     }
 }
 
 drop_vec! {
-    u8 => __cs_bindgen_drop_vec_u8,
-    u16 => __cs_bindgen_drop_vec_u16,
-    u32 => __cs_bindgen_drop_vec_u32,
-    u64 => __cs_bindgen_drop_vec_u64,
-    usize => __cs_bindgen_drop_vec_usize,
+    u8 => [__cs_bindgen_drop_vec_u8, __cs_bindgen_convert_vec_u8],
+    u16 => [__cs_bindgen_drop_vec_u16, __cs_bindgen_convert_vec_u16],
+    u32 => [__cs_bindgen_drop_vec_u32, __cs_bindgen_convert_vec_u32],
+    u64 => [__cs_bindgen_drop_vec_u64, __cs_bindgen_convert_vec_u64],
+    usize => [__cs_bindgen_drop_vec_usize, __cs_bindgen_convert_vec_usize],
 
-    i8 => __cs_bindgen_drop_vec_i8,
-    i16 => __cs_bindgen_drop_vec_i16,
-    i32 => __cs_bindgen_drop_vec_i32,
-    i64 => __cs_bindgen_drop_vec_i64,
-    isize => __cs_bindgen_drop_vec_isize,
+    i8 => [__cs_bindgen_drop_vec_i8, __cs_bindgen_convert_vec_i8],
+    i16 => [__cs_bindgen_drop_vec_i16, __cs_bindgen_convert_vec_i16],
+    i32 => [__cs_bindgen_drop_vec_i32, __cs_bindgen_convert_vec_i32],
+    i64 => [__cs_bindgen_drop_vec_i64, __cs_bindgen_convert_vec_i64],
+    isize => [__cs_bindgen_drop_vec_isize, __cs_bindgen_convert_vec_isize],
 
-    f32 => __cs_bindgen_drop_vec_f32,
-    f64 => __cs_bindgen_drop_vec_f64,
+    f32 => [__cs_bindgen_drop_vec_f32, __cs_bindgen_convert_vec_f32],
+    f64 => [__cs_bindgen_drop_vec_f64, __cs_bindgen_convert_vec_f64],
 
-    bool => __cs_bindgen_drop_vec_bool,
-    char => __cs_bindgen_drop_vec_char,
+    bool => [__cs_bindgen_drop_vec_bool, __cs_bindgen_convert_vec_bool],
+    char => [__cs_bindgen_drop_vec_char, __cs_bindgen_convert_vec_char],
 }
 
 /// Converts a C# string (i.e. a UTF-16 slice) into a Rust string.

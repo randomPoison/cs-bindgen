@@ -112,6 +112,13 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
                     dll_name,
                 );
 
+                let convert_list_fn = quote_raw_fn_binding(
+                    &export.convert_list_fn,
+                    quote! { RawVec },
+                    quote! { RawSlice raw },
+                    dll_name,
+                );
+
                 let drop_vec_fn = quote_raw_fn_binding(
                     &export.drop_vec_fn,
                     quote! { void },
@@ -120,10 +127,13 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
                 );
 
                 let from_raw = from_raw_fn_ident();
+                let into_raw = into_raw_fn_ident();
                 let ty = generate::quote_cs_type_for_schema(schema, types);
                 let raw_repr = raw_type_from_schema(schema, types);
                 let index_fn_name = format_ident!("{}", &*export.index_fn);
                 let drop_vec_fn_name = format_ident!("{}", &*export.drop_vec_fn);
+                let convert_list_fn_name = format_ident!("{}", &*export.convert_list_fn);
+
                 let list_from_raw = quote! {
                     internal static void #from_raw(RawVec raw, out List<#ty> result)
                     {
@@ -132,10 +142,25 @@ pub fn quote_raw_binding(export: &Export, dll_name: &str, types: &TypeMap) -> To
                     }
                 };
 
+                let list_into_raw = quote! {
+                    internal static void #into_raw(List<#ty> items, out RawVec result)
+                    {
+                        result = RawVec.FromList(
+                            items,
+                            item => {
+                                #into_raw(item, out #raw_repr raw);
+                                return raw;
+                            },
+                            #convert_list_fn_name);
+                    }
+                };
+
                 quote! {
                     #index_fn
+                    #convert_list_fn
                     #drop_vec_fn
                     #list_from_raw
+                    #list_into_raw
                 }
             }
         },

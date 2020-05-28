@@ -426,6 +426,7 @@ fn reject_generics<M: Display>(generics: &Generics, message: M) -> syn::Result<(
 fn describe_named_type(ident: &Ident, style: BindingStyle) -> TokenStream {
     let describe_ident = format_describe_ident!(ident);
     let index_fn = index_fn_ident(ident).to_string();
+    let convert_list_fn = convert_list_fn_ident(ident).to_string();
     let drop_vec_fn = drop_vec_fn_ident(ident).to_string();
 
     let style = match style {
@@ -449,6 +450,7 @@ fn describe_named_type(ident: &Ident, style: BindingStyle) -> TokenStream {
                 type_name: <#ident as cs_bindgen::shared::Named>::type_name(),
                 binding_style: cs_bindgen::shared::BindingStyle::#style,
                 index_fn: #index_fn.into(),
+                convert_list_fn: #convert_list_fn.into(),
                 drop_vec_fn: #drop_vec_fn.into(),
             };
 
@@ -529,6 +531,21 @@ fn quote_vec_drop_fn(ty: &Ident) -> TokenStream {
         #[allow(bad_style)]
         pub unsafe extern "C" fn #fn_ident(raw: cs_bindgen::abi::RawVec<#ty>) {
             let _ = raw.into_vec();
+        }
+    }
+}
+
+fn convert_list_fn_ident(ty: &Ident) -> Ident {
+    format_ident!("__cs_bindgen_generated_convert_vec__{}", ty)
+}
+
+fn quote_convert_list_fn(ty: &Ident) -> TokenStream {
+    let fn_ident = convert_list_fn_ident(ty);
+    quote! {
+        #[no_mangle]
+        #[allow(bad_style)]
+        pub unsafe extern "C" fn #fn_ident(raw: cs_bindgen::abi::RawSlice<<#ty as cs_bindgen::abi::Abi>::Abi>) -> cs_bindgen::abi::RawVec<#ty> {
+            cs_bindgen::abi::convert_list(raw)
         }
     }
 }

@@ -176,6 +176,76 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
 
         [DllImport(
             #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RawVec __cs_bindgen_convert_vec_u8(RawSlice raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RawVec __cs_bindgen_convert_vec_i8(RawSlice raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RawVec __cs_bindgen_convert_vec_u16(RawSlice raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RawVec __cs_bindgen_convert_vec_i16(RawSlice raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RawVec __cs_bindgen_convert_vec_u32(RawSlice raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RawVec __cs_bindgen_convert_vec_i32(RawSlice raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RawVec __cs_bindgen_convert_vec_u64(RawSlice raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RawVec __cs_bindgen_convert_vec_i64(RawSlice raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RawVec __cs_bindgen_convert_vec_usize(RawSlice raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RawVec __cs_bindgen_convert_vec_isize(RawSlice raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RawVec __cs_bindgen_convert_vec_f32(RawSlice raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RawVec __cs_bindgen_convert_vec_f64(RawSlice raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RawVec __cs_bindgen_convert_vec_bool(RawSlice raw);
+
+        [DllImport(
+            #dll_name,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RawVec __cs_bindgen_convert_vec_char(RawSlice raw);
+
+        [DllImport(
+            #dll_name,
             EntryPoint = "__cs_bindgen_string_from_utf16",
             CallingConvention = CallingConvention.Cdecl)]
         internal static extern RawVec __cs_bindgen_string_from_utf16(RawSlice raw);
@@ -260,7 +330,7 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
         internal static void __FromRaw(RawVec raw, out List<double> result)
         {
             result = raw.ToPrimitiveList<double>();
-            __bindings.__cs_bindgen_drop_vec_f32(raw);
+            __bindings.__cs_bindgen_drop_vec_f64(raw);
         }
 
         internal static void __FromRaw(RawVec raw, out List<bool> result)
@@ -292,6 +362,64 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
             {
                 result = __cs_bindgen_string_from_utf16(new RawSlice((IntPtr)charPtr, value.Length));
             }
+        }
+
+        internal static void __IntoRaw(List<byte> value, out RawVec result)
+        {
+            result = RawVec.FromPrimitiveList(value, __cs_bindgen_convert_vec_u8);
+        }
+
+        internal static void __IntoRaw(List<sbyte> value, out RawVec result)
+        {
+            result = RawVec.FromPrimitiveList(value, __cs_bindgen_convert_vec_i8);
+        }
+
+        internal static void __IntoRaw(List<short> value, out RawVec result)
+        {
+            result = RawVec.FromPrimitiveList(value, __cs_bindgen_convert_vec_i16);
+        }
+
+        internal static void __IntoRaw(List<ushort> value, out RawVec result)
+        {
+            result = RawVec.FromPrimitiveList(value, __cs_bindgen_convert_vec_u16);
+        }
+
+        internal static void __IntoRaw(List<int> value, out RawVec result)
+        {
+            result = RawVec.FromPrimitiveList(value, __cs_bindgen_convert_vec_i32);
+        }
+
+        internal static void __IntoRaw(List<uint> value, out RawVec result)
+        {
+            result = RawVec.FromPrimitiveList(value, __cs_bindgen_convert_vec_u32);
+        }
+
+        internal static void __IntoRaw(List<long> value, out RawVec result)
+        {
+            result = RawVec.FromPrimitiveList(value, __cs_bindgen_convert_vec_i64);
+        }
+
+        internal static void __IntoRaw(List<ulong> value, out RawVec result)
+        {
+            result = RawVec.FromPrimitiveList(value, __cs_bindgen_convert_vec_u64);
+        }
+
+        internal static void __IntoRaw(List<float> value, out RawVec result)
+        {
+            result = RawVec.FromPrimitiveList(value, __cs_bindgen_convert_vec_f32);
+        }
+
+        internal static void __IntoRaw(List<double> value, out RawVec result)
+        {
+            result = RawVec.FromPrimitiveList(value, __cs_bindgen_convert_vec_f64);
+        }
+
+        internal static void __IntoRaw(List<bool> value, out RawVec result)
+        {
+            result = RawVec.FromList<bool, byte>(
+                value,
+                item => item ? (byte)1 : (byte)0,
+                __cs_bindgen_convert_vec_bool);
         }
     });
 
@@ -362,6 +490,51 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
                 }
 
                 return result;
+            }
+
+            public static RawVec FromPrimitiveList<T>(List<T> items, Func<RawSlice, RawVec> allocVec)
+                where T: unmanaged
+            {
+                // TODO: It would be nice to not have to copy the list in order to get the pointer.
+                // Support for getting a `Span<T>` from a `List<T>` is supposedly coming in
+                // netstandard5.0, though even then we wouldn't be able to use it in Unity for a
+                // while.
+                var array = items.ToArray();
+                fixed (T* ptr = array)
+                {
+                    return allocVec(new RawSlice((IntPtr)ptr, items.Count));
+                }
+            }
+
+            public static RawVec FromList<T, R>(List<T> items, Func<T, R> convertElement, Func<RawSlice, RawVec> handleResult)
+                where R : unmanaged
+            {
+                if (items.Count <= 32)
+                {
+                    Span<R> rawItems = stackalloc R[items.Count];
+                    for (int index = 0; index < items.Count; index += 1)
+                    {
+                        rawItems[index] = convertElement(items[index]);
+                    }
+
+                    fixed (R* ptr = rawItems)
+                    {
+                        return handleResult(new RawSlice((IntPtr)ptr, items.Count));
+                    }
+                }
+                else
+                {
+                    var rawItems = new R[items.Count];
+                    for (int index = 0; index < items.Count; index += 1)
+                    {
+                        rawItems[index] = convertElement(items[index]);
+                    }
+
+                    fixed (R* ptr = rawItems)
+                    {
+                        return handleResult(new RawSlice((IntPtr)ptr, items.Count));
+                    }
+                }
             }
 
             public RawSlice AsSlice()

@@ -64,6 +64,7 @@ pub struct NamedType {
 
     pub index_fn: Cow<'static, str>,
     pub drop_vec_fn: Cow<'static, str>,
+    pub convert_list_fn: Cow<'static, str>,
 }
 
 impl NamedType {

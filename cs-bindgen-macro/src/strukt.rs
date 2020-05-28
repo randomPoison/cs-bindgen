@@ -1,6 +1,6 @@
 use crate::{
-    describe_named_type, handle, has_derive_copy, impl_named, quote_index_fn, quote_vec_drop_fn,
-    reject_generics, repr_impl, value, BindingStyle,
+    describe_named_type, handle, has_derive_copy, impl_named, quote_convert_list_fn,
+    quote_index_fn, quote_vec_drop_fn, reject_generics, repr_impl, value, BindingStyle,
 };
 use proc_macro2::{Literal, TokenStream};
 use quote::*;
@@ -32,6 +32,7 @@ pub fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
         let abi_struct = value::quote_abi_struct(&abi_struct_ident, &item.fields);
         let describe_fn = describe_named_type(&item.ident, BindingStyle::Value);
         let index_fn = quote_index_fn(&item.ident);
+        let convert_list_fn = quote_convert_list_fn(&item.ident);
         let vec_drop_fn = quote_vec_drop_fn(&item.ident);
 
         let into_abi_fields = value::into_abi_fields(&item.fields, |index, field| {
@@ -83,6 +84,7 @@ pub fn quote_struct_item(item: ItemStruct) -> syn::Result<TokenStream> {
             #describe_impl
             #describe_fn
             #index_fn
+            #convert_list_fn
             #vec_drop_fn
         })
     } else {

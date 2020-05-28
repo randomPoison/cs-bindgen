@@ -50,17 +50,22 @@ namespace TestRunner
         [Fact]
         public void ReturnStructList()
         {
-            var items = IntegrationTests.ReturnStructVec();
-            Assert.Equal(2, items.Count);
-            Assert.Equal(33, items[0].Bar);
-            Assert.Equal(12345, items[1].Bar);
+            var expected = new List<CopyStruct>() {
+                new CopyStruct(33),
+                new CopyStruct(12345),
+            };
+            var actual = IntegrationTests.StructVecRoundTrip(expected);
+            Assert.Equal(expected, actual);
+            Assert.Equal(expected.Count, actual.Count);
+            Assert.Equal(expected[0].Bar, actual[0].Bar);
+            Assert.Equal(expected[1].Bar, actual[1].Bar);
         }
 
         [Fact]
         public void ReturnSimpleEnumList()
         {
             var expected = new List<SimpleCEnum>() { SimpleCEnum.Foo, SimpleCEnum.Bar, SimpleCEnum.Baz };
-            var actual = IntegrationTests.ReturnSimpleEnumVec();
+            var actual = IntegrationTests.RoundTripSimpleEnumVec(expected);
             Assert.Equal(expected, actual);
         }
 
@@ -82,7 +87,7 @@ namespace TestRunner
                 new DataEnum.Bar("Cool string"),
                 new DataEnum.Coolness(new InnerEnum.Coolest(SimpleCEnum.Foo)),
             };
-            var actual = IntegrationTests.ReturnDataEnumVec();
+            var actual = IntegrationTests.RoundTripDataEnumVec(expected);
             Assert.Equal(expected, actual);
         }
 
