@@ -509,18 +509,20 @@ pub fn generate_bindings(exports: Vec<Export>, opt: &Opt) -> Result<String, fail
             public static RawVec FromList<T, R>(List<T> items, Func<T, R> convertElement, Func<RawSlice, RawVec> handleResult)
                 where R : unmanaged
             {
+                // If the list is small enough, allocate the temporary list of raw items on the
+                // stack to avoid unnecessary heap allocation. We use 32 as a fairly arbitrary
+                // cutoff, with the hope that it's small enough to be unlikely to overflow the
+                // stack.
                 if (items.Count <= 32)
                 {
-                    Span<R> rawItems = stackalloc R[items.Count];
+                    R* rawItems = stackalloc R[items.Count];
+
                     for (int index = 0; index < items.Count; index += 1)
                     {
                         rawItems[index] = convertElement(items[index]);
                     }
 
-                    fixed (R* ptr = rawItems)
-                    {
-                        return handleResult(new RawSlice((IntPtr)ptr, items.Count));
-                    }
+                    return handleResult(new RawSlice((IntPtr)rawItems, items.Count));
                 }
                 else
                 {
