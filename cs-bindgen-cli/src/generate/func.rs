@@ -80,7 +80,9 @@ pub fn quote_wrapper_body<'a>(
     output: Option<&TokenStream>,
     types: &TypeMap,
 ) -> TokenStream {
-    let arg_name = args.iter().map(|arg| format_ident!("{}", arg.name));
+    let arg_name = args
+        .iter()
+        .map(|arg| format_ident!("{}", arg.name.to_mixed_case()));
     let temp_arg_name = args.iter().map(|arg| format_ident!("__{}", arg.name));
     let raw_ty = args
         .iter()
