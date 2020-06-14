@@ -118,6 +118,7 @@ fn quote_fn_item(item: ItemFn) -> syn::Result<TokenStream> {
     // Compose the various pieces together into the final binding function.
     let binding = quote! {
         #[no_mangle]
+        #[allow(bad_style)]
         pub unsafe extern "C" fn #binding_ident(
             #( #binding_inputs, )*
         ) #return_decl {
@@ -318,6 +319,7 @@ fn quote_method_item(item: ImplItemMethod, self_ty: &Type) -> syn::Result<TokenS
     // Compose the various pieces together into the final binding function.
     let binding = quote! {
         #[no_mangle]
+        #[allow(bad_style)]
         pub unsafe extern "C" fn #binding_ident(
             #( #binding_inputs, )*
         ) #return_decl {
